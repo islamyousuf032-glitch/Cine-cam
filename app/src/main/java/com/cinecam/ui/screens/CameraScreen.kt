@@ -1,9 +1,12 @@
 package com.cinecam.ui.screens
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Environment
 import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -17,13 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import android.view.TextureView
+import androidx.core.content.ContextCompat
 import com.cinecam.camera.CameraCapabilities
 import com.cinecam.engine.NativeRawEngine
 import com.cinecam.ui.components.ManualControlPanel
 import com.cinecam.ui.components.FpsSelector
 import com.cinecam.ui.components.RecordButton
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.delay
 import java.io.File
 import java.text.SimpleDateFormat
@@ -33,18 +35,26 @@ import java.util.*
  * CameraScreen - Main CineCam UI
  * Jetpack Compose + TextureView preview + Manual controls + RAW engine stats
  */
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen() {
     val context = LocalContext.current
     var showControls by remember { mutableStateOf(true) }
+    var hasPermissions by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        )
+    }
 
-    // Permission state
-    val permissionsState = rememberMultiplePermissionsState(
-        permissions = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
-    )
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        hasPermissions = perms[Manifest.permission.CAMERA] == true
+    }
+
     LaunchedEffect(Unit) {
-        if (!permissionsState.allPermissionsGranted) permissionsState.launchMultiplePermissionRequest()
+        if (!hasPermissions) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+        }
     }
 
     // Device capability check (once)
@@ -55,7 +65,7 @@ fun CameraScreen() {
 
     // Manual controls state
     var iso by remember { mutableIntStateOf(200) }
-    var shutterNs by remember { mutableLongStateOf(10_000_000L) } // 1/100s
+    var shutterNs by remember { mutableLongStateOf(10_000_000L) }
     var focusDistance by remember { mutableStateOf<Float?>(null) }
     var wbKelvin by remember { mutableIntStateOf(5500) }
     var selectedFps by remember { mutableIntStateOf(30) }
@@ -64,7 +74,6 @@ fun CameraScreen() {
 
     val engine = remember { NativeRawEngine.getInstance() }
 
-    // Poll engine stats when recording
     LaunchedEffect(isRecording) {
         while (isRecording) {
             statsJson = engine.getStatsJson()
@@ -72,7 +81,6 @@ fun CameraScreen() {
         }
     }
 
-    // Initial engine init (lazy)
     LaunchedEffect(bestCamera) {
         val info = bestCamera
         if (info != null) {
@@ -82,39 +90,34 @@ fun CameraScreen() {
                 Log.i("CameraScreen", "Engine init ${size.width}x${size.height} -> $ok")
             }
         } else {
-            // Fallback 1920x1080
             engine.initialize(1920, 1080, 10, 30)
         }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
 
-        // Preview layer (TextureView fallback - will be replaced with GLSurfaceView for Vulkan in Phase 2)
-        if (permissionsState.allPermissionsGranted) {
+        if (hasPermissions) {
             AndroidView(
                 factory = { ctx ->
                     TextureView(ctx).apply {
-                        // SurfaceTextureListener will be wired to CameraController in Phase 2
-                        // For now placeholder black preview with capability overlay
                     }
                 },
                 modifier = Modifier.fillMaxSize()
             )
         } else {
-            // Permission prompt
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("ক্যামেরা অনুমতি প্রয়োজন", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Text("RAW ক্যাপচারের জন্য CAMERA + MIC অনুমতি দিন", color = Color(0xFF9A9A9E), fontSize = 13.sp)
-                    Button(onClick = { permissionsState.launchMultiplePermissionRequest() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914))) {
+                    Button(onClick = {
+                        permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
+                    }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE50914))) {
                         Text("অনুমতি দিন")
                     }
                 }
             }
         }
 
-        // Top bar - Device capability
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -131,24 +134,21 @@ fun CameraScreen() {
                         fontSize = 10.sp
                     )
                 }
-                // FPS Selector compact
                 FpsSelector(selectedFps = selectedFps, onFpsSelected = { selectedFps = it })
             }
             Spacer(Modifier.height(6.dp))
-            // Stats line (engine)
             Text(
                 text = "Engine: ${engine.getVersion()} | Stats: $statsJson",
                 color = Color(0xFF9A9A9E), fontSize = 9.sp, maxLines = 2
             )
         }
 
-        // Center - tap to toggle controls
         Box(
             modifier = Modifier.fillMaxSize().padding(top = 80.dp, bottom = 200.dp),
             contentAlignment = Alignment.Center
         ) {
-            if (!permissionsState.allPermissionsGranted) {
-                // Already handled
+            if (!hasPermissions) {
+                // handled
             } else if (bestCamera?.supportsRawSensor == false) {
                 Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFB71C1C)), modifier = Modifier.padding(24.dp)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -157,20 +157,17 @@ fun CameraScreen() {
                     }
                 }
             } else {
-                // Preview placeholder with crosshair
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("● PREVIEW", color = Color(0x33FFFFFF), fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
 
-        // Bottom controls
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
         ) {
-            // Manual panel (collapsible)
             if (showControls) {
                 ManualControlPanel(
                     iso = iso, onIsoChange = { iso = it },
@@ -181,13 +178,11 @@ fun CameraScreen() {
                 )
             }
 
-            // Record bar
             Row(
                 modifier = Modifier.fillMaxWidth().background(Color(0xFF0A0A0A)).padding(12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: toggle controls + thumb
                 Column {
                     TextButton(onClick = { showControls = !showControls }) {
                         Text(if (showControls) "CONTROLS ▲" else "CONTROLS ▼", color = Color(0xFFE50914), fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -195,15 +190,13 @@ fun CameraScreen() {
                     Text("${selectedFps}fps • ${wbKelvin}K • ISO $iso", color = Color(0xFF9A9A9E), fontSize = 10.sp)
                 }
 
-                // Center: Record button
                 RecordButton(isRecording = isRecording, onToggle = {
                     if (!isRecording) {
-                        // Start recording
                         val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
                         val sessionName = "CineCam_${sdf.format(Date())}"
                         val baseDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "CineCam/$sessionName")
                         baseDir.mkdirs()
-                        val container = "mcraw" // Toggle to "cinemadng" for DNG sequence
+                        val container = "mcraw"
                         val ok = engine.startRecording(
                             width = bestCamera?.maxRawSize?.width ?: 1920,
                             height = bestCamera?.maxRawSize?.height ?: 1080,
@@ -224,7 +217,6 @@ fun CameraScreen() {
                     }
                 })
 
-                // Right: DNG capture + gallery
                 Column(horizontalAlignment = Alignment.End) {
                     Button(
                         onClick = {

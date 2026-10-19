@@ -152,9 +152,6 @@ dependencies {
     // DataStore for manual settings persistence
     implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // Permissions - Accompanist
-    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
-
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
