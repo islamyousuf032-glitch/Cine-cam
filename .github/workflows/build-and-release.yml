@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
 
     steps:
       - name: Checkout code
@@ -153,21 +154,23 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create Gist with log on failure (for agent debugging)
+      - name: Create Issue with log on failure (for agent debugging via api.github.com)
         if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create gist via API to allow agent to fetch log (api.github.com is allowed)
-          LOG_TAIL=$(tail -n 400 build_debug.log | head -c 8000 || echo "no log")
-          # Escape for JSON
-          JSON_LOG=$(printf '%s' "$LOG_TAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          LOG_TAIL=$(tail -n 200 build_debug.log | head -c 6000 || echo "no log")
+          ERR_LINES=$(grep -i "error\|FAILED\|exception" build_debug.log | head -n 50 | head -c 3000 || echo "no errors")
+          TITLE="CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}"
+          BODY="**Build failed:** ${{ steps.version.outputs.version_name }} (run ${{ github.run_number }})\n\n**Error lines:**\n\`\`\`\n$ERR_LINES\n\`\`\`\n\n**Log tail:**\n\`\`\`\n$LOG_TAIL\n\`\`\`\n\n[View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          # Escape body for JSON
+          JSON_BODY=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          JSON_TITLE=$(printf '%s' "$TITLE" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
           curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/gists \
-            -d "{\"public\": false, \"files\": {\"cinecam_build.log\": {\"content\": $JSON_LOG}}, \"description\": \"CineCam build log ${{ steps.version.outputs.version_name }} run ${{ github.run_number }}\"}" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print('GIST_URL:', d.get('html_url',''))" || true
-          # Also create an issue comment if this is PR?
-          echo "Log tail uploaded to gist (if success, URL above)"
+            https://api.github.com/repos/${{ github.repository }}/issues \
+            -d "{\"title\": $JSON_TITLE, \"body\": $JSON_BODY, \"labels\": [\"ci-failure\"]}" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('ISSUE_URL:', d.get('html_url',''), 'NUMBER:', d.get('number',''))" || true
+          echo "Issue created (if URL above)"
 
       - name: Prepare Release Notes
         if: github.event_name != 'pull_request' && success()
