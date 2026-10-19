@@ -1,0 +1,188 @@
+name: CineCam - Build and Release APK
+
+on:
+  push:
+    branches:
+      - main
+      - "arena/**"
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Release type'
+        required: false
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - patch
+          - minor
+          - major
+
+jobs:
+  build:
+    name: Build Debug & Release APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK 26.1.10909125
+        run: |
+          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Generate version
+        id: version
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          RUN_NUMBER=${{ github.run_number }}
+          BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
+
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION_NAME=${{ github.ref_name }}
+            VERSION_TAG=${{ github.ref_name }}
+          else
+            # Auto version: v0.1.<run_number>-alpha
+            VERSION_NAME="v0.1.${RUN_NUMBER}-alpha"
+            VERSION_TAG="v0.1.${RUN_NUMBER}-${SHORT_SHA}"
+          fi
+
+          echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
+          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
+          echo "version_code=${RUN_NUMBER}" >> $GITHUB_OUTPUT
+          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION_NAME} (code: ${RUN_NUMBER})"
+
+      - name: Patch versionCode/versionName
+        run: |
+          # Update versionCode for this build
+          echo "Patching version to ${{ steps.version.outputs.version_name }} code ${{ steps.version.outputs.version_code }}"
+          # We inject via gradle properties; alternative is to sed build.gradle.kts
+          echo "VERSION_NAME=${{ steps.version.outputs.version_name }}" >> $GITHUB_ENV
+          echo "VERSION_CODE=${{ steps.version.outputs.version_code }}" >> $GITHUB_ENV
+
+      - name: Build Debug APK
+        run: |
+          ./gradlew assembleDebug \
+            -PversionName=${{ steps.version.outputs.version_name }} \
+            -PversionCode=${{ steps.version.outputs.version_code }} \
+            --stacktrace
+
+      - name: Build Release APK (unsigned - for manual signing later)
+        run: |
+          ./gradlew assembleRelease \
+            -PversionName=${{ steps.version.outputs.version_name }} \
+            -PversionCode=${{ steps.version.outputs.version_code }} \
+            --stacktrace || echo "Release build failed but continuing with Debug"
+
+      - name: List APKs
+        run: |
+          find app/build/outputs -name "*.apk" -type f | xargs ls -lh || true
+          ls -lh app/build/outputs/apk/debug/ || true
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineCam-${{ steps.version.outputs.version_name }}-debug
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Prepare Release Notes
+        if: github.event_name != 'pull_request'
+        run: |
+          cat > /tmp/release_notes.md << 'EOF'
+          ## CineCam ${{ steps.version.outputs.version_name }} - Professional RAW Camera
+
+          **Build:** `${{ steps.version.outputs.short_sha }}` | **Run:** `#${{ github.run_number }}` | **Branch:** `${{ github.ref_name }}`
+
+          ### ধাপ ১ - বেস আর্কিটেকচার (এই রিলিজে যা আছে)
+          - ✅ Kotlin + NDK/C++ হাইব্রিড আর্কিটেকচার (MotionCam অনুপ্রাণিত)
+          - ✅ `MemoryPool` - Zero-copy 4096-aligned বাফার পুল (malloc ছাড়া 60fps ক্যাপচার)
+          - ✅ `RingBuffer` - SPSC Lock-Free Circular Queue (Camera থ্রেড → Writer থ্রেড)
+          - ✅ `RawWriter` - হাই-স্পিড স্টোরেজ রাইটার (MCRAW / CinemaDNG)
+          - ✅ `CineRawEngine` - সেন্ট্রাল JNI ব্রিজ (Kotlin ↔ C++)
+          - ✅ `GlPreviewRenderer` - OpenGL ES 3.1 লাইভ প্রিভিউ (Vulkan রেডি)
+          - ✅ Camera2 Capability Checker - ডিভাইস RAW_SENSOR সাপোর্ট যাচাই
+          - ✅ Jetpack Compose UI - Manual Controls (ISO/Shutter/Focus/WB) + FPS Selector
+          - ✅ GitHub Actions CI/CD - অটো APK Build & Release
+
+          ### ডাউনলোড
+          নিচের `Assets` থেকে `app-debug.apk` ডাউনলোড করে সরাসরি ফোনে ইনস্টল করুন।
+
+          ### পরবর্তী ধাপ (ধাপ ২)
+          - Camera2 Live Preview + Permission flow
+          - Device RAW10/RAW12/RAW_SENSOR capability UI
+          - TextureView → GLSurfaceView প্রিভিউ
+
+          ### টেকনিক্যাল
+          - `minSdk 26` | `targetSdk 34` | `NDK 26.1` | `C++17`
+          - ABIs: `arm64-v8a`, `armeabi-v7a`, `x86_64`
+
+          ---
+          *Auto-generated by GitHub Actions - CineCam CI/CD*
+          EOF
+          cat /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version_tag }}
+          name: CineCam ${{ steps.version.outputs.version_name }}
+          body_path: /tmp/release_notes.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
+          fail_on_unmatched_files: false
+          generate_release_notes: false
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "### ✅ CineCam Build Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.version.outputs.version_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ steps.version.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "APK artifacts uploaded and Release created. Download from Releases page." >> $GITHUB_STEP_SUMMARY

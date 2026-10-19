@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- CineCam Professional RAW Camera - Permissions -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+
+    <!-- High-performance camera features -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="true" />
+    <uses-feature
+        android:name="android.hardware.camera.raw"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.level.full"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.manual_sensor"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.manual_post_processing"
+        android:required="false" />
+
+    <!-- OpenGL ES 3.1 for preview renderer -->
+    <uses-feature
+        android:glEsVersion="0x00030001"
+        android:required="true" />
+
+    <application
+        android:name=".CineCamApp"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:theme="@style/Theme.CineCam"
+        android:hardwareAccelerated="true"
+        android:requestLegacyExternalStorage="true"
+        tools:targetApi="31">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.CineCam"
+            android:screenOrientation="unspecified"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- For future: Gallery / Playback activity -->
+        <!-- <activity android:name=".ui.gallery.GalleryActivity" /> -->
+
+    </application>
+
+</manifest>

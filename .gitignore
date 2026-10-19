@@ -1,0 +1,50 @@
+# CineCam - Git Ignore
+
+# Gradle
+.gradle/
+build/
+*/build/
+out/
+captures/
+
+# Local config
+local.properties
+*.jks
+*.keystore
+keystore.properties
+
+# NDK / CMake
+.externalNativeBuild/
+.cxx/
+*.so
+*.a
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.DS_Store
+Thumbs.db
+
+# APK / AAB
+*.apk
+*.aab
+*.ap_
+!gradle/wrapper/gradle-wrapper.jar
+
+# OS
+.DS_Store
+*.swp
+*~
+
+# Logs
+*.log
+
+# Python (for scripts)
+__pycache__/
+.venv/
+
+# Arena
+.arena/

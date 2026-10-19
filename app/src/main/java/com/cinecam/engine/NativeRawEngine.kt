@@ -1,0 +1,146 @@
+package com.cinecam.engine
+
+import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.nio.ByteBuffer
+
+/**
+ * NativeRawEngine - Kotlin JNI bridge to C++ RAW pipeline
+ *
+ * Wraps CineRawEngine (C++) which owns:
+ * - MemoryPool (zero-copy buffers)
+ * - RingBuffer (SPSC lock-free queue)
+ * - RawWriter (high-speed disk I/O)
+ *
+ * All native methods are implemented in app/src/main/cpp/src/jni_bridge.cpp
+ */
+class NativeRawEngine private constructor() {
+
+    companion object {
+        private const val TAG = "NativeRawEngine"
+        private var instance: NativeRawEngine? = null
+
+        init {
+            try {
+                System.loadLibrary("cinecam_raw")
+                Log.i(TAG, "libcinccam_raw.so loaded")
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(TAG, "Failed to load native library", e)
+            }
+        }
+
+        @Synchronized
+        fun getInstance(): NativeRawEngine {
+            if (instance == null) instance = NativeRawEngine()
+            return instance!!
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Native methods (implemented in jni_bridge.cpp)
+    // -----------------------------------------------------------------------
+    external fun nativeInitialize(width: Int, height: Int, bitDepth: Int, poolSize: Int): Boolean
+    external fun nativeRelease()
+    external fun nativeStartRecording(
+        width: Int, height: Int, fps: Int, bitDepth: Int,
+        outputPath: String, container: String,
+        enableZstd: Boolean, zstdLevel: Int
+    ): Boolean
+    external fun nativeStopRecording(): Boolean
+    external fun nativeIsRecording(): Boolean
+    external fun nativePushFrame(
+        data: ByteArray, size: Int,
+        timestampNs: Long, exposureNs: Long, iso: Int,
+        width: Int, height: Int, stride: Int, bitDepth: Int,
+        frameNumber: Int
+    ): Boolean
+    external fun nativePushDirectFrame(
+        byteBuffer: ByteBuffer, size: Int,
+        timestampNs: Long, exposureNs: Long, iso: Int,
+        width: Int, height: Int, stride: Int, bitDepth: Int,
+        frameNumber: Int
+    ): Boolean
+    external fun nativeGetStatsJson(): String
+    external fun nativeGetLastError(): String
+    external fun nativeGetVersion(): String
+
+    // -----------------------------------------------------------------------
+    // Friendly Kotlin API
+    // -----------------------------------------------------------------------
+
+    /**
+     * Initialize engine for given frame dimensions
+     */
+    fun initialize(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 60): Boolean {
+        Log.i(TAG, "initialize: ${width}x${height} @${bitDepth}-bit pool=$poolSize")
+        return try {
+            nativeInitialize(width, height, bitDepth, poolSize)
+        } catch (e: Exception) {
+            Log.e(TAG, "nativeInitialize failed", e)
+            false
+        }
+    }
+
+    fun release() {
+        try { nativeRelease() } catch (e: Exception) { Log.e(TAG, "release error", e) }
+    }
+
+    /**
+     * Start recording to output folder
+     * @param container "mcraw" or "cinemadng"
+     */
+    fun startRecording(
+        width: Int, height: Int, fps: Int, bitDepth: Int,
+        outputPath: String, container: String = "mcraw",
+        enableZstd: Boolean = true, zstdLevel: Int = 3
+    ): Boolean {
+        Log.i(TAG, "startRecording: $outputPath [$container] ${width}x${height}@${fps}fps")
+        return try {
+            nativeStartRecording(width, height, fps, bitDepth, outputPath, container, enableZstd, zstdLevel)
+        } catch (e: Exception) {
+            Log.e(TAG, "startRecording failed", e); false
+        }
+    }
+
+    fun stopRecording(): Boolean {
+        Log.i(TAG, "stopRecording()")
+        return try { nativeStopRecording() } catch (e: Exception) { Log.e(TAG, "stop error", e); false }
+    }
+
+    fun isRecording(): Boolean = try { nativeIsRecording() } catch (_: Exception) { false }
+
+    /**
+     * Push RAW frame from ImageReader (YUV/RAW10 -> byte array)
+     */
+    fun pushFrame(
+        data: ByteArray,
+        timestampNs: Long, exposureNs: Long, iso: Int,
+        width: Int, height: Int, stride: Int, bitDepth: Int,
+        frameNumber: Int
+    ): Boolean = try {
+        nativePushFrame(data, data.size, timestampNs, exposureNs, iso, width, height, stride, bitDepth, frameNumber)
+    } catch (e: Exception) { Log.e(TAG, "pushFrame error", e); false }
+
+    /**
+     * Zero-copy path: Direct ByteBuffer from NDK AHardwareBuffer
+     */
+    fun pushDirectFrame(
+        buffer: ByteBuffer,
+        timestampNs: Long, exposureNs: Long, iso: Int,
+        width: Int, height: Int, stride: Int, bitDepth: Int,
+        frameNumber: Int
+    ): Boolean = try {
+        nativePushDirectFrame(buffer, buffer.remaining(), timestampNs, exposureNs, iso, width, height, stride, bitDepth, frameNumber)
+    } catch (e: Exception) { Log.e(TAG, "pushDirectFrame error", e); false }
+
+    fun getStatsJson(): String = try { nativeGetStatsJson() } catch (_: Exception) { "{}" }
+    fun getLastError(): String = try { nativeGetLastError() } catch (_: Exception) { "" }
+    fun getVersion(): String = try { nativeGetVersion() } catch (_: Exception) { "unknown" }
+
+    /**
+     * Async initializer with coroutine (for app startup)
+     */
+    suspend fun initializeAsync(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 60): Boolean =
+        withContext(Dispatchers.Default) { initialize(width, height, bitDepth, poolSize) }
+}

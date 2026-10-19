@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CineCam RAW</string>
+    <string name="app_tagline">Professional RAW Cinema Camera</string>
+    <string name="permission_camera_rationale">CineCam-এর জন্য ক্যামেরা অ্যাক্সেস প্রয়োজন RAW ফ্রেম ক্যাপচারের জন্য</string>
+    <string name="permission_audio_rationale">ভিডিওর সাথে অডিও রেকর্ড করতে মাইক্রোফোন প্রয়োজন</string>
+    <string name="recording">● REC</string>
+    <string name="rec_stop">STOP</string>
+    <string name="raw_sensor">RAW_SENSOR</string>
+    <string name="cinemadng">CinemaDNG</string>
+    <string name="mcraw">MCRAW</string>
+</resources>
