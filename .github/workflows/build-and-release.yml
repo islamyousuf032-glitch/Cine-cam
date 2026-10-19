@@ -216,7 +216,8 @@ jobs:
         with:
           name: CineCam-${{ steps.version.outputs.version_name }}-debug
           path: |
-            app/build/outputs/apk/**/*.apk
+            **/*.apk
+            **/*.aab
             build_debug.log
             build_release.log
           retention-days: 30
@@ -246,8 +247,10 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
           fail_on_unmatched_files: false
+          generate_release_notes: false
           files: |
-            app/build/outputs/apk/**/*.apk
+            **/*.apk
+            build_debug.log
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
