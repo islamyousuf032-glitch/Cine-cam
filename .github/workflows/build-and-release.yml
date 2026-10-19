@@ -44,12 +44,18 @@ jobs:
           java-version: 17
           cache: gradle
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install NDK 26.1.10909125
+      - name: Setup Android SDK & NDK
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "SDK root: $ANDROID_SDK_ROOT"
+          ls -lh $ANDROID_HOME/cmdline-tools/ || true
+          echo "Accepting licenses..."
+          yes | sdkmanager --licenses || true
+          echo "Installing NDK and build tools..."
+          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" --sdk_root=$ANDROID_HOME || \
           sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34"
+          echo "NDK installed:"
+          ls -lh $ANDROID_HOME/ndk/ || true
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
           echo "$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
@@ -76,7 +82,6 @@ jobs:
             VERSION_NAME=${{ github.ref_name }}
             VERSION_TAG=${{ github.ref_name }}
           else
-            # Auto version: v0.1.<run_number>-alpha
             VERSION_NAME="v0.1.${RUN_NUMBER}-alpha"
             VERSION_TAG="v0.1.${RUN_NUMBER}-${SHORT_SHA}"
           fi
@@ -89,9 +94,7 @@ jobs:
 
       - name: Patch versionCode/versionName
         run: |
-          # Update versionCode for this build
           echo "Patching version to ${{ steps.version.outputs.version_name }} code ${{ steps.version.outputs.version_code }}"
-          # We inject via gradle properties; alternative is to sed build.gradle.kts
           echo "VERSION_NAME=${{ steps.version.outputs.version_name }}" >> $GITHUB_ENV
           echo "VERSION_CODE=${{ steps.version.outputs.version_code }}" >> $GITHUB_ENV
 
@@ -102,7 +105,7 @@ jobs:
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --stacktrace
 
-      - name: Build Release APK (unsigned - for manual signing later)
+      - name: Build Release APK (unsigned)
         run: |
           ./gradlew assembleRelease \
             -PversionName=${{ steps.version.outputs.version_name }} \
