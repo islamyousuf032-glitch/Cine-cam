@@ -36,7 +36,6 @@ jobs:
       - name: Setup Android SDK & NDK
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
           SDKMGR=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
           if [ -z "$SDKMGR" ]; then SDKMGR=$(find $ANDROID_SDK_ROOT -name "sdkmanager" -type f 2>/dev/null | head -1); fi
           if [ -z "$SDKMGR" ]; then SDKMGR="sdkmanager"; fi
@@ -74,6 +73,20 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      - name: Diagnose Gradle Wrapper
+        run: |
+          echo "=== Diagnostics ==="
+          java -version 2>&1 || echo "java not found"
+          echo "JAVA_HOME=$JAVA_HOME"
+          ls -lh gradle/wrapper/gradle-wrapper.jar || echo "wrapper jar missing"
+          ls -lh gradlew
+          cat gradle/wrapper/gradle-wrapper.properties
+          echo "=== gradle.properties ==="
+          cat gradle.properties || true
+          # Try simple gradle tasks
+          ./gradlew --version 2>&1 | head -100 || echo "gradlew --version failed"
+          ./gradlew tasks --all 2>&1 | head -200 || echo "tasks failed"
+
       - name: Generate version
         id: version
         run: |
@@ -99,31 +112,63 @@ jobs:
           ./gradlew assembleDebug \
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
-            --stacktrace --info 2>&1 | tee build_debug.log
-        continue-on-error: false
+            --stacktrace 2>&1 | tee build_debug.log
+          echo "EXIT_CODE=$?"
 
-      - name: Print build log tail (for debugging without artifact download)
+      - name: Print build log tail
         if: always()
         run: |
-          echo "========== BUILD DEBUG LOG TAIL (last 300 lines) =========="
-          tail -n 300 build_debug.log || echo "No log"
-          echo "========== END LOG =========="
-          # Also show specific error lines
-          grep -i "error\|failed\|exception\|FAILED" build_debug.log | head -100 || true
-          # Show CMake log if exists
-          cat app/build/intermediates/cmake/debug/*/cmake_build_output.txt 2>&1 | head -200 || true
-          find app/build -name "CMakeOutput.log" -o -name "CMakeError.log" | xargs cat 2>&1 | head -300 || true
+          echo "========== BUILD LOG TAIL =========="
+          tail -n 400 build_debug.log 2>&1 | head -c 10000 || echo "no log"
+          echo "========== GREP ERRORS =========="
+          grep -i "error\|failed\|exception\|FAILED" build_debug.log 2>&1 | head -100 || true
+          echo "========== CMAKE LOGS =========="
+          find app/build -name "*.log" 2>&1 | head -20
+          cat app/build/intermediates/merged_manifests/debug/AndroidManifest.xml 2>&1 | head -20 || true
 
       - name: Upload build log on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ steps.version.outputs.version_name }}
-          path: |
-            build_debug.log
-            app/build/reports/**/*
+          path: build_debug.log
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Create Issue with log on failure
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LOG_TAIL=$(tail -n 300 build_debug.log 2>&1 | head -c 5000 || echo "no log")
+          ERR_LINES=$(grep -i "error\|FAILED\|exception" build_debug.log 2>&1 | head -n 80 | head -c 4000 || echo "no errors")
+          TITLE="CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}"
+          # Use python to properly escape
+          python3 << PY
+          import json, os
+          body = """**Build failed:** ${{ steps.version.outputs.version_name }} (run ${{ github.run_number }})
+          
+          **Error lines:**
+          \`\`\`
+          $ERR_LINES
+          \`\`\`
+          
+          **Log tail:**
+          \`\`\`
+          $LOG_TAIL
+          \`\`\`
+          
+          [View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"""
+          # Actually read from env files
+          PY
+          LOG_TAIL_ESC=$(printf '%s' "$LOG_TAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          ERR_ESC=$(printf '%s' "$ERR_LINES" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          BODY_JSON=$(python3 -c "import json; log=json.loads('$LOG_TAIL_ESC'); err=json.loads('$ERR_ESC'); body=f'**Build failed:** \$log\n\n**Error:**\n\`\`\`\n{err}\n\`\`\`\n\n**Tail:**\n\`\`\`\n{log}\n\`\`\`'; print(json.dumps(body))")
+          TITLE_JSON=$(printf '%s' "$TITLE" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/issues \
+            -d "{\"title\": $TITLE_JSON, \"body\": $BODY_JSON, \"labels\": [\"ci-failure\"]}" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('html_url',''))" || true
 
       - name: Build Release APK (only if debug succeeded)
         if: success()
@@ -136,12 +181,8 @@ jobs:
       - name: List APKs
         if: always()
         run: |
-          echo "=== APKs ==="
           find app/build/outputs -name "*.apk" -type f | xargs ls -lh 2>&1 || echo "No APKs"
           ls -lh app/build/outputs/apk/debug/ 2>&1 | head -20 || true
-          ls -lh app/build/outputs/apk/release/ 2>&1 | head -20 || true
-          echo "=== Build outputs ==="
-          ls -lh app/build/outputs/ 2>&1 | head -50 || true
 
       - name: Upload APK Artifact
         if: success()
@@ -154,55 +195,24 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Create Issue with log on failure (for agent debugging via api.github.com)
-        if: failure()
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          LOG_TAIL=$(tail -n 200 build_debug.log | head -c 6000 || echo "no log")
-          ERR_LINES=$(grep -i "error\|FAILED\|exception" build_debug.log | head -n 50 | head -c 3000 || echo "no errors")
-          TITLE="CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}"
-          BODY="**Build failed:** ${{ steps.version.outputs.version_name }} (run ${{ github.run_number }})\n\n**Error lines:**\n\`\`\`\n$ERR_LINES\n\`\`\`\n\n**Log tail:**\n\`\`\`\n$LOG_TAIL\n\`\`\`\n\n[View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-          # Escape body for JSON
-          JSON_BODY=$(printf '%s' "$BODY" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
-          JSON_TITLE=$(printf '%s' "$TITLE" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
-          curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues \
-            -d "{\"title\": $JSON_TITLE, \"body\": $JSON_BODY, \"labels\": [\"ci-failure\"]}" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print('ISSUE_URL:', d.get('html_url',''), 'NUMBER:', d.get('number',''))" || true
-          echo "Issue created (if URL above)"
-
       - name: Prepare Release Notes
         if: github.event_name != 'pull_request' && success()
         run: |
           cat > /tmp/release_notes.md << 'EOF'
           ## CineCam ${{ steps.version.outputs.version_name }} - Professional RAW Camera
 
-          **Build:** `${{ steps.version.outputs.short_sha }}` | **Run:** `#${{ github.run_number }}` | **Branch:** `${{ github.ref_name }}`
+          **Build:** `${{ steps.version.outputs.short_sha }}` | **Run:** `#${{ github.run_number }}`
 
-          ### ধাপ ১ - বেস আর্কিটেকচার (এই রিলিজে যা আছে)
-          - ✅ Kotlin + NDK/C++ হাইব্রিড আর্কিটেকচার (MotionCam অনুপ্রাণিত)
-          - ✅ `MemoryPool` - Zero-copy 4096-aligned বাফার পুল
-          - ✅ `RingBuffer` - SPSC Lock-Free Circular Queue
-          - ✅ `RawWriter` - হাই-স্পিড স্টোরেজ রাইটার (MCRAW / CinemaDNG)
-          - ✅ `CineRawEngine` - সেন্ট্রাল JNI ব্রিজ
-          - ✅ `GlPreviewRenderer` - OpenGL ES 3.1 লাইভ প্রিভিউ
-          - ✅ Camera2 Capability Checker
-          - ✅ Jetpack Compose UI - Manual Controls + FPS Selector
-          - ✅ GitHub Actions CI/CD - অটো APK Build & Release
+          ### ধাপ ১ - বেস আর্কিটেকচার
+          - ✅ Kotlin + NDK/C++ হাইব্রিড আর্কিটেকচার
+          - ✅ MemoryPool, RingBuffer, RawWriter, CineRawEngine, GlPreviewRenderer
+          - ✅ Camera2 Capability Checker + Compose UI
 
           ### ডাউনলোড
-          নিচের `Assets` থেকে `app-debug.apk` ডাউনলোড করুন
-
-          ### পরবর্তী ধাপ (ধাপ ২)
-          - Camera2 Live Preview + Permission flow
+          `app-debug.apk` ডাউনলোড করুন
 
           ### টেকনিক্যাল
-          - `minSdk 26` | `targetSdk 34` | `NDK 26.1` | `C++17`
-          - ABIs: `arm64-v8a`, `armeabi-v7a`, `x86_64`
-
-          ---
-          *Auto-generated by GitHub Actions*
+          - minSdk 26 | targetSdk 34 | NDK 26.1 | C++17
           EOF
           cat /tmp/release_notes.md
 
@@ -215,7 +225,6 @@ jobs:
           body_path: /tmp/release_notes.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
-          fail_on_unmatched_files: false
           files: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
@@ -227,6 +236,4 @@ jobs:
         run: |
           echo "### CineCam Build" >> $GITHUB_STEP_SUMMARY
           echo "**Version:** ${{ steps.version.outputs.version_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Tag:** ${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ steps.version.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
           echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
