@@ -200,15 +200,16 @@ jobs:
           ls -lh app/build/outputs/apk/debug/ 2>&1 | head -20 || true
 
       - name: Upload APK Artifact
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: CineCam-${{ steps.version.outputs.version_name }}-debug
           path: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/**/*.apk
+            build_debug.log
+            build_release.log
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Prepare Release Notes
         if: github.event_name != 'pull_request' && success()
@@ -225,7 +226,7 @@ jobs:
           cat /tmp/release_notes.md
 
       - name: Create GitHub Release
-        if: github.event_name != 'pull_request' && success()
+        if: github.event_name != 'pull_request' && always()
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version_tag }}
@@ -233,9 +234,9 @@ jobs:
           body_path: /tmp/release_notes.md
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
+          fail_on_unmatched_files: false
           files: |
-            app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/**/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
