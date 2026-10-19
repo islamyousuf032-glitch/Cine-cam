@@ -193,11 +193,22 @@ jobs:
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --stacktrace | tee build_release.log
 
-      - name: List APKs
+      - name: List APKs & Outputs
         if: always()
         run: |
-          find app/build/outputs -name "*.apk" -type f | xargs ls -lh 2>&1 || echo "No APKs"
-          ls -lh app/build/outputs/apk/debug/ 2>&1 | head -20 || true
+          echo "=== FIND APKs ==="
+          find app -name "*.apk" -type f 2>&1 | head -50 || echo "No APKs via find app"
+          find app/build -type f -name "*.apk" 2>&1 | xargs ls -lh 2>&1 || echo "No APKs in app/build"
+          find . -maxdepth 4 -name "*.apk" 2>&1 | head -20 || true
+          echo "=== LS app/build/outputs ==="
+          ls -R app/build/outputs 2>&1 | head -100 || echo "no outputs dir"
+          ls -R app/build 2>&1 | head -200 || true
+          echo "=== APK via ls ==="
+          ls -lh app/build/outputs/apk/debug/ 2>&1 || true
+          ls -lh app/build/outputs/apk/release/ 2>&1 || true
+          echo "=== Check build log for APK ==="
+          grep -i "apk\|assemble" build_debug.log 2>&1 | tail -50 || true
+          cat build_debug.log 2>&1 | tail -n 5 | head -20 || true
 
       - name: Upload APK Artifact
         if: always()
