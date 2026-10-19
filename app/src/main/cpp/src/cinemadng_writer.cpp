@@ -1,5 +1,5 @@
 #include "cinemadng_writer.h"
-#include <android/log.h>
+#include "cine_log.h"
 #include <sys/stat.h>
 #include <fstream>
 #include <iomanip>
@@ -7,7 +7,7 @@
 #include <cstring>
 
 #define LOG_TAG "CineDNGWriter"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) CINE_LOGI(LOG_TAG, __VA_ARGS__)
 
 namespace cinecam {
 

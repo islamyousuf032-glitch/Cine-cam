@@ -3,18 +3,12 @@
 #include <limits>
 #include <stdexcept>
 #include <new>
-#ifdef __ANDROID__
-#include <android/log.h>
-#else
-#define ANDROID_LOG_INFO 0
-#define ANDROID_LOG_ERROR 1
-#define __android_log_print(...) ((void)0)
-#endif
+#include "cine_log.h"
 #include <unistd.h>
 
 #define LOG_TAG "CineMemPool"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) CINE_LOGI(LOG_TAG, __VA_ARGS__)
+#define LOGE(...) CINE_LOGE(LOG_TAG, __VA_ARGS__)
 
 namespace cinecam {
 

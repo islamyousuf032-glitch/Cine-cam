@@ -2,11 +2,8 @@
 /**
  * CineCam RAW Writer - High-speed storage pipeline
  *
- * Features:
- * - Direct I/O friendly (O_DIRECT aligned writes where possible)
- * - Chunked writing (64KB chunks) to avoid blocking
- * - ZSTD compression thread pool (optional)
- * - CinemaDNG sequence or .mcraw container
+ * Experimental uncompressed dump only; not MotionCam-compatible.
+ * CinemaDNG, ZSTD and audio are rejected until implemented and validated.
  */
 
 #include "cine_types.h"
@@ -34,7 +31,7 @@ public:
     bool isRunning() const { return running_.load(); }
 
     // Called by engine to enqueue next frame timestamp (writer pulls from ring)
-    WriterStatus writeNextFrame();
+    WriterStatus status() const { return status_.load(); }
 
     // Stats
     struct WriterStats {
@@ -52,6 +49,7 @@ public:
 
 private:
     void writerLoop();
+    void consume(RawFrame& frame);
 
     // Container-specific writers
     WriterStatus writeMcrawFrame(const RawFrame& frame);
@@ -65,6 +63,7 @@ private:
     RecordingConfig config_;
 
     std::thread writerThread_;
+    std::atomic<WriterStatus> status_{WriterStatus::OK};
     std::atomic<bool> running_{false};
     std::atomic<bool> shouldStop_{false};
 

@@ -77,13 +77,17 @@ private:
 
     mutable std::mutex mutex_;
     std::string lastError_;
-    int32_t logLevel_ = 2; // 0=verbose, 1=debug, 2=info, 3=warn, 4=error
+    std::atomic<int32_t> logLevel_{2};
+    int32_t width_ = 0, height_ = 0, bitDepth_ = 0;
+    uint64_t lastFramesWritten_ = 0;
+    WriterStatus lastWriterStatus_ = WriterStatus::OK; // 0=verbose, 1=debug, 2=info, 3=warn, 4=error
 
     // For stats
     std::atomic<uint64_t> framesPushed_{0};
     std::atomic<uint64_t> framesDropped_{0};
 
-    void setError(const std::string& err);
+    void releaseLocked();
+    void setError(const std::string& err); // caller holds mutex_
 };
 
 // Singleton access for JNI (simplifies lifecycle)

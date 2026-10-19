@@ -10,6 +10,7 @@
  */
 
 #include "cine_types.h"
+#include "memory_pool.h"
 #include <atomic>
 #include <vector>
 #include <cstdint>
@@ -25,7 +26,8 @@ enum class OverflowPolicy {
 
 class RingBuffer {
 public:
-    explicit RingBuffer(int32_t capacity, OverflowPolicy policy = OverflowPolicy::DropNewest);
+    explicit RingBuffer(int32_t capacity, OverflowPolicy policy = OverflowPolicy::DropNewest,
+                        MemoryPool* pool = nullptr);
     ~RingBuffer();
 
     RingBuffer(const RingBuffer&) = delete;
@@ -39,6 +41,7 @@ public:
     // Returns true if dequeued, false if empty
     bool pop(RawFrame& outFrame);
 
+    // Metadata-only peek: does not borrow a pixel pointer or transfer a pool slot.
     // Non-blocking peek
     bool peek(RawFrame& outFrame) const;
 
@@ -63,7 +66,7 @@ public:
     };
     Stats getStats() const;
 
-    void setOverflowPolicy(OverflowPolicy p) { policy_ = p; }
+    void setOverflowPolicy(OverflowPolicy p);
 
 private:
     struct Slot {
@@ -72,6 +75,8 @@ private:
         bool occupied = false;
     };
 
+    void recycle(RawFrame& frame); // caller holds mutex_
+    MemoryPool* pool_; // Must outlive this queue and every queued frame.
     int32_t capacity_;
     std::vector<Slot> buffer_;
 

@@ -2,6 +2,18 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Phase 4 foundation] — 2026-10-19
+- ব্যবহারকারী নিশ্চিত করেছেন preview orientation এখন ঠিক; DNG/manual controls আগেই ফোনে সফল।
+- মূলত C++ প্যাচ: pool-aware queue drop/clear/destructor reclamation, locked overflow policy ও metadata-only peek। Rejected frame-এর ownership producer-এর কাছেই থাকে।
+- Engine initialize/error-path recursive-lock deadlock ঠিক; ingest/stats/control access serialize; callback control-path join-এর জন্য অপেক্ষা না করে drop করে। Stable singleton address দিয়ে concurrent release-এর dangling pointer এড়ানো হয়েছে।
+- Native ও Kotlin default pool 8; 256 MiB allocation budget; invalid dimensions/overflow reject। RAW_SENSOR stride/size validate; silent truncation বন্ধ।
+- JNI array/direct-buffer bounds check এবং Kotlin direct-buffer position অনুযায়ী slice। Native copy আছে, end-to-end zero-copy দাবি নয়।
+- Writer stop/drain-এ slot ফেরত; stream/finalize error propagation এবং stop-এর পর written/status counters সংরক্ষণ। অসম্পূর্ণ native CinemaDNG/ZSTD/audio অপশন reject।
+- C++ SyncTimeline: explicit BOOTTIME epoch, UNKNOWN sensor-clock offset requirement, monotonic video PTS, sample-based audio PTS ও drift calculation। Camera/audio capture বা mux integration এখনো হয়নি।
+- Capability report-এ SENSOR_INFO_TIMESTAMP_SOURCE যোগ।
+- Real native queue/engine/writer host tests: 5000-frame concurrent transfer, pool reclamation, reinitialize/error deadlock regression, stop/drain, /dev/full I/O failure, layout bounds, 44.1/48kHz clock mapping, 2-hour audio position ও integer overflow। স্থানীয় ASan/UBSan tests সফল।
+- এই patch RAW video UI, audio capture, Kelvin WB বা focus peaking চালু করে না। Physical-device recording/sync validation বাকি।
+
 ## [Unreleased — Preview orientation patch] — 2026-10-19
 - ব্যবহারকারীর 24.64-second screen recording-এর বিভিন্ন সময়ের frame পরীক্ষা: UI সোজা থাকলেও scene পাশ ফিরে আছে।
 - TextureView producer-এর rotation আবার প্রয়োগ করা বন্ধ; sensor orientation এখন natural content aspect ratio নির্ধারণ করে, display rotation আলাদাভাবে counter-rotate হয়।

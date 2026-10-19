@@ -29,6 +29,7 @@ endif()
 add_library(cinecam_raw SHARED
         src/jni_bridge.cpp
         src/cine_raw_engine.cpp
+        src/sync_timeline.cpp
         src/ring_buffer.cpp
         src/raw_writer.cpp
         src/cinemadng_writer.cpp

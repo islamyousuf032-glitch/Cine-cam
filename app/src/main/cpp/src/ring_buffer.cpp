@@ -1,15 +1,21 @@
 #include "ring_buffer.h"
-#include <android/log.h>
+#include "cine_log.h"
 #include <chrono>
+#include <stdexcept>
 
 #define LOG_TAG "CineRingBuffer"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) CINE_LOGI(LOG_TAG, __VA_ARGS__)
+#define LOGW(...) CINE_LOGW(LOG_TAG, __VA_ARGS__)
 
 namespace cinecam {
 
-RingBuffer::RingBuffer(int32_t capacity, OverflowPolicy policy)
-    : capacity_(capacity), policy_(policy), buffer_(capacity) {
+static int32_t checkedCapacity(int32_t capacity) {
+    if (capacity <= 0 || capacity > kMaxRingBufferSize) throw std::invalid_argument("Invalid ring capacity");
+    return capacity;
+}
+
+RingBuffer::RingBuffer(int32_t capacity, OverflowPolicy policy, MemoryPool* pool)
+    : pool_(pool), capacity_(checkedCapacity(capacity)), buffer_(capacity_), policy_(policy) {
     LOGI("RingBuffer created: capacity=%d policy=%d", capacity, static_cast<int>(policy));
 }
 
@@ -20,8 +26,11 @@ RingBuffer::~RingBuffer() {
 bool RingBuffer::push(RawFrame&& frame) {
     std::unique_lock<std::mutex> lock(mutex_);
 
+    // Rejected frames remain the producer's responsibility.
+    if (frame.poolSlotIndex >= 0 && (!pool_ || !pool_->isValidIndex(frame.poolSlotIndex))) return false;
     if (count_.load() >= capacity_) {
         if (policy_ == OverflowPolicy::DropOldest) {
+            recycle(buffer_[tail_.load()].frame);
             // Overwrite oldest: advance tail
             tail_.store((tail_.load() + 1) % capacity_);
             count_.fetch_sub(1);
@@ -71,9 +80,11 @@ bool RingBuffer::peek(RawFrame& outFrame) const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (count_.load() == 0) return false;
     int32_t tail = tail_.load();
-    // Peek: copy metadata only, not stealing ownership
-    // For safety, we don't expose internal move
-    return buffer_[tail].occupied;
+    if (!buffer_[tail].occupied) return false;
+    outFrame = RawFrame{};
+    outFrame.metadata = buffer_[tail].frame.metadata;
+    outFrame.sizeBytes = buffer_[tail].frame.sizeBytes;
+    return true;
 }
 
 bool RingBuffer::waitPop(RawFrame& outFrame, int32_t timeoutMs) {
@@ -98,11 +109,22 @@ bool RingBuffer::waitPop(RawFrame& outFrame, int32_t timeoutMs) {
 void RingBuffer::clear() {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& slot : buffer_) {
+        if (slot.occupied) recycle(slot.frame);
         slot.occupied = false;
     }
     head_.store(0);
     tail_.store(0);
     count_.store(0);
+}
+
+void RingBuffer::recycle(RawFrame& frame) {
+    if (pool_ && frame.poolSlotIndex >= 0) pool_->release(frame.poolSlotIndex);
+    frame = RawFrame{};
+}
+
+void RingBuffer::setOverflowPolicy(OverflowPolicy policy) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    policy_ = policy;
 }
 
 int32_t RingBuffer::size() const {

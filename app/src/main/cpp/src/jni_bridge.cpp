@@ -18,6 +18,7 @@ using namespace cinecam;
 static std::string jstringToStd(JNIEnv* env, jstring jstr) {
     if (!jstr) return "";
     const char* chars = env->GetStringUTFChars(jstr, nullptr);
+    if (!chars) return "";
     std::string s(chars);
     env->ReleaseStringUTFChars(jstr, chars);
     return s;
@@ -67,6 +68,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRecording(
     cfg.enableZstd = enableZstd;
     cfg.zstdLevel = zstdLevel;
 
+    if (env->ExceptionCheck()) return JNI_FALSE;
     std::string err;
     bool ok = engine->startRecording(cfg, err);
     if (!ok) {
@@ -108,6 +110,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativePushFrame(
     auto* engine = GetGlobalEngine();
     if (!engine->isInitialized()) return JNI_FALSE;
 
+    if (!jData || size <= 0 || size > env->GetArrayLength(jData)) return JNI_FALSE;
     jbyte* dataPtr = env->GetByteArrayElements(jData, nullptr);
     if (!dataPtr) {
         LOGE("nativePushFrame: GetByteArrayElements failed");
@@ -142,6 +145,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativePushDirectFrame(
     auto* engine = GetGlobalEngine();
     if (!engine->isInitialized()) return JNI_FALSE;
 
+    if (!byteBuffer || size <= 0 || static_cast<jlong>(size) > env->GetDirectBufferCapacity(byteBuffer)) return JNI_FALSE;
     uint8_t* directAddr = static_cast<uint8_t*>(env->GetDirectBufferAddress(byteBuffer));
     if (!directAddr) {
         LOGE("nativePushDirectFrame: GetDirectBufferAddress failed");
@@ -177,13 +181,14 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
     snprintf(json, sizeof(json),
              "{\"poolAvailable\":%d,\"poolTotal\":%d,\"ringSize\":%d,\"ringCapacity\":%d,"
              "\"ringFill\":%.3f,\"framesPushed\":%llu,\"framesDropped\":%llu,\"framesWritten\":%llu,"
-             "\"isRecording\":%s}",
+             "\"writerStatus\":%d,\"isRecording\":%s}",
              stats.poolAvailable, stats.poolTotal,
              stats.ringSize, stats.ringCapacity,
              stats.ringFillRatio,
              (unsigned long long)stats.framesPushed,
              (unsigned long long)stats.framesDropped,
              (unsigned long long)stats.framesWritten,
+             static_cast<int>(stats.writerStatus),
              engine->isRecording() ? "true" : "false");
 
     return env->NewStringUTF(json);
@@ -200,7 +205,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetLastError(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeGetVersion(
         JNIEnv* env, jobject /*thiz*/) {
-    return env->NewStringUTF("CineCam RAW Engine v0.1.0-alpha (NDK 26, C++17)");
+    return env->NewStringUTF("CineCam RAW Engine phase-4 buffer/sync foundation (C++17)");
 }
 
 // ---------------------------------------------------------------------------

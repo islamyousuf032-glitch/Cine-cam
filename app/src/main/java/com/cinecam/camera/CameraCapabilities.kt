@@ -32,6 +32,7 @@ data class RawSupportInfo(
     val model: String,
     val sensorOrientation: Int,
     val previewSizes: List<android.util.Size>,
+    val timestampSource: Int?,
     val minimumFocusDistance: Float,
     val rawFrameDurations: List<Pair<android.util.Size, Long>>
 ) {
@@ -129,6 +130,7 @@ object CameraCapabilities {
             model = model,
             sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
             previewSizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java)?.toList() ?: emptyList(),
+            timestampSource = chars.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE),
             minimumFocusDistance = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f,
             rawFrameDurations = (map?.getOutputSizes(32)?.toList() ?: emptyList()).map { size ->
                 size to (try { map?.getOutputMinFrameDuration(32, size) ?: 0L } catch (_: Exception) { 0L })
@@ -162,6 +164,11 @@ object CameraCapabilities {
         infos.forEach { info ->
             appendLine("\nCamera ${info.cameraId}: facing=${info.facing}, ${info.hardwareLevelString()}, orientation=${info.sensorOrientation}")
             appendLine("RAW_SENSOR=${info.supportsRawSensor}, RAW10=${info.supportsRaw10}, RAW12=${info.supportsRaw12}")
+            appendLine("Sensor timestamp source=" + when (info.timestampSource) {
+                CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME -> "REALTIME (BOOTTIME)"
+                CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_UNKNOWN -> "UNKNOWN (explicit clock mapping required)"
+                else -> "unreported"
+            })
             appendLine("Manual sensor=${info.supportsManualSensor}, full manual=${info.supportsFullManual}")
             appendLine("ISO=${info.isoRange}, exposure(ns)=${info.exposureTimeRange}, focusMaxDiopters=${info.minimumFocusDistance}")
             appendLine("AE FPS ranges (not RAW FPS guarantee): ${info.availableFpsRanges}")

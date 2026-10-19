@@ -26,6 +26,12 @@ Commit `bbc340b`, CI run `39270646957` সফল। Camera2 live preview integra
 
 [v0.1.62-alpha-d62f4f8](https://github.com/islamyousuf032-glitch/Cine-cam/releases/tag/v0.1.62-alpha-d62f4f8): ISO/shutter/focus controls, matching sensor timestamps-সহ Android DngCreator export এবং Android 14-এ `DCIM/CineCam` MediaStore save। CI run `39274480939` সফল। ফোনে DNG decode যাচাই বাকি; WB Auto, Kelvin/focus peaking ও RAW video এখনো বাকি। পরীক্ষা: `docs/DNG_STILL_TEST_PLAN.md`।
 
+## ধাপ ৪ — C++ pipeline foundation
+
+Queue/pool reclamation, bounded 256 MiB allocation (default 8 buffers), engine lifecycle/ingest validation, writer stop/error handling এবং C++ audio/video timestamp mapping framework যুক্ত হয়েছে। `./scripts/test-native.sh` এখন real queue/engine/writer ও clock framework-কে host-এ ASan/UBSan দিয়ে পরীক্ষা করে।
+
+এটি এখনো **RAW video/audio recording চালু করে না**। SyncTimeline standalone framework; actual audio capture, video container validation, JNI integration এবং physical-device sync/throughput tests বাকি। Preview/DNG capture আগের কার্যকর platform path-এই আছে। বিস্তারিত: `docs/PHASE4_PIPELINE.md`।
+
 ## ডিরেক্টরি
 
 ```text

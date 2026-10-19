@@ -72,7 +72,7 @@ class NativeRawEngine private constructor() {
     /**
      * Initialize engine for given frame dimensions
      */
-    fun initialize(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 60): Boolean {
+    fun initialize(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 8): Boolean {
         Log.i(TAG, "initialize: ${width}x${height} @${bitDepth}-bit pool=$poolSize")
         return try {
             nativeInitialize(width, height, bitDepth, poolSize)
@@ -88,12 +88,13 @@ class NativeRawEngine private constructor() {
 
     /**
      * Start recording to output folder
-     * @param container "mcraw" or "cinemadng"
+     * Internal experimental uncompressed dump only, not MotionCam-compatible.
+     * No UI recording path, CinemaDNG video, compression or audio capture yet.
      */
     fun startRecording(
         width: Int, height: Int, fps: Int, bitDepth: Int,
         outputPath: String, container: String = "mcraw",
-        enableZstd: Boolean = true, zstdLevel: Int = 3
+        enableZstd: Boolean = false, zstdLevel: Int = 3
     ): Boolean {
         Log.i(TAG, "startRecording: $outputPath [$container] ${width}x${height}@${fps}fps")
         return try {
@@ -111,7 +112,7 @@ class NativeRawEngine private constructor() {
     fun isRecording(): Boolean = try { nativeIsRecording() } catch (_: Exception) { false }
 
     /**
-     * Push RAW frame from ImageReader (YUV/RAW10 -> byte array)
+     * Push unpacked RAW_SENSOR (16-bit storage), not YUV or packed RAW10/RAW12
      */
     fun pushFrame(
         data: ByteArray,
@@ -123,7 +124,7 @@ class NativeRawEngine private constructor() {
     } catch (e: Exception) { Log.e(TAG, "pushFrame error", e); false }
 
     /**
-     * Zero-copy path: Direct ByteBuffer from NDK AHardwareBuffer
+     * Avoids a Java array copy; native ingestion still copies into the bounded pool.
      */
     fun pushDirectFrame(
         buffer: ByteBuffer,
@@ -131,7 +132,9 @@ class NativeRawEngine private constructor() {
         width: Int, height: Int, stride: Int, bitDepth: Int,
         frameNumber: Int
     ): Boolean = try {
-        nativePushDirectFrame(buffer, buffer.remaining(), timestampNs, exposureNs, iso, width, height, stride, bitDepth, frameNumber)
+        require(buffer.isDirect) { "RAW input must be a direct buffer" }
+        val input = buffer.slice() // Native address starts at slice offset, not original buffer position.
+        nativePushDirectFrame(input, input.remaining(), timestampNs, exposureNs, iso, width, height, stride, bitDepth, frameNumber)
     } catch (e: Exception) { Log.e(TAG, "pushDirectFrame error", e); false }
 
     fun getStatsJson(): String = try { nativeGetStatsJson() } catch (_: Exception) { "{}" }
@@ -141,6 +144,6 @@ class NativeRawEngine private constructor() {
     /**
      * Async initializer with coroutine (for app startup)
      */
-    suspend fun initializeAsync(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 60): Boolean =
+    suspend fun initializeAsync(width: Int, height: Int, bitDepth: Int = 10, poolSize: Int = 8): Boolean =
         withContext(Dispatchers.Default) { initialize(width, height, bitDepth, poolSize) }
 }

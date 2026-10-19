@@ -1,15 +1,15 @@
 #include "raw_writer.h"
 #include "cinemadng_writer.h"
-#include <android/log.h>
+#include "cine_log.h"
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <chrono>
 #include <cstring>
 
 #define LOG_TAG "CineRawWriter"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
-#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) CINE_LOGI(LOG_TAG, __VA_ARGS__)
+#define LOGE(...) CINE_LOGE(LOG_TAG, __VA_ARGS__)
+#define LOGW(...) CINE_LOGW(LOG_TAG, __VA_ARGS__)
 
 namespace cinecam {
 
@@ -17,9 +17,7 @@ RawWriter::RawWriter(RingBuffer* ringBuffer, MemoryPool* memoryPool)
     : ringBuffer_(ringBuffer), memoryPool_(memoryPool) {}
 
 RawWriter::~RawWriter() {
-    if (running_.load()) {
-        stop();
-    }
+    stop();
 }
 
 WriterStatus RawWriter::start(const RecordingConfig& config) {
@@ -28,6 +26,14 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
+    if (!ringBuffer_ || !memoryPool_ || config.outputPath.empty() || config.container != "mcraw" ||
+        config.enableZstd || config.enableAudio) {
+        lastError_ = "Unsupported or invalid experimental writer configuration";
+        return WriterStatus::ENCODING_ERROR;
+    }
+    if (writerThread_.joinable()) stop();
+    lastError_.clear();
+    status_.store(WriterStatus::OK);
     config_ = config;
     baseOutputPath_ = config.outputPath;
 
@@ -53,6 +59,7 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         metadataFile_ << "  \"bitDepth\": " << config.bitDepth << ",\n";
         metadataFile_ << "  \"frames\": [\n";
         metadataFile_.flush();
+        if (!metadataFile_) { lastError_ = "RAW metadata header write failed"; return WriterStatus::IO_ERROR; }
     } else if (config.container == "cinemadng") {
         // For CinemaDNG, each frame is a file; no single output file needed
         LOGI("CinemaDNG mode: frames will be written as individual .dng files");
@@ -88,13 +95,12 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
 }
 
 WriterStatus RawWriter::stop() {
-    if (!running_.load()) return WriterStatus::OK;
+    if (!writerThread_.joinable()) return status_.load();
 
     LOGI("RawWriter stopping... framesWritten=%llu bytes=%llu",
          (unsigned long long)framesWritten_.load(), (unsigned long long)bytesWritten_.load());
 
     shouldStop_.store(true);
-    running_.store(false);
 
     if (writerThread_.joinable()) {
         writerThread_.join();
@@ -102,12 +108,14 @@ WriterStatus RawWriter::stop() {
 
     if (outputFile_.is_open()) {
         outputFile_.flush();
+        if (!outputFile_) { lastError_ = "RAW stream finalize failed"; status_.store(WriterStatus::IO_ERROR); }
         outputFile_.close();
     }
     if (metadataFile_.is_open()) {
         // Close JSON array
         metadataFile_ << "\n  ]\n}\n";
         metadataFile_.flush();
+        if (!metadataFile_) { lastError_ = "RAW metadata finalize failed"; status_.store(WriterStatus::IO_ERROR); }
         metadataFile_.close();
     }
 
@@ -117,70 +125,34 @@ WriterStatus RawWriter::stop() {
         dngWriter.writeSequenceMetadata(baseOutputPath_, config_, static_cast<int32_t>(framesWritten_.load()));
     }
 
+    running_.store(false);
     LOGI("RawWriter stopped");
-    return WriterStatus::OK;
+    return status_.load();
+}
+
+void RawWriter::consume(RawFrame& frame) {
+    if (status_.load() == WriterStatus::OK && frame.isValid) {
+        try {
+            const auto result = writeMcrawFrame(frame);
+            if (result != WriterStatus::OK) status_.store(result);
+        } catch (...) {
+            lastError_ = "Exception during RAW write";
+            status_.store(WriterStatus::IO_ERROR);
+        }
+    } else framesDropped_.fetch_add(1);
+    if (frame.poolSlotIndex >= 0) memoryPool_->release(frame.poolSlotIndex);
+    frame = RawFrame{};
 }
 
 void RawWriter::writerLoop() {
-    LOGI("Writer thread started");
-
-    // Set thread priority to high for I/O? (sched)
-    // Use nice -10 equivalent via setpriority in future
-
-    while (!shouldStop_.load()) {
+    while (!shouldStop_.load() && status_.load() == WriterStatus::OK) {
         RawFrame frame;
-        bool got = false;
-
-        if (ringBuffer_) {
-            got = ringBuffer_->waitPop(frame, 50); // 50ms timeout to check shouldStop
-        }
-
-        if (!got) {
-            continue;
-        }
-
-        if (!frame.isValid) {
-            LOGW("Writer got invalid frame");
-            if (frame.poolSlotIndex >= 0 && memoryPool_) {
-                memoryPool_->release(frame.poolSlotIndex);
-            }
-            continue;
-        }
-
-        WriterStatus ws = WriterStatus::OK;
-        if (config_.container == "mcraw") {
-            ws = writeMcrawFrame(frame);
-        } else if (config_.container == "cinemadng") {
-            ws = writeCinemaDngFrame(frame);
-        } else {
-            ws = writeMcrawFrame(frame);
-        }
-
-        if (ws != WriterStatus::OK) {
-            LOGE("Frame write failed: %d", static_cast<int>(ws));
-            framesDropped_.fetch_add(1);
-        }
-
-        // Release back to pool AFTER write finishes (zero-copy pipeline)
-        if (frame.poolSlotIndex >= 0 && memoryPool_) {
-            memoryPool_->release(frame.poolSlotIndex);
-        }
+        if (ringBuffer_->waitPop(frame, 50)) consume(frame);
     }
-
-    // Drain remaining frames after stop signal (best effort - save all)
-    if (ringBuffer_) {
-        RawFrame frame;
-        while (ringBuffer_->pop(frame)) {
-            if (!frame.isValid) continue;
-            if (config_.container == "cinemadng") writeCinemaDngFrame(frame);
-            else writeMcrawFrame(frame);
-            if (frame.poolSlotIndex >= 0 && memoryPool_) {
-                memoryPool_->release(frame.poolSlotIndex);
-            }
-        }
-    }
-
-    LOGI("Writer thread exiting");
+    // Engine serializes stop against producer pushes. On I/O error, discard safely.
+    RawFrame frame;
+    while (ringBuffer_->pop(frame)) consume(frame);
+    running_.store(false);
 }
 
 WriterStatus RawWriter::writeMcrawFrame(const RawFrame& frame) {
@@ -246,6 +218,11 @@ WriterStatus RawWriter::writeMcrawFrame(const RawFrame& frame) {
         if (framesWritten_.load() % 30 == 0) metadataFile_.flush();
     }
 
+    if (!outputFile_ || (metadataFile_.is_open() && !metadataFile_)) {
+        lastError_ = "RAW or sidecar stream write failed";
+        framesDropped_.fetch_add(1);
+        return WriterStatus::IO_ERROR;
+    }
     updateStats(frame.sizeBytes + sizeof(hdr));
     framesWritten_.fetch_add(1);
     return WriterStatus::OK;

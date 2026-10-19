@@ -18,7 +18,7 @@ namespace cinecam {
 // ---------------------------------------------------------------------------
 
 enum class RawFormat : int32_t {
-    RAW_SENSOR = 0x20,      // AIMAGE_FORMAT_RAW_PRIVATE / RAW_SENSOR
+    RAW_SENSOR = 0x20,      // RAW_SENSOR, 16-bit unpacked storage
     RAW10 = 0x25,
     RAW12 = 0x26,
     YUV_420_888 = 0x23,
@@ -108,9 +108,9 @@ struct RecordingConfig {
     RawFormat format = RawFormat::RAW_SENSOR;
     std::string outputPath;           // e.g., /storage/emulated/0/DCIM/CineCam/session_001
     std::string container = "mcraw";  // "mcraw" | "cinemadng"
-    bool enableZstd = true;
+    bool enableZstd = false;
     int32_t zstdLevel = 3;            // 1-22, 3 is good tradeoff
-    bool enableAudio = true;
+    bool enableAudio = false;
     int32_t audioSampleRate = 48000;
 };
 
@@ -138,8 +138,9 @@ enum class WriterStatus {
 // Constants
 // ---------------------------------------------------------------------------
 
-constexpr int32_t kDefaultRingBufferSize = 90;      // ~3 sec at 30fps
-constexpr int32_t kMaxRingBufferSize = 300;         // ~10 sec burst
+constexpr int32_t kDefaultRingBufferSize = 8;       // bounded; ~200 MB for 12MP RAW16
+constexpr size_t kMaxPoolBudgetBytes = 256ULL * 1024 * 1024;
+constexpr int32_t kMaxRingBufferSize = 300;         // count ceiling; actual allocation also constrained by byte budget
 constexpr size_t kMaxFrameSize_12MP_12bit = 4032 * 3024 * 2; // ~24MB worst
 constexpr int32_t kZstdDefaultLevel = 3;
 constexpr const char* kMcrawMagic = "MCRAW1.0";

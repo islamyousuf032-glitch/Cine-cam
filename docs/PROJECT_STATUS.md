@@ -70,3 +70,17 @@ User-provided Galaxy F23 report:
 - Multiple extracted frames-এ portrait UI-তে sideways scene দেখা গেছে। TextureView producer-এর sensor orientation পুনরায় প্রয়োগ সরানো হয়েছে; EXIF path untouched।
 - Temporary video, frames এবং review tooling মুছে ফেলা হয়েছে। Git ইতিহাসে থাকা original blob বা main branch remote deletion দাবি করা হয়নি।
 - Geometry unit tests যোগ; নতুন CI ও physical-device confirmation বাকি।
+
+- Patch commit `683690b`; main upload ancestry reconciled on session branch at `f121642` so diff against main explicitly deletes the recording. Main itself remains unchanged; no GitHub PR merge/close or history rewrite.
+- Release `v0.1.64-alpha-f121642` with `CineCam-debug.apk` verified through GitHub release API. Run/check API still reported queued despite release existing; do not claim independently confirmed remote test completion. Local native sanitizer tests passed; device confirmation pending.
+
+## ধাপ ৪ foundation — buffer safety ও timestamp framework
+
+- User confirms patched viewfinder এখন ঠিক কাজ করছে। Preview/DNG/manual path এই patch-এ বদলানো হয়নি।
+- C++ ring buffer pool reclamation, engine lifecycle/locking, bounded allocation, ingestion validation ও writer stop/I/O-error paths মেরামত করা হয়েছে।
+- Native RAW engine এই build-এ CameraController-এর recording path-এর সঙ্গে যুক্ত নয়। শুধুমাত্র host tests ছোট synthetic RAW frames-এ legacy experimental uncompressed dump চালায়; MotionCam compatibility দাবি নয়।
+- 256 MiB pool cap/default 8; actual padded row layouts capacity ছাড়ালে reject হবে। Stride-aware allocation/copy integration পরের video-ingestion patch-এ লাগবে।
+- SyncTimeline C++ framework: video timestamp source REALTIME→BOOTTIME, UNKNOWN→explicit measured offset required; audio needs AudioTimestamp TIMEBASE_BOOTTIME frame-position anchor। এখনো microphone capture/JNI sync plumbing/mux/resampling নেই।
+- `./scripts/test-native.sh` স্থানীয়ভাবে ASan/UBSan সহ সফল; real queue/engine/writer tests এবং 5000-frame concurrent transfer যুক্ত।
+- RAW video UI, validated container/reader, actual frame metadata matching, compression, audio integration, thermal/storage benchmark, WB Kelvin ও focus peaking বাকি।
+- নতুন Android CI/release যাচাই চলছে; ফোনে recording বা sync সফল বলে দাবি নয়।
