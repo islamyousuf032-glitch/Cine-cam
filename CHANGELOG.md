@@ -13,6 +13,8 @@
 - Linux host native tests: alignment, exhaustion, invalid input, duplicate release, multithreaded reuse, frame moves; ASan/UBSan সহ।
 - README ও architecture-এ বাস্তব অবস্থা লেখা হয়েছে: lock-free, end-to-end zero-copy, ZSTD এবং device-verified recording দাবি প্রত্যাহার।
 
+- প্রথম remote run-এ native tests সফল; setup-android ধাপ ব্যর্থ হওয়ায় ubuntu-24.04 runner-এর preinstalled SDK ব্যবহার করা হলো।
+
 ### যাচাই
 - স্থানীয় `./scripts/test-native.sh`: সফল।
 - স্থানীয় Android build: চালানো যায়নি (JDK/SDK অনুপস্থিত)।

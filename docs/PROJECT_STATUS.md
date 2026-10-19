@@ -5,7 +5,9 @@
 - এই সেশনের ব্রাঞ্চ: `arena/30298c6b-cine-cam`। এখানেই কাজ রাখতে হবে।
 - baseline: `0df9156` (আগের PR #37 merge)।
 - ব্যবহারকারীর স্পষ্ট অনুমতি ছাড়া PR merge/close নয়।
-- এই প্যাচে commit/push/merge করা হয়নি; remote CI এখনো চালানো হয়নি।
+- প্রথম foundation patch commit `081820d` এই ব্রাঞ্চে push হয়েছে; merge/close করা হয়নি।
+- Remote run `39267934860`: native tests সফল; setup-android ধাপে ব্যর্থ। Android compilation শুরু হয়নি।
+- পরের patch-এ ubuntu-24.04 এবং runner-এর preinstalled SDK ব্যবহার করা হয়েছে; ফল যাচাই বাকি।
 - সম্পূর্ণ অ্যাপ বা ধাপ ১-এর APK build যাচাই সম্পন্ন বলা যাবে না।
 
 ## পরীক্ষা
