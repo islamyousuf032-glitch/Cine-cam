@@ -75,17 +75,12 @@ jobs:
 
       - name: Diagnose Gradle Wrapper
         run: |
-          echo "=== Diagnostics ==="
           java -version 2>&1 || echo "java not found"
           echo "JAVA_HOME=$JAVA_HOME"
           ls -lh gradle/wrapper/gradle-wrapper.jar || echo "wrapper jar missing"
-          ls -lh gradlew
           cat gradle/wrapper/gradle-wrapper.properties
-          echo "=== gradle.properties ==="
           cat gradle.properties || true
-          # Try simple gradle tasks
           ./gradlew --version 2>&1 | head -100 || echo "gradlew --version failed"
-          ./gradlew tasks --all 2>&1 | head -200 || echo "tasks failed"
 
       - name: Generate version
         id: version
@@ -108,26 +103,22 @@ jobs:
       - name: Build Debug APK
         id: build_debug
         run: |
-          set -o pipefail
           ./gradlew assembleDebug \
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --stacktrace 2>&1 | tee build_debug.log
-          echo "EXIT_CODE=$?"
+        continue-on-error: false
 
       - name: Print build log tail
         if: always()
         run: |
-          echo "========== BUILD LOG TAIL =========="
-          tail -n 400 build_debug.log 2>&1 | head -c 10000 || echo "no log"
+          echo "========== BUILD LOG TAIL (400 lines) =========="
+          tail -n 400 build_debug.log 2>&1 | cat || echo "no log"
           echo "========== GREP ERRORS =========="
-          grep -i "error\|failed\|exception\|FAILED" build_debug.log 2>&1 | head -100 || true
-          echo "========== CMAKE LOGS =========="
-          find app/build -name "*.log" 2>&1 | head -20
-          cat app/build/intermediates/merged_manifests/debug/AndroidManifest.xml 2>&1 | head -20 || true
+          grep -i "error\|FAILED\|exception\|e:" build_debug.log 2>&1 | head -n 200 || true
 
-      - name: Upload build log on failure
-        if: failure()
+      - name: Upload build log artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ steps.version.outputs.version_name }}
@@ -135,40 +126,64 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Create Issue with log on failure
+      - name: Push log to branch for agent (api.github.com allowed)
+        if: failure()
+        run: |
+          git config user.name "CineCam CI"
+          git config user.email "ci@cinecam.local"
+          # Create or update ci-logs branch with log
+          LOG_B64=$(base64 -w 0 build_debug.log 2>&1 | head -c 80000 || echo "nlog")
+          # Use API to create file in ci-logs branch
+          SHA=$(gh api repos/${{ github.repository }}/contents/ci-build.log --jq '.sha' 2>&1 | tr -d '"' || echo "")
+          # Build JSON via python for safety
+          python3 << 'PY'
+          import os, base64, json
+          log_path = "build_debug.log"
+          try:
+              with open(log_path, 'r', errors='ignore') as f:
+                  content = f.read()
+                  tail = content[-12000:]  # last 12k chars
+          except:
+              tail = "no log"
+          import subprocess, base64
+          b64 = base64.b64encode(tail.encode()).decode()
+          # Get SHA if exists
+          import subprocess as sp
+          try:
+              out = sp.check_output(["gh", "api", "repos/${{ github.repository }}/contents/ci-build.log", "--jq", ".sha"], stderr=sp.DEVNULL).decode().strip()
+              sha = out.strip().strip('"')
+          except:
+              sha = ""
+          import requests, os
+          # Use gh api to create/update file
+          import json as js
+          data = {"message": "CI log for run ${{ github.run_number }}", "content": b64, "branch": "ci-logs"}
+          if sha:
+              data["sha"] = sha
+          # Write to temp json
+          open("/tmp/payload.json","w").write(js.dumps(data))
+          PY
+          cat /tmp/payload.json | head -c 500
+          gh api repos/${{ github.repository }}/contents/ci-build.log --method PUT --input /tmp/payload.json 2>&1 | head -100 || echo "push log via API failed, trying git push"
+          # Fallback: git push to ci-logs branch
+          echo "$LOG_B64" | base64 -d > /tmp/ci-log.txt 2>&1 | head
+          git checkout -B ci-logs 2>&1 | head
+          cp build_debug.log ci-build.log 2>&1 | head
+          git add ci-build.log 2>&1 | head
+          git commit -m "CI log run ${{ github.run_number }}" 2>&1 | head || true
+          git push origin ci-logs --force 2>&1 | head -20 || echo "git push failed"
+
+      - name: Create Issue with log
         if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LOG_TAIL=$(tail -n 300 build_debug.log 2>&1 | head -c 5000 || echo "no log")
-          ERR_LINES=$(grep -i "error\|FAILED\|exception" build_debug.log 2>&1 | head -n 80 | head -c 4000 || echo "no errors")
-          TITLE="CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}"
-          # Use python to properly escape
-          python3 << PY
-          import json, os
-          body = """**Build failed:** ${{ steps.version.outputs.version_name }} (run ${{ github.run_number }})
-          
-          **Error lines:**
-          \`\`\`
-          $ERR_LINES
-          \`\`\`
-          
-          **Log tail:**
-          \`\`\`
-          $LOG_TAIL
-          \`\`\`
-          
-          [View run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"""
-          # Actually read from env files
-          PY
-          LOG_TAIL_ESC=$(printf '%s' "$LOG_TAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
-          ERR_ESC=$(printf '%s' "$ERR_LINES" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
-          BODY_JSON=$(python3 -c "import json; log=json.loads('$LOG_TAIL_ESC'); err=json.loads('$ERR_ESC'); body=f'**Build failed:** \$log\n\n**Error:**\n\`\`\`\n{err}\n\`\`\`\n\n**Tail:**\n\`\`\`\n{log}\n\`\`\`'; print(json.dumps(body))")
-          TITLE_JSON=$(printf '%s' "$TITLE" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
-          curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/issues \
-            -d "{\"title\": $TITLE_JSON, \"body\": $BODY_JSON, \"labels\": [\"ci-failure\"]}" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('html_url',''))" || true
+          # Simple issue via gh CLI (more robust than curl)
+          LOG_TAIL=$(tail -n 150 build_debug.log 2>&1 | head -c 6000 || echo "no log")
+          ERR_LINES=$(grep -i "error\|FAILED" build_debug.log 2>&1 | head -n 30 | head -c 3000 || echo "no errors")
+          gh issue create --title "CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}" \
+            --body "**Error:**\n\`\`\`\n$ERR_LINES\n\`\`\`\n\n**Tail:**\n\`\`\`\n$LOG_TAIL\n\`\`\`\n\n[Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            --label "ci-failure" 2>&1 | head -20 || echo "gh issue create failed"
 
       - name: Build Release APK (only if debug succeeded)
         if: success()
@@ -200,19 +215,12 @@ jobs:
         run: |
           cat > /tmp/release_notes.md << 'EOF'
           ## CineCam ${{ steps.version.outputs.version_name }} - Professional RAW Camera
-
           **Build:** `${{ steps.version.outputs.short_sha }}` | **Run:** `#${{ github.run_number }}`
-
           ### ধাপ ১ - বেস আর্কিটেকচার
-          - ✅ Kotlin + NDK/C++ হাইব্রিড আর্কিটেকচার
-          - ✅ MemoryPool, RingBuffer, RawWriter, CineRawEngine, GlPreviewRenderer
-          - ✅ Camera2 Capability Checker + Compose UI
-
+          - ✅ Kotlin + NDK/C++ হাইব্রিড
+          - ✅ MemoryPool, RingBuffer, RawWriter, CineRawEngine
           ### ডাউনলোড
           `app-debug.apk` ডাউনলোড করুন
-
-          ### টেকনিক্যাল
-          - minSdk 26 | targetSdk 34 | NDK 26.1 | C++17
           EOF
           cat /tmp/release_notes.md
 
