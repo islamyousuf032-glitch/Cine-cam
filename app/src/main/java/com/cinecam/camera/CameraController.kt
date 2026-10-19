@@ -142,9 +142,10 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         } else builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
         val minFocus = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f
         val afModes = chars.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: intArrayOf()
-        if (controls.focusDiopters != null && minFocus > 0 && afModes.contains(CameraMetadata.CONTROL_AF_MODE_OFF)) {
+        val focus = controls.focusDiopters
+        if (focus != null && minFocus > 0 && afModes.contains(CameraMetadata.CONTROL_AF_MODE_OFF)) {
             builder.set(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-            builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, controls.focusDiopters.coerceIn(0f, minFocus))
+            builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, focus.coerceIn(0f, minFocus))
         } else {
             val mode = if (afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE))
                 CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE else afModes.firstOrNull() ?: CameraMetadata.CONTROL_AF_MODE_OFF
