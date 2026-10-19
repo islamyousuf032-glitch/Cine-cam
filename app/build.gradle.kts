@@ -38,8 +38,8 @@ android {
             }
         }
 
-        buildConfigField("String", "GIT_COMMIT", "\"${getGitCommit()}\"")
-        buildConfigField("String", "BUILD_TIME", "\"${java.time.Instant.now()}\"")
+        buildConfigField("String", "GIT_COMMIT", "\"unknown\"")
+        buildConfigField("String", "BUILD_TIME", "\"2026-10-19\"")
     }
 
     buildTypes {
@@ -97,19 +97,7 @@ android {
     }
 }
 
-fun getGitCommit(): String {
-    return try {
-        val stdout = java.io.ByteArrayOutputStream()
-        project.exec {
-            commandLine("git", "rev-parse", "--short", "HEAD")
-            standardOutput = stdout
-            isIgnoreExitValue = true
-        }
-        stdout.toString().trim().ifEmpty { "unknown" }
-    } catch (e: Exception) {
-        "unknown"
-    }
-}
+fun getGitCommit(): String = "unknown"
 
 dependencies {
     // Core Android - minimal stable set for CI
