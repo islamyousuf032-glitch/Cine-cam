@@ -33,6 +33,9 @@ import com.cinecam.camera.CameraCapabilities
 import com.cinecam.camera.CameraController
 import com.cinecam.camera.RawSupportInfo
 import com.cinecam.camera.CameraRules
+import com.cinecam.camera.ManualSettings
+import com.cinecam.camera.CaptureRules
+import kotlinx.coroutines.delay
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -52,9 +55,13 @@ fun CameraScreen() {
     var showReport by remember { mutableStateOf(false) }
     val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     var disposed by remember { mutableStateOf(false) }
-    val controller = remember { CameraController(context.applicationContext) { message ->
+    var capturing by remember { mutableStateOf(false) }
+    var manual by remember { mutableStateOf(ManualSettings()) }
+    var showControls by remember { mutableStateOf(false) }
+    val controller = remember { CameraController(context.applicationContext, onStatus = { message ->
         main.post { if (!disposed) status = message }
-    } }
+    }, onCaptureState = { busy -> main.post { if (!disposed) capturing = busy } }) }
+    LaunchedEffect(manual) { delay(150); controller.setManual(manual) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
 
     DisposableEffect(lifecycle) {
@@ -97,7 +104,7 @@ fun CameraScreen() {
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text("CineCam • ধাপ ২", color = Color.White)
+            Text("CineCam • ধাপ ৩", color = Color.White)
             Text(camera?.let { "Camera ${it.cameraId} • ${it.hardwareLevelString()} • RAW=${it.supportsRawSensor}" }
                 ?: "ক্যামেরা নির্বাচন হয়নি", color = Color.LightGray)
             Text(scanError ?: if (granted) status else "ক্যামেরা অনুমতি প্রয়োজন", color = Color.LightGray)
@@ -132,7 +139,26 @@ fun CameraScreen() {
                 TextButton(onClick = { retry++ }, enabled = granted) { Text("আবার চেষ্টা") }
                 TextButton(onClick = { showReport = true }, enabled = infos.isNotEmpty()) { Text("Capability report") }
             }
-            Text("Manual controls, DNG ও RAW recording পরবর্তী ধাপে সক্রিয় হবে।", color = Color.LightGray)
+            Row {
+                TextButton(onClick = { showControls = !showControls }, enabled = camera != null) {
+                    Text(if (showControls) "Controls বন্ধ" else "Manual controls")
+                }
+                Button(onClick = {
+                    val degrees = when (view?.display?.rotation) {
+                        Surface.ROTATION_90 -> 90
+                        Surface.ROTATION_180 -> 180
+                        Surface.ROTATION_270 -> 270
+                        else -> 0
+                    }
+                    controller.captureDng(degrees)
+                }, enabled = granted && resumed && camera?.supportsRawSensor == true && !capturing) {
+                    Text(if (capturing) "সংরক্ষণ হচ্ছে…" else "RAW DNG তুলুন")
+                }
+            }
+            if (showControls && camera != null) {
+                ManualStillControls(camera, manual, !capturing) { manual = it }
+            }
+            Text("WB: Auto • RAW video পরবর্তী ধাপে • DNG: DCIM/CineCam", color = Color.LightGray)
         }
     }
     if (showReport) {
@@ -143,6 +169,42 @@ fun CameraScreen() {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("CineCam capabilities", report))
             }) { Text("কপি করুন") } },
             dismissButton = { TextButton(onClick = { showReport = false }) { Text("বন্ধ") } })
+    }
+}
+
+@Composable
+private fun ManualStillControls(info: RawSupportInfo, settings: ManualSettings, enabled: Boolean,
+                                onChange: (ManualSettings) -> Unit) {
+    Column(Modifier.heightIn(max = 230.dp).verticalScroll(rememberScrollState())) {
+        Row {
+            Text("Manual exposure", color = Color.White, modifier = Modifier.weight(1f))
+            Switch(checked = settings.enabled, enabled = enabled && info.supportsManualSensor,
+                onCheckedChange = { onChange(settings.copy(enabled = it)) })
+        }
+        val iso = info.isoRange
+        val exposure = info.exposureTimeRange
+        if (info.supportsManualSensor && iso != null && exposure != null) {
+            Text("ISO ${settings.iso.coerceIn(iso.lower, iso.upper)}", color = Color.White)
+            Slider(value = settings.iso.toFloat().coerceIn(iso.lower.toFloat(), iso.upper.toFloat()),
+                valueRange = iso.lower.toFloat()..maxOf(iso.lower + 1, iso.upper).toFloat(),
+                enabled = enabled && settings.enabled,
+                onValueChange = { onChange(settings.copy(iso = it.toInt().coerceIn(iso.lower, iso.upper))) })
+            Text("Shutter ${String.format(java.util.Locale.US, "%.2f", settings.exposureNs / 1e6)} ms", color = Color.White)
+            Slider(value = CaptureRules.exposurePosition(settings.exposureNs, exposure.lower, exposure.upper),
+                enabled = enabled && settings.enabled,
+                onValueChange = { onChange(settings.copy(exposureNs = CaptureRules.exposureAt(it, exposure.lower, exposure.upper))) })
+        } else Text("এই ক্যামেরায় manual sensor control নেই", color = Color.Yellow)
+        if (info.minimumFocusDistance > 0) {
+            Row {
+                Text("Auto focus", color = Color.White, modifier = Modifier.weight(1f))
+                Switch(checked = settings.focusDiopters == null, enabled = enabled,
+                    onCheckedChange = { onChange(settings.copy(focusDiopters = if (it) null else 0f)) })
+            }
+            Text("Focus ${settings.focusDiopters?.let { String.format(java.util.Locale.US, "%.2f D", it) } ?: "Auto"} • 0 D = ∞", color = Color.White)
+            Slider(value = settings.focusDiopters ?: 0f, valueRange = 0f..info.minimumFocusDistance,
+                enabled = enabled && settings.focusDiopters != null,
+                onValueChange = { onChange(settings.copy(focusDiopters = it)) })
+        }
     }
 }
 

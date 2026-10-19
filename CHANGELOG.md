@@ -2,6 +2,17 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Phase 3] — 2026-10-19
+- Galaxy F23-এর screenshot/report-এ Camera 0 preview ও RAW/manual support পাওয়া গেছে; rotation/resume/stress পরীক্ষা এখনো আলাদা।
+- Camera2 RAW_SENSOR ImageReader সহ still session, preview-only fallback এবং একবারে একটি capture।
+- SENSOR_TIMESTAMP দিয়ে Image ও TotalCaptureResult মেলানো ছাড়া DNG লেখা হবে না; timeout ও failure cleanup।
+- Android DngCreator দিয়ে calibration/capture metadata-সহ DNG; পূর্বের native raw-dump writer ব্যবহার করা হয়নি।
+- Android 10+ MediaStore pending entry → write → publish; ব্যর্থ হলে entry delete। Android 8/9-এ app-specific Pictures fallback।
+- ISO/shutter manual toggle, logarithmic shutter slider, supported focus distance clamp ও autofocus toggle। AWB এখনো Auto; Kelvin calibration/peaking পরের patch।
+- Disk write আলাদা single worker-এ; সর্বোচ্চ একটি still in flight; reader close লেখার পরে serialized।
+- Exposure slider ও EXIF rotation rules-এর unit tests।
+- RAW video এখনো চালু নয়; physical-device DNG decode পরীক্ষা বাকি।
+
 ## [Unreleased — Phase 2] — 2026-10-19
 - বাস্তব Camera2 TextureView preview যুক্ত; sensor/display rotation ও aspect-fit transform।
 - Camera handler thread-এ open/session/close; generation token দিয়ে stale callbacks বাতিল; surface detach-এর পরে texture release।

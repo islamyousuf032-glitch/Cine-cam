@@ -48,4 +48,15 @@
 - Idle preview-তে native RAW engine initialize হয় না; false recording UI সরানো হয়েছে।
 - Unit tests: hardware capability classification ও rotation rules।
 - `docs/GALAXY_F23_TEST_PLAN.md` অনুসারে ফোনে পরীক্ষার ফল দরকার।
-- নতুন remote build: যাচাই চলছে; physical-device validation বাকি।
+- Remote run `39270646957` সফল: native sanitizer tests, Android unit tests/build command এবং APK prerelease publishing।
+- Commit `bbc340b`, Release `v0.1.59-alpha-bbc340b`; physical-device validation বাকি।
+
+## ধাপ ৩ — manual controls + DNG still
+
+User-provided Galaxy F23 report:
+- Camera 0: LEVEL_3, RAW_SENSOR/RAW10 true, RAW12 false, manual sensor/post true।
+- RAW 4080×3060, advertised minFrameDuration 33333333 ns (~30fps theoretical)।
+- ISO 20–3840, exposure 77100–647363350 ns। Sensor precision এখনো অজানা।
+- User screenshot-এ Camera 0-এর live preview দেখা যায়। Rotation/resume/stress pass বলা হয়নি।
+
+এই patch-এ platform DngCreator দিয়ে still export, timestamp pairing, manual ISO/shutter/focus, bounded worker ও MediaStore যুক্ত। Android metadata/session/storage integration Kotlin-এ; performance-critical video core C++-এই থাকবে। WB Auto, focus peaking ও video পরবর্তী কাজ। নতুন remote build ও ফোনে DNG decoder validation যাচাই বাকি।

@@ -13,6 +13,15 @@ Android-এর জন্য Camera2 + Kotlin UI + C++17/NDK-ভিত্তি�
 - C++ memory pool validation, allocation failure ও duplicate release সুরক্ষা।
 - `RawFrame` move assignment যোগ; queue-তে move assignment ব্যবহার হলেও এটি আগে অনুপস্থিত ছিল।
 
+## ধাপ ২ — পরীক্ষার APK প্রস্তুত
+
+Commit `bbc340b`, CI run `39270646957` সফল। Camera2 live preview integration, permission/settings UI, pause/resume handling এবং কপি করা যায় এমন capability report যুক্ত হয়েছে। Galaxy F23-তে install/preview/rotation validation এখনো বাকি।
+
+- Release: [v0.1.59-alpha-bbc340b](https://github.com/islamyousuf032-glitch/Cine-cam/releases/tag/v0.1.59-alpha-bbc340b)
+- এই ধাপে RAW engine allocation/recording চালু হয় না; আগের non-functional controls সরানো হয়েছে।
+- Manual controls ও DNG পরবর্তী ধাপ; custom C++ preview renderer এখনো integrated নয়।
+- ফোনে পরীক্ষার নির্দেশনা: `docs/GALAXY_F23_TEST_PLAN.md`।
+
 ## ডিরেক্টরি
 
 ```text

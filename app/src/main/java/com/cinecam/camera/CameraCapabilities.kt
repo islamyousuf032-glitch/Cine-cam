@@ -32,6 +32,7 @@ data class RawSupportInfo(
     val model: String,
     val sensorOrientation: Int,
     val previewSizes: List<android.util.Size>,
+    val minimumFocusDistance: Float,
     val rawFrameDurations: List<Pair<android.util.Size, Long>>
 ) {
     val isCinemaReady: Boolean
@@ -128,6 +129,7 @@ object CameraCapabilities {
             model = model,
             sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
             previewSizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java)?.toList() ?: emptyList(),
+            minimumFocusDistance = chars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE) ?: 0f,
             rawFrameDurations = (map?.getOutputSizes(32)?.toList() ?: emptyList()).map { size ->
                 size to (try { map?.getOutputMinFrameDuration(32, size) ?: 0L } catch (_: Exception) { 0L })
             }
@@ -161,7 +163,7 @@ object CameraCapabilities {
             appendLine("\nCamera ${info.cameraId}: facing=${info.facing}, ${info.hardwareLevelString()}, orientation=${info.sensorOrientation}")
             appendLine("RAW_SENSOR=${info.supportsRawSensor}, RAW10=${info.supportsRaw10}, RAW12=${info.supportsRaw12}")
             appendLine("Manual sensor=${info.supportsManualSensor}, full manual=${info.supportsFullManual}")
-            appendLine("ISO=${info.isoRange}, exposure(ns)=${info.exposureTimeRange}")
+            appendLine("ISO=${info.isoRange}, exposure(ns)=${info.exposureTimeRange}, focusMaxDiopters=${info.minimumFocusDistance}")
             appendLine("AE FPS ranges (not RAW FPS guarantee): ${info.availableFpsRanges}")
             appendLine("Preview sizes: ${info.previewSizes.joinToString()}")
             info.rawFrameDurations.forEach { (size, ns) ->
