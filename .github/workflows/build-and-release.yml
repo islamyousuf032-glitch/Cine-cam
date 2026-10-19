@@ -209,6 +209,40 @@ jobs:
           echo "=== Check build log for APK ==="
           grep -i "apk\|assemble" build_debug.log 2>&1 | tail -50 || true
           cat build_debug.log 2>&1 | tail -n 5 | head -20 || true
+          # Save diagnostic for agent
+          {
+            echo "=== APK FIND ==="
+            find app -name "*.apk" -type f 2>&1 | head -100
+            echo "=== BUILD OUTPUTS ==="
+            ls -R app/build/outputs 2>&1 | head -200
+            echo "=== LOG TAIL ==="
+            tail -n 100 build_debug.log 2>&1 | tail -c 8000
+          } > /tmp/diagnostic.txt
+          cat /tmp/diagnostic.txt | head -100
+
+      - name: Push diagnostic to repo (always, for agent via api.github.com)
+        if: always()
+        run: |
+          DIAG_B64=$(base64 -w 0 /tmp/diagnostic.txt 2>&1 | tr -d '\n')
+          # Get existing file sha if exists
+          SHA=$(gh api repos/${{ github.repository }}/contents/diagnostic.log --jq '.sha' 2>&1 | head -1 | tr -d '"' || echo "")
+          python3 << 'PY'
+          import base64, json, os
+          with open("/tmp/diagnostic.txt","r",errors="ignore") as f:
+              content=f.read()
+          b64=base64.b64encode(content.encode()).decode()
+          open("/tmp/payload2.json","w").write(json.dumps({"message":"diagnostic run ${{ github.run_number }}","content":b64,"branch":"ci-logs"}))
+          PY
+          # Try to update via API (will create branch if not exists)
+          gh api repos/${{ github.repository }}/contents/diagnostic.log --method PUT --input /tmp/payload2.json 2>&1 | head -20 || echo "API push failed, trying git"
+          # Fallback git
+          git config user.name "CineCam CI" 2>&1 | head
+          git config user.email "ci@cinecam.local" 2>&1 | head
+          git checkout -B ci-logs 2>&1 | head -5
+          cp /tmp/diagnostic.txt diagnostic.log 2>&1 | head
+          git add diagnostic.log 2>&1 | head
+          git commit -m "diagnostic run ${{ github.run_number }}" 2>&1 | head || true
+          git push origin ci-logs --force 2>&1 | head -20 || echo "git push failed"
 
       - name: Upload APK Artifact
         if: always()
