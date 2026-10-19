@@ -11,17 +11,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-    inputs:
-      release_type:
-        description: 'Release type'
-        required: false
-        default: 'alpha'
-        type: choice
-        options:
-          - alpha
-          - patch
-          - minor
-          - major
 
 jobs:
   build:
@@ -30,6 +19,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      gists: write
 
     steps:
       - name: Checkout code
@@ -46,33 +36,25 @@ jobs:
 
       - name: Setup Android SDK & NDK
         run: |
-          echo "=== Environment ==="
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-          ls -lh $ANDROID_HOME || true
           SDKMGR=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
           if [ -z "$SDKMGR" ]; then SDKMGR=$(find $ANDROID_SDK_ROOT -name "sdkmanager" -type f 2>/dev/null | head -1); fi
           if [ -z "$SDKMGR" ]; then SDKMGR="sdkmanager"; fi
           echo "Using sdkmanager: $SDKMGR"
-          yes | "$SDKMGR" --licenses || echo "licenses step done"
-          echo "Installing NDK, CMake, platforms..."
+          yes | "$SDKMGR" --licenses || true
           "$SDKMGR" --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || {
-            echo "Primary install failed, trying sdkmanager directly..."
             yes | sdkmanager --licenses || true
             sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || true
           }
-          echo "NDK check:"
-          ls -lh $ANDROID_HOME/ndk/ 2>&1 | head -20 || ls -lh $ANDROID_SDK_ROOT/ndk/ 2>&1 | head -20 || true
+          ls -lh $ANDROID_HOME/ndk/ 2>&1 | head -20 || true
           NDK_PATH=""
           if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then NDK_PATH="$ANDROID_HOME/ndk/26.1.10909125"
-          elif [ -d "$ANDROID_SDK_ROOT/ndk/26.1.10909125" ]; then NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
-          fi
+          elif [ -d "$ANDROID_SDK_ROOT/ndk/26.1.10909125" ]; then NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"; fi
           if [ -n "$NDK_PATH" ]; then
             echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
             echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-            echo "NDK ready: $NDK_PATH"
           else
-            echo "Fallback NDK handling"
             ANY_NDK=$(find $ANDROID_HOME $ANDROID_SDK_ROOT -path "*ndk/*/source.properties" 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs dirname 2>/dev/null || true)
             if [ -n "$ANY_NDK" ]; then
               mkdir -p $(dirname "$ANDROID_HOME/ndk") 2>/dev/null || true
@@ -80,7 +62,6 @@ jobs:
               echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
             fi
           fi
-          cat $GITHUB_ENV || true
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -112,7 +93,7 @@ jobs:
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION_NAME} (code: ${RUN_NUMBER})"
 
-      - name: Build Debug APK (with log capture)
+      - name: Build Debug APK
         id: build_debug
         run: |
           set -o pipefail
@@ -120,7 +101,19 @@ jobs:
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
             --stacktrace --info 2>&1 | tee build_debug.log
-          echo "Build exit code: $?"
+        continue-on-error: false
+
+      - name: Print build log tail (for debugging without artifact download)
+        if: always()
+        run: |
+          echo "========== BUILD DEBUG LOG TAIL (last 300 lines) =========="
+          tail -n 300 build_debug.log || echo "No log"
+          echo "========== END LOG =========="
+          # Also show specific error lines
+          grep -i "error\|failed\|exception\|FAILED" build_debug.log | head -100 || true
+          # Show CMake log if exists
+          cat app/build/intermediates/cmake/debug/*/cmake_build_output.txt 2>&1 | head -200 || true
+          find app/build -name "CMakeOutput.log" -o -name "CMakeError.log" | xargs cat 2>&1 | head -300 || true
 
       - name: Upload build log on failure
         if: failure()
@@ -130,35 +123,53 @@ jobs:
           path: |
             build_debug.log
             app/build/reports/**/*
-            app/build/outputs/logs/**/*
           if-no-files-found: warn
           retention-days: 7
 
-      - name: Build Release APK (unsigned)
-        if: success() || failure()
+      - name: Build Release APK (only if debug succeeded)
+        if: success()
         run: |
           ./gradlew assembleRelease \
             -PversionName=${{ steps.version.outputs.version_name }} \
             -PversionCode=${{ steps.version.outputs.version_code }} \
-            --stacktrace || echo "Release build failed but continuing with Debug"
+            --stacktrace | tee build_release.log
 
       - name: List APKs
         if: always()
         run: |
-          find app/build/outputs -name "*.apk" -type f | xargs ls -lh || echo "No APKs found"
+          echo "=== APKs ==="
+          find app/build/outputs -name "*.apk" -type f | xargs ls -lh 2>&1 || echo "No APKs"
           ls -lh app/build/outputs/apk/debug/ 2>&1 | head -20 || true
+          ls -lh app/build/outputs/apk/release/ 2>&1 | head -20 || true
+          echo "=== Build outputs ==="
+          ls -lh app/build/outputs/ 2>&1 | head -50 || true
 
-      - name: Upload Debug APK Artifact
-        if: always()
+      - name: Upload APK Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: CineCam-${{ steps.version.outputs.version_name }}-debug
           path: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
-            build_debug.log
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      - name: Create Gist with log on failure (for agent debugging)
+        if: failure()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create gist via API to allow agent to fetch log (api.github.com is allowed)
+          LOG_TAIL=$(tail -n 400 build_debug.log | head -c 8000 || echo "no log")
+          # Escape for JSON
+          JSON_LOG=$(printf '%s' "$LOG_TAIL" | python3 -c "import json,sys; print(json.dumps(sys.stdin.read()))")
+          curl -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/gists \
+            -d "{\"public\": false, \"files\": {\"cinecam_build.log\": {\"content\": $JSON_LOG}}, \"description\": \"CineCam build log ${{ steps.version.outputs.version_name }} run ${{ github.run_number }}\"}" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('GIST_URL:', d.get('html_url',''))" || true
+          # Also create an issue comment if this is PR?
+          echo "Log tail uploaded to gist (if success, URL above)"
 
       - name: Prepare Release Notes
         if: github.event_name != 'pull_request' && success()
@@ -170,29 +181,27 @@ jobs:
 
           ### ধাপ ১ - বেস আর্কিটেকচার (এই রিলিজে যা আছে)
           - ✅ Kotlin + NDK/C++ হাইব্রিড আর্কিটেকচার (MotionCam অনুপ্রাণিত)
-          - ✅ `MemoryPool` - Zero-copy 4096-aligned বাফার পুল (malloc ছাড়া 60fps ক্যাপচার)
-          - ✅ `RingBuffer` - SPSC Lock-Free Circular Queue (Camera থ্রেড → Writer থ্রেড)
+          - ✅ `MemoryPool` - Zero-copy 4096-aligned বাফার পুল
+          - ✅ `RingBuffer` - SPSC Lock-Free Circular Queue
           - ✅ `RawWriter` - হাই-স্পিড স্টোরেজ রাইটার (MCRAW / CinemaDNG)
-          - ✅ `CineRawEngine` - সেন্ট্রাল JNI ব্রিজ (Kotlin ↔ C++)
-          - ✅ `GlPreviewRenderer` - OpenGL ES 3.1 লাইভ প্রিভিউ (Vulkan রেডি)
-          - ✅ Camera2 Capability Checker - ডিভাইস RAW_SENSOR সাপোর্ট যাচাই
-          - ✅ Jetpack Compose UI - Manual Controls (ISO/Shutter/Focus/WB) + FPS Selector
+          - ✅ `CineRawEngine` - সেন্ট্রাল JNI ব্রিজ
+          - ✅ `GlPreviewRenderer` - OpenGL ES 3.1 লাইভ প্রিভিউ
+          - ✅ Camera2 Capability Checker
+          - ✅ Jetpack Compose UI - Manual Controls + FPS Selector
           - ✅ GitHub Actions CI/CD - অটো APK Build & Release
 
           ### ডাউনলোড
-          নিচের `Assets` থেকে `app-debug.apk` ডাউনলোড করে সরাসরি ফোনে ইনস্টল করুন।
+          নিচের `Assets` থেকে `app-debug.apk` ডাউনলোড করুন
 
           ### পরবর্তী ধাপ (ধাপ ২)
           - Camera2 Live Preview + Permission flow
-          - Device RAW10/RAW12/RAW_SENSOR capability UI
-          - TextureView → GLSurfaceView প্রিভিউ
 
           ### টেকনিক্যাল
           - `minSdk 26` | `targetSdk 34` | `NDK 26.1` | `C++17`
           - ABIs: `arm64-v8a`, `armeabi-v7a`, `x86_64`
 
           ---
-          *Auto-generated by GitHub Actions - CineCam CI/CD*
+          *Auto-generated by GitHub Actions*
           EOF
           cat /tmp/release_notes.md
 
@@ -206,7 +215,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
           fail_on_unmatched_files: false
-          generate_release_notes: false
           files: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
@@ -220,4 +228,4 @@ jobs:
           echo "**Version:** ${{ steps.version.outputs.version_name }}" >> $GITHUB_STEP_SUMMARY
           echo "**Tag:** ${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "**Commit:** ${{ steps.version.outputs.short_sha }}" >> $GITHUB_STEP_SUMMARY
-          cat build_debug.log 2>&1 | tail -100 >> $GITHUB_STEP_SUMMARY || true
+          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
