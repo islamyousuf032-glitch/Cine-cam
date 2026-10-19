@@ -45,12 +45,8 @@ android {
     buildTypes {
         getByName("debug") {
             isDebuggable = true
-            isJniDebuggable = true
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            packaging {
-                jniLibs.keepDebugSymbols.add("**/*.so")
-            }
         }
         getByName("release") {
             isMinifyEnabled = false
@@ -59,12 +55,6 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-        }
-        create("benchmark") {
-            initWith(getByName("release"))
-            isDebuggable = false
-            signingConfig = getByName("debug").signingConfig
-            matchingFallbacks += listOf("release")
         }
     }
 
