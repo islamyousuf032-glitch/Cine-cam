@@ -33,6 +33,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var pendingImage: Image? = null
     private var pendingResult: TotalCaptureResult? = null
     private var capturePending = false
+    private var captureSerial = 0L
     private var captureOrientation = 1
     private var timeout: Runnable? = null
     @Volatile private var released = false
@@ -64,7 +65,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     pendingImage = image
                                     matchAndSave(token)
                                 }
-                            } catch (e: Exception) { cancelCapture("RAW image: ${e.message}") }
+                            } catch (e: Exception) { if (token == generation) cancelCapture("RAW image: ${e.message}") }
                         }, handler)
                     }
                 }
@@ -176,12 +177,13 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             if (!saving.compareAndSet(false, true)) return@post
             onCaptureState(true)
             capturePending = true
+            val captureId = ++captureSerial
             val token = generation
             captureOrientation = CaptureRules.exifOrientation(
                 chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0, displayDegrees,
                 chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
             onStatus("RAW capture হচ্ছে…")
-            timeout = Runnable { if (token == generation && capturePending) cancelCapture("RAW/result timeout; আবার চেষ্টা করুন") }
+            timeout = Runnable { if (token == generation && captureId == captureSerial && capturePending) cancelCapture("RAW/result timeout; আবার চেষ্টা করুন") }
                 .also { handler.postDelayed(it, 8000) }
             try {
                 val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
@@ -189,12 +191,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }.build()
                 current.capture(request, object : CameraCaptureSession.CaptureCallback() {
                     override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
-                        if (token != generation || !capturePending) return
+                        if (token != generation || captureId != captureSerial || !capturePending) return
                         pendingResult = result
                         matchAndSave(token)
                     }
                     override fun onCaptureFailed(s: CameraCaptureSession, r: CaptureRequest, failure: CaptureFailure) {
-                        if (token == generation && capturePending) cancelCapture("RAW capture failed: ${failure.reason}")
+                        if (token == generation && captureId == captureSerial && capturePending) cancelCapture("RAW capture failed: ${failure.reason}")
                     }
                 }, handler)
             } catch (e: Exception) { cancelCapture("RAW capture: ${e.message}") }
@@ -228,6 +230,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     private fun cancelCapture(message: String? = null) {
+        captureSerial++ // A timed-out request must never complete/cancel a later still.
         timeout?.let { handler.removeCallbacks(it) }; timeout = null
         pendingImage?.close(); pendingImage = null; pendingResult = null
         if (capturePending) { capturePending = false; saving.set(false); onCaptureState(false) }
