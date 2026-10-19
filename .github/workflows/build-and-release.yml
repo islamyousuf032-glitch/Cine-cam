@@ -223,26 +223,44 @@ jobs:
       - name: Push diagnostic to repo (always, for agent via api.github.com)
         if: always()
         run: |
-          DIAG_B64=$(base64 -w 0 /tmp/diagnostic.txt 2>&1 | tr -d '\n')
-          # Get existing file sha if exists
-          SHA=$(gh api repos/${{ github.repository }}/contents/diagnostic.log --jq '.sha' 2>&1 | head -1 | tr -d '"' || echo "")
+          echo "=== Diagnostic push: creating ci-logs file ==="
+          ls -lh /tmp/diagnostic.txt 2>&1 | head -20 || true
+          cat /tmp/diagnostic.txt 2>&1 | head -100 || true
+          # Use gh to create/update file via API on ci-logs branch with proper ref
           python3 << 'PY'
-          import base64, json, os
-          with open("/tmp/diagnostic.txt","r",errors="ignore") as f:
-              content=f.read()
-          b64=base64.b64encode(content.encode()).decode()
-          open("/tmp/payload2.json","w").write(json.dumps({"message":"diagnostic run ${{ github.run_number }}","content":b64,"branch":"ci-logs"}))
+          import base64, json, os, subprocess
+          try:
+              with open("/tmp/diagnostic.txt","r",errors="ignore") as f:
+                  content=f.read()
+              b64=base64.b64encode(content.encode()).decode()
+              # Try to get existing sha on ci-logs branch
+              sha=""
+              try:
+                  out=subprocess.check_output(["gh","api","repos/${{ github.repository }}/contents/diagnostic.log?ref=ci-logs","--jq",".sha"], stderr=subprocess.DEVNULL).decode().strip().strip('"')
+                  sha=out
+                  print(f"Found existing sha: {sha}")
+              except:
+                  print("No existing file, creating new")
+              payload={"message":f"diagnostic run ${{ github.run_number }}","content":b64,"branch":"ci-logs"}
+              if sha:
+                  payload["sha"]=sha
+              open("/tmp/payload2.json","w").write(json.dumps(payload))
+              print("Payload written")
+          except Exception as e:
+              print(f"Python error: {e}")
           PY
-          # Try to update via API (will create branch if not exists)
-          gh api repos/${{ github.repository }}/contents/diagnostic.log --method PUT --input /tmp/payload2.json 2>&1 | head -20 || echo "API push failed, trying git"
-          # Fallback git
-          git config user.name "CineCam CI" 2>&1 | head
-          git config user.email "ci@cinecam.local" 2>&1 | head
-          git checkout -B ci-logs 2>&1 | head -5
-          cp /tmp/diagnostic.txt diagnostic.log 2>&1 | head
-          git add diagnostic.log 2>&1 | head
-          git commit -m "diagnostic run ${{ github.run_number }}" 2>&1 | head || true
-          git push origin ci-logs --force 2>&1 | head -20 || echo "git push failed"
+          cat /tmp/payload2.json 2>&1 | head -c 500
+          gh api repos/${{ github.repository }}/contents/diagnostic.log --method PUT --input /tmp/payload2.json 2>&1 | head -20 || echo "API push failed"
+          echo "API push attempted"
+
+      - name: Create diagnostic issue (always) for APK location visibility
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DIAG=$(cat /tmp/diagnostic.txt 2>&1 | head -n 80 | head -c 4000 || echo "no diag")
+          # Escape for gh issue create (it handles escaping)
+          gh issue create --title "Diagnostic run ${{ github.run_number }} - APK location" --body "Diagnostic:\n\`\`\`\n$DIAG\n\`\`\`\n\n[Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" --label "ci-failure" 2>&1 | head -20 || echo "issue create failed"
 
       - name: Upload APK Artifact
         if: always()
