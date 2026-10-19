@@ -22,6 +22,10 @@ Commit `bbc340b`, CI run `39270646957` সফল। Camera2 live preview integra
 - Manual controls ও DNG পরবর্তী ধাপ; custom C++ preview renderer এখনো integrated নয়।
 - ফোনে পরীক্ষার নির্দেশনা: `docs/GALAXY_F23_TEST_PLAN.md`।
 
+## ধাপ ৩ — DNG still ও manual controls পরীক্ষার build
+
+[v0.1.62-alpha-d62f4f8](https://github.com/islamyousuf032-glitch/Cine-cam/releases/tag/v0.1.62-alpha-d62f4f8): ISO/shutter/focus controls, matching sensor timestamps-সহ Android DngCreator export এবং Android 14-এ `DCIM/CineCam` MediaStore save। CI run `39274480939` সফল। ফোনে DNG decode যাচাই বাকি; WB Auto, Kelvin/focus peaking ও RAW video এখনো বাকি। পরীক্ষা: `docs/DNG_STILL_TEST_PLAN.md`।
+
 ## ডিরেক্টরি
 
 ```text

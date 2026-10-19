@@ -59,4 +59,14 @@ User-provided Galaxy F23 report:
 - ISO 20–3840, exposure 77100–647363350 ns। Sensor precision এখনো অজানা।
 - User screenshot-এ Camera 0-এর live preview দেখা যায়। Rotation/resume/stress pass বলা হয়নি।
 
-এই patch-এ platform DngCreator দিয়ে still export, timestamp pairing, manual ISO/shutter/focus, bounded worker ও MediaStore যুক্ত। Android metadata/session/storage integration Kotlin-এ; performance-critical video core C++-এই থাকবে। WB Auto, focus peaking ও video পরবর্তী কাজ। নতুন remote build ও ফোনে DNG decoder validation যাচাই বাকি।
+এই patch-এ platform DngCreator দিয়ে still export, timestamp pairing, manual ISO/shutter/focus, bounded worker ও MediaStore যুক্ত। Android metadata/session/storage integration Kotlin-এ; performance-critical video core C++-এই থাকবে। WB Auto, focus peaking ও video পরবর্তী কাজ। Remote run `39274480939` সফল: native tests, Android unit tests/build ও prerelease publishing। Release `v0.1.62-alpha-d62f4f8`, commit `d62f4f8`। ফোনে DNG capture/decoder validation বাকি।
+
+অতিরিক্ত fixes: optional focus local snapshot এবং request serial দিয়ে late callback isolation। পরবর্তী কাজ: ব্যবহারকারীর DNG test result, তারপর WB/focus peaking ও C++ video pipeline ownership audit।
+
+## Preview orientation patch
+
+- User confirms DNG capture/save ও manual controls কাজ করে।
+- User-uploaded screen recording `Screen_Recording_20261019_212605_CineCam RAW.mp4` পাওয়া গেছে main upload commit `eb8c5dd`-এ; duration 24.64s, HEVC 1080×2408।
+- Multiple extracted frames-এ portrait UI-তে sideways scene দেখা গেছে। TextureView producer-এর sensor orientation পুনরায় প্রয়োগ সরানো হয়েছে; EXIF path untouched।
+- Temporary video, frames এবং review tooling মুছে ফেলা হয়েছে। Git ইতিহাসে থাকা original blob বা main branch remote deletion দাবি করা হয়নি।
+- Geometry unit tests যোগ; নতুন CI ও physical-device confirmation বাকি।

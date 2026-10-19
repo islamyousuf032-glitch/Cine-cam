@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Preview orientation patch] — 2026-10-19
+- ব্যবহারকারীর 24.64-second screen recording-এর বিভিন্ন সময়ের frame পরীক্ষা: UI সোজা থাকলেও scene পাশ ফিরে আছে।
+- TextureView producer-এর rotation আবার প্রয়োগ করা বন্ধ; sensor orientation এখন natural content aspect ratio নির্ধারণ করে, display rotation আলাদাভাবে counter-rotate হয়।
+- DisplayListener দিয়ে 180° display change ও view size/control-panel layout পরিবর্তনে transform refresh।
+- Preview geometry regression tests: F23 portrait identity, reverse portrait, landscape, centering ও aspect ratio।
+- RAW/DNG capture ও EXIF orientation অপরিবর্তিত। Physical-device confirmation বাকি।
+- Review শেষে uploaded video ও extracted frames local workspace থেকে সরানো হয়েছে; Git history rewrite করা হয়নি।
+
 ## [Unreleased — Phase 3] — 2026-10-19
 - Galaxy F23-এর screenshot/report-এ Camera 0 preview ও RAW/manual support পাওয়া গেছে; rotation/resume/stress পরীক্ষা এখনো আলাদা।
 - Camera2 RAW_SENSOR ImageReader সহ still session, preview-only fallback এবং একবারে একটি capture।

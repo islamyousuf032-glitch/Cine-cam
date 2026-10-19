@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Matrix
+import android.hardware.display.DisplayManager
 import android.graphics.SurfaceTexture
 import android.net.Uri
 import android.provider.Settings
@@ -32,7 +33,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.cinecam.camera.CameraCapabilities
 import com.cinecam.camera.CameraController
 import com.cinecam.camera.RawSupportInfo
-import com.cinecam.camera.CameraRules
+import com.cinecam.camera.PreviewGeometry
 import com.cinecam.camera.ManualSettings
 import com.cinecam.camera.CaptureRules
 import kotlinx.coroutines.delay
@@ -82,6 +83,21 @@ fun CameraScreen() {
     val camera = remember(infos) { CameraCapabilities.pickBestRawCamera(infos) }
     var texture by remember { mutableStateOf<SurfaceTexture?>(null) }
     var view by remember { mutableStateOf<TextureView?>(null) }
+    var displayRotation by remember { mutableIntStateOf(Surface.ROTATION_0) }
+    DisposableEffect(view) {
+        val manager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        fun updateRotation() { displayRotation = view?.display?.rotation ?: Surface.ROTATION_0 }
+        val listener = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(id: Int) = Unit
+            override fun onDisplayRemoved(id: Int) = Unit
+            override fun onDisplayChanged(id: Int) {
+                if (id == view?.display?.displayId) updateRotation()
+            }
+        }
+        updateRotation()
+        manager.registerDisplayListener(listener, main)
+        onDispose { manager.unregisterDisplayListener(listener) }
+    }
     var width by remember { mutableIntStateOf(0) }
     var height by remember { mutableIntStateOf(0) }
     val size = camera?.previewSizes?.filter { it.width <= 1920 && it.height <= 1080 }
@@ -95,7 +111,7 @@ fun CameraScreen() {
         }
         onDispose { controller.close() }
     }
-    LaunchedEffect(width, height, size, camera, resumed) {
+    LaunchedEffect(width, height, size, camera, resumed, displayRotation) {
         val target = view
         if (target != null && size != null && camera != null && width > 0 && height > 0) {
             transformPreview(target, size, camera)
@@ -208,7 +224,7 @@ private fun ManualStillControls(info: RawSupportInfo, settings: ManualSettings, 
     }
 }
 
-/** Map the camera buffer to an aspect-fit, sensor-corrected TextureView, without stretching. */
+/** Correct producer-transformed content; never rotate by sensor orientation twice. */
 private fun transformPreview(view: TextureView, size: Size, camera: RawSupportInfo) {
     val displayDegrees = when (view.display?.rotation) {
         Surface.ROTATION_90 -> 90
@@ -216,23 +232,10 @@ private fun transformPreview(view: TextureView, size: Size, camera: RawSupportIn
         Surface.ROTATION_270 -> 270
         else -> 0
     }
-    val front = camera.facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT
-    val degrees = CameraRules.relativeRotation(camera.sensorOrientation, displayDegrees, front)
-    val angle = Math.toRadians(degrees.toDouble())
-    val cos = kotlin.math.cos(angle).toFloat()
-    val sin = kotlin.math.sin(angle).toFloat()
-    val rotatedWidth = if (degrees % 180 == 0) size.width else size.height
-    val rotatedHeight = if (degrees % 180 == 0) size.height else size.width
-    val scale = minOf(view.width.toFloat() / rotatedWidth, view.height.toFloat() / rotatedHeight)
-    val source = floatArrayOf(0f, 0f, view.width.toFloat(), 0f, view.width.toFloat(), view.height.toFloat(), 0f, view.height.toFloat())
-    val buffer = floatArrayOf(-size.width / 2f, -size.height / 2f, size.width / 2f, -size.height / 2f,
-        size.width / 2f, size.height / 2f, -size.width / 2f, size.height / 2f)
-    val destination = FloatArray(8)
-    for (i in 0..3) {
-        val x = buffer[i * 2] * cos - buffer[i * 2 + 1] * sin
-        val y = buffer[i * 2] * sin + buffer[i * 2 + 1] * cos
-        destination[i * 2] = view.width / 2f + x * scale * if (front) -1 else 1
-        destination[i * 2 + 1] = view.height / 2f + y * scale
-    }
+    val source = floatArrayOf(0f, 0f, view.width.toFloat(), 0f,
+        view.width.toFloat(), view.height.toFloat(), 0f, view.height.toFloat())
+    val destination = PreviewGeometry.corners(view.width, view.height, size.width, size.height,
+        camera.sensorOrientation, displayDegrees,
+        camera.facing == android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT)
     view.setTransform(Matrix().apply { setPolyToPoly(source, 0, destination, 0, 4) })
 }
