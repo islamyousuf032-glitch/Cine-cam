@@ -4,7 +4,7 @@ Android-এর জন্য Camera2 + Kotlin UI + C++17/NDK-ভিত্তি�
 
 ## বর্তমান অবস্থা
 
-আগের ব্রাঞ্চ থেকে Kotlin DSL, Compose UI, Camera2 controller, JNI, C++ buffer/writer/renderer-এর প্রাথমিক কোড এসেছে। **ফাইল থাকা মানেই ফিচার সম্পূর্ণ বা ফোনে পরীক্ষিত নয়।** পূর্ববর্তী `main` commit-এর সর্বশেষ GitHub Actions run ব্যর্থ ছিল। নতুন প্যাচের APK build এখনো যাচাই হয়নি।
+আগের ব্রাঞ্চ থেকে Kotlin DSL, Compose UI, Camera2 controller, JNI, C++ buffer/writer/renderer-এর প্রাথমিক কোড এসেছে। **ফাইল থাকা মানেই ফিচার সম্পূর্ণ বা ফোনে পরীক্ষিত নয়।** পূর্ববর্তী `main` commit-এর সর্বশেষ GitHub Actions run ব্যর্থ ছিল। নতুন patch `edf19e7`-এর remote run `39268140818` সফল: native tests, Android build এবং prerelease publishing সম্পন্ন। ফোনে কার্যকারিতা পরীক্ষা বাকি।
 
 এই প্যাচে:
 - CI-তে C++ sanitizer tests, debug/unsigned release build এবং diagnostic artifacts।
@@ -71,7 +71,7 @@ APK build:
 
 ## কাজের ক্রম
 
-1. **বেস ও CI স্থিতিশীল করা** — এই প্যাচ; remote build validation বাকি।
+1. **বেস ও CI স্থিতিশীল করা** — remote build validation সফল; physical-device validation বাকি।
 2. Permissions, lifecycle-safe Camera2 preview, capability report; ফোনে পরীক্ষা।
 3. ডিভাইসের সীমা অনুযায়ী manual controls ও metadata-সহ DNG still capture।
 4. C++ buffer ownership/backpressure, timestamp ও audio sync framework।

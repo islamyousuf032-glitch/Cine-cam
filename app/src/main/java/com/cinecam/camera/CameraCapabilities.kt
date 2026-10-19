@@ -29,10 +29,13 @@ data class RawSupportInfo(
     val exposureTimeRange: Range<Long>?,
     val availableApertures: FloatArray?,
     val focalLengths: FloatArray?,
-    val model: String
+    val model: String,
+    val sensorOrientation: Int,
+    val previewSizes: List<android.util.Size>,
+    val rawFrameDurations: List<Pair<android.util.Size, Long>>
 ) {
     val isCinemaReady: Boolean
-        get() = supportsRawSensor && hardwareLevel >= CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL
+        get() = CameraRules.cinemaReady(supportsRawSensor, supportsManualSensor, hardwareLevel)
 
     fun hardwareLevelString(): String = when (hardwareLevel) {
         CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY -> "LEGACY"
@@ -71,7 +74,7 @@ object CameraCapabilities {
             ?: CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY
 
         val caps = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: intArrayOf()
-        val supportsRaw = caps.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW)
+        val advertisesRaw = caps.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW)
         val supportsManualSensor = caps.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR)
         val supportsManualPost = caps.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING)
 
@@ -87,8 +90,8 @@ object CameraCapabilities {
             try {
                 val rawSizes = it.getOutputSizes(32) // RAW_SENSOR
                 maxRawSize = rawSizes?.maxByOrNull { s -> s.width * s.height }
-                supportsRaw10 = it.getOutputSizes(37) != null
-                supportsRaw12 = it.getOutputSizes(38) != null
+                supportsRaw10 = !it.getOutputSizes(37).isNullOrEmpty()
+                supportsRaw12 = !it.getOutputSizes(38).isNullOrEmpty()
             } catch (_: Exception) {
                 Log.w(TAG, "RAW format query failed for $cameraId")
             }
@@ -97,6 +100,7 @@ object CameraCapabilities {
         val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
             ?.toList() ?: emptyList()
 
+        val supportsRaw = advertisesRaw && maxRawSize != null
         val isoRange = chars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
         val exposureRange = chars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
         val apertures = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)
@@ -121,7 +125,12 @@ object CameraCapabilities {
             exposureTimeRange = exposureRange,
             availableApertures = apertures,
             focalLengths = focalLengths,
-            model = model
+            model = model,
+            sensorOrientation = chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
+            previewSizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java)?.toList() ?: emptyList(),
+            rawFrameDurations = (map?.getOutputSizes(32)?.toList() ?: emptyList()).map { size ->
+                size to (try { map?.getOutputMinFrameDuration(32, size) ?: 0L } catch (_: Exception) { 0L })
+            }
         )
     }
 
@@ -140,9 +149,27 @@ object CameraCapabilities {
         // Prefer back-facing FULL/LEVEL_3 with RAW
         return infos.filter { it.facing == CameraCharacteristics.LENS_FACING_BACK }
             .sortedWith(compareByDescending<RawSupportInfo> { it.supportsRawSensor }
-                .thenByDescending { it.hardwareLevel }
+                .thenByDescending { it.isCinemaReady }
                 .thenByDescending { it.maxRawSize?.let { s -> s.width * s.height } ?: 0 })
             .firstOrNull()
             ?: infos.firstOrNull()
     }
+    fun report(infos: List<RawSupportInfo>): String = buildString {
+        appendLine("CineCam capability report — ${Build.MANUFACTURER} ${Build.MODEL}")
+        appendLine("Android ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
+        infos.forEach { info ->
+            appendLine("\nCamera ${info.cameraId}: facing=${info.facing}, ${info.hardwareLevelString()}, orientation=${info.sensorOrientation}")
+            appendLine("RAW_SENSOR=${info.supportsRawSensor}, RAW10=${info.supportsRaw10}, RAW12=${info.supportsRaw12}")
+            appendLine("Manual sensor=${info.supportsManualSensor}, full manual=${info.supportsFullManual}")
+            appendLine("ISO=${info.isoRange}, exposure(ns)=${info.exposureTimeRange}")
+            appendLine("AE FPS ranges (not RAW FPS guarantee): ${info.availableFpsRanges}")
+            appendLine("Preview sizes: ${info.previewSizes.joinToString()}")
+            info.rawFrameDurations.forEach { (size, ns) ->
+                appendLine("RAW $size: minFrameDuration=${ns}ns; theoretical FPS=" +
+                    if (ns > 0) String.format(java.util.Locale.US, "%.1f", 1e9 / ns) else "unknown")
+            }
+        }
+        appendLine("\nAdvertised limits only; sustained recording and sensor bit depth require separate validation.")
+    }
+
 }

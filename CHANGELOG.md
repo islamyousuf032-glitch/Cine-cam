@@ -2,6 +2,17 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Phase 2] — 2026-10-19
+- বাস্তব Camera2 TextureView preview যুক্ত; sensor/display rotation ও aspect-fit transform।
+- Camera handler thread-এ open/session/close; generation token দিয়ে stale callbacks বাতিল; surface detach-এর পরে texture release।
+- Lifecycle pause-এ camera বন্ধ ও resume-এ reopen; permission retry/Settings path।
+- Preview-তে শুধু CAMERA permission; অপ্রয়োজনীয় audio/media/storage permissions সরানো।
+- আগের idle preview-তে 60-frame RAW pool allocation ও অসম্পূর্ণ recording controls সরানো; capture ভবিষ্যৎ ধাপে আসবে।
+- কপি করা যায় এমন capability report: প্রতি-camera RAW formats, sizes, minFrameDuration, ISO/exposure ও AE ranges।
+- Hardware enum numerical ranking ভুল ঠিক; LEGACY/EXTERNAL-কে FULL ধরে নেওয়া বন্ধ।
+- Camera rules unit tests এবং Galaxy F23 physical-device test plan যোগ।
+- এখনো physical-device preview/rotation/performance পরীক্ষা হয়নি।
+
 ## [Unreleased] — 2026-10-19
 ### ধাপ ১ পুনঃপরীক্ষা ও ভিত্তি মেরামত
 - ব্যর্থ build-এর পর Release তৈরি বন্ধ; tests → build → release dependency chain।
@@ -18,7 +29,8 @@
 ### যাচাই
 - স্থানীয় `./scripts/test-native.sh`: সফল।
 - স্থানীয় Android build: চালানো যায়নি (JDK/SDK অনুপস্থিত)।
-- নতুন workflow-এর remote run ও physical-device tests: বাকি।
+- নতুন workflow remote run `39268140818`: সফল; `v0.1.58-alpha-edf19e7` prerelease ও APK প্রকাশিত।
+- Physical-device tests: বাকি।
 
 > নিচের পুরোনো v0.1.0-alpha বিবরণ ঐতিহাসিক দাবি; যাচাইকৃত feature list নয়। বর্তমান সীমাবদ্ধতার জন্য README ও docs/ARCHITECTURE.md দেখুন।
 

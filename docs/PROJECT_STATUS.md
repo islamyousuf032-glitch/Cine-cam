@@ -7,7 +7,10 @@
 - ব্যবহারকারীর স্পষ্ট অনুমতি ছাড়া PR merge/close নয়।
 - প্রথম foundation patch commit `081820d` এই ব্রাঞ্চে push হয়েছে; merge/close করা হয়নি।
 - Remote run `39267934860`: native tests সফল; setup-android ধাপে ব্যর্থ। Android compilation শুরু হয়নি।
-- পরের patch-এ ubuntu-24.04 এবং runner-এর preinstalled SDK ব্যবহার করা হয়েছে; ফল যাচাই বাকি।
+- SDK patch `edf19e7`: ubuntu-24.04 ও preinstalled SDK ব্যবহার করে remote run `39268140818` সম্পূর্ণ সফল।
+- Native sanitizer tests, Android build/test/lint command এবং prerelease publishing সফল।
+- Release: `v0.1.58-alpha-edf19e7`; assets: `CineCam-debug.apk` (14,593,400 bytes), `SHA256SUMS.txt`।
+- ফোনে install, preview ও RAW capture পরীক্ষা এখনো হয়নি।
 - সম্পূর্ণ অ্যাপ বা ধাপ ১-এর APK build যাচাই সম্পন্ন বলা যাবে না।
 
 ## পরীক্ষা
@@ -19,7 +22,7 @@
 
 ## পরবর্তী কাজ
 
-1. ব্যবহারকারীর সম্মতিতে এই ব্রাঞ্চ push করে CI পরীক্ষা; build failure হলে প্রকৃত error অনুযায়ী ছোট patch। Merge নয়।
+1. CI foundation যাচাই সফল। পরের code patch-ও এই ব্রাঞ্চে push করতে হবে; merge নয়।
 2. CameraController ও CameraScreen lifecycle/permissions audit। RAW feature চালুর আগে preview স্থিতিশীল করা।
 3. ফোনের model, Android version, Camera2 capability report সংগ্রহ। RAW-capable rear camera ও supported stream combination নির্বাচন।
 4. C++ queue drop/clear ownership, engine stop/drain/release ordering, JNI bounds এবং writer error propagation ঠিক ও regression test যোগ।
@@ -28,7 +31,7 @@
 
 ## acceptance checklist
 
-- [ ] CI Android build ও lint সফল
+- [x] CI Android build/test/lint command সফল (বিদ্যমান Gradle config-এ lint abortOnError=false; এটি lint-error-free নিশ্চয়তা নয়)
 - [ ] Release APK download ও ফোনে install
 - [ ] Permission deny/grant, background/resume, rotation-এ preview নিরাপদ
 - [ ] বাস্তব RAW formats/resolutions/FPS report
@@ -37,3 +40,12 @@
 - [ ] recording stop/drain, storage-full ও dropped-frame report
 - [ ] long-record thermal/RAM/throughput পরীক্ষা
 - [ ] stable signing ও update-install পরীক্ষা
+
+## ধাপ ২ প্যাচ
+
+- ব্যবহারকারীর test device: Galaxy F23, 6GB RAM, Android 14, Snapdragon 750G; user-reported Camera2 LEVEL_3।
+- Camera2 preview, lifecycle/texture ownership, permission UI ও capability report যুক্ত।
+- Idle preview-তে native RAW engine initialize হয় না; false recording UI সরানো হয়েছে।
+- Unit tests: hardware capability classification ও rotation rules।
+- `docs/GALAXY_F23_TEST_PLAN.md` অনুসারে ফোনে পরীক্ষার ফল দরকার।
+- নতুন remote build: যাচাই চলছে; physical-device validation বাকি।
