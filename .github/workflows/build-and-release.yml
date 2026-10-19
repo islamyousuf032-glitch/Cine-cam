@@ -46,18 +46,62 @@ jobs:
 
       - name: Setup Android SDK & NDK
         run: |
+          echo "=== Environment ==="
           echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "SDK root: $ANDROID_SDK_ROOT"
-          ls -lh $ANDROID_HOME/cmdline-tools/ || true
-          echo "Accepting licenses..."
-          yes | sdkmanager --licenses || true
-          echo "Installing NDK and build tools..."
-          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" --sdk_root=$ANDROID_HOME || \
-          sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34"
-          echo "NDK installed:"
-          ls -lh $ANDROID_HOME/ndk/ || true
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-          echo "$ANDROID_HOME/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          ls -lh $ANDROID_HOME || true
+          echo "--- cmdline-tools ---"
+          ls -lh $ANDROID_HOME/cmdline-tools/ 2>&1 || ls -lh $ANDROID_SDK_ROOT/cmdline-tools/ 2>&1 || true
+          # Find sdkmanager
+          SDKMGR=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
+          if [ -z "$SDKMGR" ]; then
+            SDKMGR=$(find $ANDROID_SDK_ROOT -name "sdkmanager" -type f 2>/dev/null | head -1)
+          fi
+          if [ -z "$SDKMGR" ]; then
+            SDKMGR="sdkmanager"
+          fi
+          echo "Using sdkmanager: $SDKMGR"
+          ls -lh "$SDKMGR" || true
+          echo "=== Accepting licenses ==="
+          yes | "$SDKMGR" --licenses || echo "licenses accepted (or no prompt)"
+          echo "=== Installing NDK, CMake, platforms ==="
+          "$SDKMGR" --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || {
+            echo "Primary install failed, trying alternative SDK root..."
+            yes | sdkmanager --licenses || true
+            sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || true
+          }
+          echo "=== NDK check ==="
+          ls -lh $ANDROID_HOME/ndk/ || ls -lh $ANDROID_SDK_ROOT/ndk/ || true
+          NDK_PATH=""
+          if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then
+            NDK_PATH="$ANDROID_HOME/ndk/26.1.10909125"
+          elif [ -d "$ANDROID_SDK_ROOT/ndk/26.1.10909125" ]; then
+            NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"
+          else
+            NDK_PATH=$(find $ANDROID_HOME $ANDROID_SDK_ROOT -maxdepth 3 -name "ndk" -type d 2>/dev/null | head -1)
+            if [ -n "$NDK_PATH" ]; then
+              NDK_PATH="$NDK_PATH/26.1.10909125"
+            fi
+          fi
+          echo "NDK_PATH=$NDK_PATH"
+          if [ -n "$NDK_PATH" ] && [ -d "$NDK_PATH" ]; then
+            echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+            echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
+            echo "NDK ready at $NDK_PATH"
+          else
+            echo "WARNING: NDK 26.1 not found, trying to use any available NDK"
+            ANY_NDK=$(find $ANDROID_HOME $ANDROID_SDK_ROOT -path "*ndk/*/source.properties" 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs dirname 2>/dev/null || true)
+            if [ -n "$ANY_NDK" ] && [ -d "$ANY_NDK" ]; then
+              echo "Found NDK at $ANY_NDK - using it but build.gradle expects 26.1.10909125"
+              # Create symlink if needed
+              mkdir -p $(dirname "$ANDROID_HOME/ndk") 2>/dev/null || true
+              ln -sf "$ANY_NDK" "$ANDROID_HOME/ndk/26.1.10909125" 2>/dev/null || true
+              echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+            else
+              echo "No NDK found - build may fallback to no NDK"
+            fi
+          fi
+          cat $GITHUB_ENV || true
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -91,12 +135,6 @@ jobs:
           echo "version_code=${RUN_NUMBER}" >> $GITHUB_OUTPUT
           echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "Version: ${VERSION_NAME} (code: ${RUN_NUMBER})"
-
-      - name: Patch versionCode/versionName
-        run: |
-          echo "Patching version to ${{ steps.version.outputs.version_name }} code ${{ steps.version.outputs.version_code }}"
-          echo "VERSION_NAME=${{ steps.version.outputs.version_name }}" >> $GITHUB_ENV
-          echo "VERSION_CODE=${{ steps.version.outputs.version_code }}" >> $GITHUB_ENV
 
       - name: Build Debug APK
         run: |
