@@ -1,120 +1,81 @@
-# CineCam — Professional RAW Camera (MotionCam Alternative)
+# CineCam — Android RAW Camera (পরীক্ষামূলক)
 
-> **প্ল্যাটফর্ম:** Android (Kotlin + NDK/C++17) | **Preview:** Jetpack Compose + OpenGL ES 3.1 | **Engine:** Camera2 RAW_SENSOR
+Android-এর জন্য Camera2 + Kotlin UI + C++17/NDK-ভিত্তিক RAW camera তৈরির প্রকল্প। MotionCam-এর বিকল্প তৈরির লক্ষ্য আছে; বর্তমানে MotionCam-এর সমমানের কার্যকারিতা বা `.mcraw` compatibility দাবি করা হচ্ছে না।
 
-CineCam একটি প্রফেশনাল CinemaDNG / MCRAW ভিত্তিক RAW ক্যামেরা অ্যাপ — MotionCam-এর আর্কিটেকচার থেকে অনুপ্রাণিত, কিন্তু আধুনিক Kotlin DSL, NDK Ring Buffer এবং Zero-copy পাইপলাইন দিয়ে তৈরি।
+## বর্তমান অবস্থা
 
----
+আগের ব্রাঞ্চ থেকে Kotlin DSL, Compose UI, Camera2 controller, JNI, C++ buffer/writer/renderer-এর প্রাথমিক কোড এসেছে। **ফাইল থাকা মানেই ফিচার সম্পূর্ণ বা ফোনে পরীক্ষিত নয়।** পূর্ববর্তী `main` commit-এর সর্বশেষ GitHub Actions run ব্যর্থ ছিল। নতুন প্যাচের APK build এখনো যাচাই হয়নি।
 
-## ✨ বর্তমান অবস্থা — ধাপ ১ সম্পন্ন (v0.1.0-alpha)
+এই প্যাচে:
+- CI-তে C++ sanitizer tests, debug/unsigned release build এবং diagnostic artifacts।
+- সব build job সফল হওয়ার পরেই পরীক্ষামূলক GitHub Release।
+- CI থেকে অন্য ব্রাঞ্চে log push/force-push ও স্বয়ংক্রিয় issue তৈরি বাদ।
+- C++ memory pool validation, allocation failure ও duplicate release সুরক্ষা।
+- `RawFrame` move assignment যোগ; queue-তে move assignment ব্যবহার হলেও এটি আগে অনুপস্থিত ছিল।
 
-### ✅ এই রিলিজে যা আছে
-- **C++ Core Engine** — `MemoryPool`, `RingBuffer` (SPSC lock-free), `RawWriter`, `CineRawEngine` JNI ব্রিজ
-- **OpenGL ES 3.1 Preview Renderer** — Debayer + Tonemap shader (Vulkan রেডি)
-- **Kotlin Camera Layer** — `CameraController`, `CameraCapabilities` (RAW_SENSOR / RAW10/RAW12 যাচাই)
-- **Jetpack Compose UI** — Manual Controls (ISO, Shutter, Focus, WB), FPS Selector, Recording Button
-- **GitHub Actions CI/CD** — প্রতিটি push-এ অটোমেটিক APK build + GitHub Release
+## ডিরেক্টরি
 
----
-
-## 🏗️ প্রজেক্ট স্ট্রাকচার
-
-```
-Cine-cam/
-├── .github/workflows/build-and-release.yml   # CI/CD - অটো APK + Release
-├── app/
-│   ├── build.gradle.kts                      # Kotlin DSL + NDK + Compose
-│   ├── src/main/
-│   │   ├── AndroidManifest.xml
-│   │   ├── cpp/                              # ★ C++ বেশি (NATIVE CORE)
-│   │   │   ├── CMakeLists.txt
-│   │   │   ├── include/
-│   │   │   │   ├── cine_types.h              # FrameMetadata, RawFrame, Config
-│   │   │   │   ├── memory_pool.h             # Zero-copy buffer pool
-│   │   │   │   ├── ring_buffer.h             # SPSC lock-free queue
-│   │   │   │   ├── raw_writer.h              # High-speed disk writer
-│   │   │   │   ├── cinemadng_writer.h        # CinemaDNG sequence
-│   │   │   │   ├── cine_raw_engine.h         # Central engine
-│   │   │   │   └── gl_preview_renderer.h     # OpenGL preview
-│   │   │   └── src/
-│   │   │       ├── jni_bridge.cpp            # Kotlin ↔ C++ JNI
-│   │   │       ├── cine_raw_engine.cpp
-│   │   │       ├── memory_pool.cpp
-│   │   │       ├── ring_buffer.cpp
-│   │   │       ├── raw_writer.cpp
-│   │   │       ├── cinemadng_writer.cpp
-│   │   │       └── gl_preview_renderer.cpp
-│   │   ├── java/com/cinecam/
-│   │   │   ├── app/MainActivity.kt + CineCamApp.kt
-│   │   │   ├── camera/CameraController.kt
-│   │   │   ├── camera/CameraCapabilities.kt  # RAW checker
-│   │   │   ├── engine/NativeRawEngine.kt     # JNI wrapper
-│   │   │   ├── ui/screens/CameraScreen.kt
-│   │   │   ├── ui/components/ManualControls.kt
-│   │   │   └── ui/theme/Theme.kt
-│   │   └── res/
-│   └── proguard-rules.pro
-├── gradle/wrapper/
-├── docs/ARCHITECTURE.md
-└── README.md
+```text
+.github/workflows/build-and-release.yml  # পরীক্ষা → build → prerelease
+app/build.gradle.kts                    # Android + Compose + NDK configuration
+app/src/main/
+  AndroidManifest.xml
+  cpp/
+    CMakeLists.txt
+    include/                            # core types, pool, queue, writer, renderer
+    src/                                # C++ implementations এবং JNI
+  java/com/cinecam/
+    app/                                # Application, Activity
+    camera/                             # Camera2 এবং capability checker
+    engine/                             # Kotlin/JNI bridge
+    ui/                                 # Compose screens ও controls
+    util/                               # permission utilities
+  res/
+tests/native/                           # host C++ regression tests
+scripts/test-native.sh                  # ASan + UBSan test runner
+docs/ARCHITECTURE.md                     # সীমাবদ্ধতা ও architecture
+docs/PROJECT_STATUS.md                   # পরবর্তী কাজ ও যাচাইয়ের অবস্থা
+CHANGELOG.md
 ```
 
----
+## স্থানীয় পরীক্ষা
 
-## 🔧 লোকাল বিল্ড
+C++ core regression (Android SDK প্রয়োজন নেই):
 
 ```bash
-# Requirements: JDK 17, Android SDK 34, NDK 26.1.10909125, CMake 3.22.1
-./gradlew assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
+./scripts/test-native.sh
 ```
 
----
+প্রয়োজন: Linux, Bash, g++, pthread, AddressSanitizer ও UndefinedBehaviorSanitizer। এটি memory pool ও frame move semantics পরীক্ষা করে; পুরো camera pipeline নয়।
 
-## 🚀 GitHub Actions - অটোমেটিক রিলিজ
+APK build:
 
-প্রতিটি `main` বা `arena/*` ব্রাঞ্চে push করলে:
+```bash
+# JDK 17, Android SDK 34, NDK 26.1.10909125, CMake 3.22.1
+./gradlew testDebugUnitTest lintDebug assembleDebug assembleRelease
+```
 
-1. JDK 17 + Android SDK + NDK 26.1 সেটআপ
-2. `./gradlew assembleDebug` + `assembleRelease`
-3. `app-debug.apk` artifact upload (30 দিন)
-4. GitHub Release তৈরি — Tag: `v0.1.<run_number>-<short_sha>`
-5. Release Notes বাংলায় + APK Assets সংযুক্ত
+এই Arena পরিবেশে JDK/Android SDK নেই এবং Android dependency hosts-এ outbound access সীমিত; এখানে APK build সম্পন্ন হয়েছে বলে দাবি করা হচ্ছে না।
 
-**Releases পেজ থেকে সরাসরি APK ডাউনলোড করুন:** `https://github.com/islamyousuf032-glitch/Cine-cam/releases`
+## CI/CD ও APK
 
----
+`main`, `arena/**` push, `main` pull request ও manual dispatch-এ পরীক্ষা/build চলবে। `v*` tag push-ও সমর্থিত। Pull request থেকে Release হবে না। অন্য trigger-এ সব পরীক্ষা/build সফল হলে commit-নির্দিষ্ট alpha prerelease হবে। স্বয়ংক্রিয় branch merge/close নেই।
 
-## 🎯 রোডম্যাপ (ধাপে ধাপে)
+- ইনস্টলযোগ্য: `CineCam-debug.apk` (debug signed)।
+- `app-release-unsigned.apk`: Actions artifact; signing ছাড়া ইনস্টলযোগ্য নয়।
+- SHA256 checksum Release-এ থাকবে।
+- Debug key runner-ভেদে বদলাতে পারে; আগের debug APK-এর ওপর install না হলে uninstall প্রয়োজন হতে পারে। App-private data আগে সংরক্ষণ করুন। স্থায়ী signing key ও production release আলাদা কাজ।
+- Build log ও reports Actions artifacts-এ থাকবে, repository branch-এ নয়।
 
-| ধাপ | ফিচার | অবস্থা |
-|-----|--------|--------|
-| **ধাপ ১** | প্রজেক্ট ইনিশিয়ালাইজেশন, NDK বেস, CI/CD | ✅ **সম্পন্ন** |
-| ধাপ ২ | Permissions + Camera2 Live Preview + Capability Checker | 🔜 পরবর্তী |
-| ধাপ ৩ | Manual Controls (ISO/Shutter/Focus/WB) + Still RAW DNG | ⏳ |
-| ধাপ ৪ | NDK Ring Buffer + Audio-Video Sync Framework | ⏳ |
-| ধাপ ৫ | High-speed RAW Video Recording + Storage | ⏳ |
-| ধাপ ৬ | প্রথম Release APK যাচাই | ⏳ |
+[GitHub Releases](https://github.com/islamyousuf032-glitch/Cine-cam/releases)
 
----
+## কাজের ক্রম
 
-## 📸 টেক স্ট্যাক
+1. **বেস ও CI স্থিতিশীল করা** — এই প্যাচ; remote build validation বাকি।
+2. Permissions, lifecycle-safe Camera2 preview, capability report; ফোনে পরীক্ষা।
+3. ডিভাইসের সীমা অনুযায়ী manual controls ও metadata-সহ DNG still capture।
+4. C++ buffer ownership/backpressure, timestamp ও audio sync framework।
+5. পরীক্ষিত RAW video container, storage throughput, recovery এবং compression।
+6. স্থায়ী signing, APK install ও physical-device acceptance tests।
 
-- **Language:** Kotlin 1.9.22 + C++17 (NDK)
-- **UI:** Jetpack Compose (Material 3) + OpenGL ES 3.1 (→ Vulkan)
-- **Camera:** Camera2 API + NDK `AImageReader` (RAW_SENSOR 10/12/14-bit DNG)
-- **Build:** Gradle 8.7 + AGP 8.5.2 + Kotlin DSL
-- **Storage:** CinemaDNG sequence / Custom `.mcraw` (ZSTD lossless)
-- **CI:** GitHub Actions (JDK 17, NDK 26.1)
-
----
-
-## 📄 লাইসেন্স
-
-MIT — CineCam Team
-
----
-
-## 🙏 কৃতজ্ঞতা
-
-MotionCam-এর ওপেন-সোর্স আর্কিটেকচার থেকে অনুপ্রাণিত — আরও আধুনিক NDK পাইপলাইন ও Compose UI দিয়ে পুনর্নির্মিত।
+RAW_SENSOR, RAW10/RAW12 stream format, sensor bit depth এবং নির্দিষ্ট resolution-এ 24/30/60fps ভিন্ন বিষয়। ক্যামেরার advertised capabilities ও বাস্তব পরীক্ষা ছাড়া কোনোটি নিশ্চিত নয়।

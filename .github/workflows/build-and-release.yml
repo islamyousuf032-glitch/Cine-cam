@@ -2,316 +2,122 @@ name: CineCam - Build and Release APK
 
 on:
   push:
-    branches:
-      - main
-      - "arena/**"
-    tags:
-      - "v*"
+    branches: [main, "arena/**"]
+    tags: ["v*"]
   pull_request:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: cinecam-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 jobs:
+  native-tests:
+    name: C++ core tests (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ./scripts/test-native.sh
+
   build:
-    name: Build Debug & Release APK
+    name: Build Debug and unsigned Release
+    needs: native-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install pinned SDK and NDK
+        run: sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;26.1.10909125" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Version metadata
+        id: version
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="$REF_NAME"
+          else
+            VERSION="v0.1.${GITHUB_RUN_NUMBER}-alpha-${GITHUB_SHA:0:7}"
+          fi
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Build and test
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease \
+            "-PversionName=$VERSION" "-PversionCode=$GITHUB_RUN_NUMBER" \
+            --stacktrace 2>&1 | tee build.log
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build.log
+            app/build/reports/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: CineCam-APKs-${{ github.run_number }}
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          if-no-files-found: error
+          retention-days: 30
+    outputs:
+      version: ${{ steps.version.outputs.name }}
+
+  release:
+    name: Publish tested alpha APK
+    needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      issues: write
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-          cache: gradle
-
-      - name: Setup Android SDK & NDK
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          SDKMGR=$(find $ANDROID_HOME -name "sdkmanager" -type f 2>/dev/null | head -1)
-          if [ -z "$SDKMGR" ]; then SDKMGR=$(find $ANDROID_SDK_ROOT -name "sdkmanager" -type f 2>/dev/null | head -1); fi
-          if [ -z "$SDKMGR" ]; then SDKMGR="sdkmanager"; fi
-          echo "Using sdkmanager: $SDKMGR"
-          yes | "$SDKMGR" --licenses || true
-          "$SDKMGR" --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || {
-            yes | sdkmanager --licenses || true
-            sdkmanager --install "ndk;26.1.10909125" "cmake;3.22.1" "build-tools;34.0.0" "platforms;android-34" || true
-          }
-          ls -lh $ANDROID_HOME/ndk/ 2>&1 | head -20 || true
-          NDK_PATH=""
-          if [ -d "$ANDROID_HOME/ndk/26.1.10909125" ]; then NDK_PATH="$ANDROID_HOME/ndk/26.1.10909125"
-          elif [ -d "$ANDROID_SDK_ROOT/ndk/26.1.10909125" ]; then NDK_PATH="$ANDROID_SDK_ROOT/ndk/26.1.10909125"; fi
-          if [ -n "$NDK_PATH" ]; then
-            echo "ANDROID_NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
-            echo "$NDK_PATH/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-          else
-            ANY_NDK=$(find $ANDROID_HOME $ANDROID_SDK_ROOT -path "*ndk/*/source.properties" 2>/dev/null | head -1 | xargs dirname 2>/dev/null | xargs dirname 2>/dev/null || true)
-            if [ -n "$ANY_NDK" ]; then
-              mkdir -p $(dirname "$ANDROID_HOME/ndk") 2>/dev/null || true
-              ln -sf "$ANY_NDK" "$ANDROID_HOME/ndk/26.1.10909125" 2>/dev/null || true
-              echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
-            fi
-          fi
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: gradle-${{ runner.os }}-
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Diagnose Gradle Wrapper
-        run: |
-          java -version 2>&1 || echo "java not found"
-          echo "JAVA_HOME=$JAVA_HOME"
-          ls -lh gradle/wrapper/gradle-wrapper.jar || echo "wrapper jar missing"
-          cat gradle/wrapper/gradle-wrapper.properties
-          cat gradle.properties || true
-          ./gradlew --version 2>&1 | head -100 || echo "gradlew --version failed"
-
-      - name: Generate version
-        id: version
-        run: |
-          SHORT_SHA=$(git rev-parse --short HEAD)
-          RUN_NUMBER=${{ github.run_number }}
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            VERSION_NAME=${{ github.ref_name }}
-            VERSION_TAG=${{ github.ref_name }}
-          else
-            VERSION_NAME="v0.1.${RUN_NUMBER}-alpha"
-            VERSION_TAG="v0.1.${RUN_NUMBER}-${SHORT_SHA}"
-          fi
-          echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
-          echo "version_tag=${VERSION_TAG}" >> $GITHUB_OUTPUT
-          echo "version_code=${RUN_NUMBER}" >> $GITHUB_OUTPUT
-          echo "short_sha=${SHORT_SHA}" >> $GITHUB_OUTPUT
-          echo "Version: ${VERSION_NAME} (code: ${RUN_NUMBER})"
-
-      - name: Build Debug APK
-        id: build_debug
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew assembleDebug \
-            -PversionName=${{ steps.version.outputs.version_name }} \
-            -PversionCode=${{ steps.version.outputs.version_code }} \
-            --stacktrace 2>&1 | tee build_debug.log
-
-      - name: Print build log tail
-        if: always()
-        run: |
-          echo "========== BUILD LOG TAIL (400 lines) =========="
-          tail -n 400 build_debug.log 2>&1 | cat || echo "no log"
-          echo "========== GREP ERRORS =========="
-          grep -i "error\|FAILED\|exception\|e:" build_debug.log 2>&1 | head -n 200 || true
-
-      - name: Upload build log artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ steps.version.outputs.version_name }}
-          path: build_debug.log
-          if-no-files-found: warn
-          retention-days: 7
-
-      - name: Push log to branch for agent (api.github.com allowed)
-        if: failure()
-        run: |
-          git config user.name "CineCam CI"
-          git config user.email "ci@cinecam.local"
-          # Create or update ci-logs branch with log
-          LOG_B64=$(base64 -w 0 build_debug.log 2>&1 | head -c 80000 || echo "nlog")
-          # Use API to create file in ci-logs branch
-          SHA=$(gh api repos/${{ github.repository }}/contents/ci-build.log --jq '.sha' 2>&1 | tr -d '"' || echo "")
-          # Build JSON via python for safety
-          python3 << 'PY'
-          import os, base64, json
-          log_path = "build_debug.log"
-          try:
-              with open(log_path, 'r', errors='ignore') as f:
-                  content = f.read()
-                  tail = content[-12000:]  # last 12k chars
-          except:
-              tail = "no log"
-          import subprocess, base64
-          b64 = base64.b64encode(tail.encode()).decode()
-          # Get SHA if exists
-          import subprocess as sp
-          try:
-              out = sp.check_output(["gh", "api", "repos/${{ github.repository }}/contents/ci-build.log", "--jq", ".sha"], stderr=sp.DEVNULL).decode().strip()
-              sha = out.strip().strip('"')
-          except:
-              sha = ""
-          import requests, os
-          # Use gh api to create/update file
-          import json as js
-          data = {"message": "CI log for run ${{ github.run_number }}", "content": b64, "branch": "ci-logs"}
-          if sha:
-              data["sha"] = sha
-          # Write to temp json
-          open("/tmp/payload.json","w").write(js.dumps(data))
-          PY
-          cat /tmp/payload.json | head -c 500
-          gh api repos/${{ github.repository }}/contents/ci-build.log --method PUT --input /tmp/payload.json 2>&1 | head -100 || echo "push log via API failed, trying git push"
-          # Fallback: git push to ci-logs branch
-          echo "$LOG_B64" | base64 -d > /tmp/ci-log.txt 2>&1 | head
-          git checkout -B ci-logs 2>&1 | head
-          cp build_debug.log ci-build.log 2>&1 | head
-          git add ci-build.log 2>&1 | head
-          git commit -m "CI log run ${{ github.run_number }}" 2>&1 | head || true
-          git push origin ci-logs --force 2>&1 | head -20 || echo "git push failed"
-
-      - name: Create Issue with log
-        if: failure()
+          name: CineCam-APKs-${{ github.run_number }}
+          path: apk
+      - name: Prepare APK and notes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          # Simple issue via gh CLI (more robust than curl)
-          LOG_TAIL=$(tail -n 150 build_debug.log 2>&1 | head -c 6000 || echo "no log")
-          ERR_LINES=$(grep -i "error\|FAILED" build_debug.log 2>&1 | head -n 30 | head -c 3000 || echo "no errors")
-          gh issue create --title "CineCam build failed run ${{ github.run_number }} - ${{ steps.version.outputs.version_name }}" \
-            --body "**Error:**\n\`\`\`\n$ERR_LINES\n\`\`\`\n\n**Tail:**\n\`\`\`\n$LOG_TAIL\n\`\`\`\n\n[Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
-            --label "ci-failure" 2>&1 | head -20 || echo "gh issue create failed"
-
-      - name: Build Release APK (only if debug succeeded)
-        if: success()
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew assembleRelease \
-            -PversionName=${{ steps.version.outputs.version_name }} \
-            -PversionCode=${{ steps.version.outputs.version_code }} \
-            --stacktrace 2>&1 | tee build_release.log
-
-      - name: List APKs & Outputs
-        if: always()
-        run: |
-          echo "=== FIND APKs ==="
-          find app -name "*.apk" -type f 2>&1 | head -50 || echo "No APKs via find app"
-          find app/build -type f -name "*.apk" 2>&1 | xargs ls -lh 2>&1 || echo "No APKs in app/build"
-          find . -maxdepth 4 -name "*.apk" 2>&1 | head -20 || true
-          echo "=== LS app/build/outputs ==="
-          ls -R app/build/outputs 2>&1 | head -100 || echo "no outputs dir"
-          ls -R app/build 2>&1 | head -200 || true
-          echo "=== APK via ls ==="
-          ls -lh app/build/outputs/apk/debug/ 2>&1 || true
-          ls -lh app/build/outputs/apk/release/ 2>&1 || true
-          echo "=== Check build log for APK ==="
-          grep -i "apk\|assemble" build_debug.log 2>&1 | tail -50 || true
-          cat build_debug.log 2>&1 | tail -n 5 | head -20 || true
-          # Save diagnostic for agent
+          mkdir -p release
+          cp apk/debug/app-debug.apk release/CineCam-debug.apk
+          (cd release && sha256sum CineCam-debug.apk > SHA256SUMS.txt)
           {
-            echo "=== APK FIND ==="
-            find app -name "*.apk" -type f 2>&1 | head -100
-            echo "=== BUILD OUTPUTS ==="
-            ls -R app/build/outputs 2>&1 | head -200
-            echo "=== LOG TAIL ==="
-            tail -n 100 build_debug.log 2>&1 | tail -c 8000
-          } > /tmp/diagnostic.txt
-          cat /tmp/diagnostic.txt | head -100
-
-      - name: Push diagnostic to repo (always, for agent via api.github.com)
-        if: always()
-        run: |
-          echo "=== Diagnostic push: creating ci-logs file ==="
-          ls -lh /tmp/diagnostic.txt 2>&1 | head -20 || true
-          cat /tmp/diagnostic.txt 2>&1 | head -100 || true
-          # Use gh to create/update file via API on ci-logs branch with proper ref
-          python3 << 'PY'
-          import base64, json, os, subprocess
-          try:
-              with open("/tmp/diagnostic.txt","r",errors="ignore") as f:
-                  content=f.read()
-              b64=base64.b64encode(content.encode()).decode()
-              # Try to get existing sha on ci-logs branch
-              sha=""
-              try:
-                  out=subprocess.check_output(["gh","api","repos/${{ github.repository }}/contents/diagnostic.log?ref=ci-logs","--jq",".sha"], stderr=subprocess.DEVNULL).decode().strip().strip('"')
-                  sha=out
-                  print(f"Found existing sha: {sha}")
-              except:
-                  print("No existing file, creating new")
-              payload={"message":f"diagnostic run ${{ github.run_number }}","content":b64,"branch":"ci-logs"}
-              if sha:
-                  payload["sha"]=sha
-              open("/tmp/payload2.json","w").write(json.dumps(payload))
-              print("Payload written")
-          except Exception as e:
-              print(f"Python error: {e}")
-          PY
-          cat /tmp/payload2.json 2>&1 | head -c 500
-          gh api repos/${{ github.repository }}/contents/diagnostic.log --method PUT --input /tmp/payload2.json 2>&1 | head -20 || echo "API push failed"
-          echo "API push attempted"
-
-      - name: Create diagnostic issue (always) for APK location visibility
-        if: always()
+            echo "## CineCam $VERSION"
+            echo
+            echo 'পরীক্ষামূলক alpha build; ফোনে RAW recording/performance এখনো যাচাই হয়নি।'
+            echo 'ইনস্টল করার জন্য CineCam-debug.apk ব্যবহার করুন; এটি debug key দিয়ে signed।'
+            echo 'unsigned release APK শুধু Actions artifact-এ আছে; সরাসরি ইনস্টলযোগ্য নয়।'
+            echo 'CI-এর debug key প্রতি runner-এ বদলাতে পারে; আপডেটে পুরোনো debug অ্যাপ আনইনস্টল লাগতে পারে।'
+            echo
+            echo "Commit: $GITHUB_SHA"
+            echo "বিল্ড: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            cat CHANGELOG.md
+          } > release/notes.md
+      - name: Publish prerelease (never merge branches)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
-          DIAG=$(cat /tmp/diagnostic.txt 2>&1 | head -n 80 | head -c 4000 || echo "no diag")
-          # Escape for gh issue create (it handles escaping)
-          gh issue create --title "Diagnostic run ${{ github.run_number }} - APK location" --body "Diagnostic:\n\`\`\`\n$DIAG\n\`\`\`\n\n[Run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" --label "ci-failure" 2>&1 | head -20 || echo "issue create failed"
-
-      - name: Upload APK Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: CineCam-${{ steps.version.outputs.version_name }}-debug
-          path: |
-            **/*.apk
-            **/*.aab
-            build_debug.log
-            build_release.log
-          retention-days: 30
-          if-no-files-found: warn
-
-      - name: Prepare Release Notes
-        if: github.event_name != 'pull_request' && success()
-        run: |
-          cat > /tmp/release_notes.md << 'EOF'
-          ## CineCam ${{ steps.version.outputs.version_name }} - Professional RAW Camera
-          **Build:** `${{ steps.version.outputs.short_sha }}` | **Run:** `#${{ github.run_number }}`
-          ### ধাপ ১ - বেস আর্কিটেকচার
-          - ✅ Kotlin + NDK/C++ হাইব্রিড
-          - ✅ MemoryPool, RingBuffer, RawWriter, CineRawEngine
-          ### ডাউনলোড
-          `app-debug.apk` ডাউনলোড করুন
-          EOF
-          cat /tmp/release_notes.md
-
-      - name: Create GitHub Release
-        if: github.event_name != 'pull_request' && always()
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.version_tag }}
-          name: CineCam ${{ steps.version.outputs.version_name }}
-          body_path: /tmp/release_notes.md
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.version_name, 'alpha') }}
-          fail_on_unmatched_files: false
-          generate_release_notes: false
-          files: |
-            **/*.apk
-            build_debug.log
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Summary
-        if: always()
-        run: |
-          echo "### CineCam Build" >> $GITHUB_STEP_SUMMARY
-          echo "**Version:** ${{ steps.version.outputs.version_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          gh release create "$VERSION" --target "$GITHUB_SHA" \
+            --title "CineCam $VERSION" --prerelease --notes-file release/notes.md \
+            release/CineCam-debug.apk release/SHA256SUMS.txt

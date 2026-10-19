@@ -1,15 +1,15 @@
 #pragma once
 /**
  * CineCam Memory Pool - Zero-copy RAW frame buffer management
- * Inspired by MotionCam's lock-free pooling
+ * Fixed-capacity pooling
  *
  * Design:
  * - Pre-allocated fixed-size buffers (page-aligned, 4096)
- * - Lock-free acquire/release via atomic stack
+ * - Mutex-protected acquire/release via free stack
  * - No malloc in hot path (capture @ 60fps)
  */
 
-#include "cine_types.h"
+#include <cstddef>
 #include <atomic>
 #include <vector>
 #include <memory>
@@ -62,6 +62,7 @@ private:
     std::vector<uint8_t*> buffers_;
     // Free stack (LIFO)
     std::vector<int32_t> freeStack_;
+    std::vector<bool> inUse_;
     mutable std::mutex mutex_;
 
     // Stats (atomic for lock-free reads)

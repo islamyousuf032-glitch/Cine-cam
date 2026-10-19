@@ -2,6 +2,24 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased] — 2026-10-19
+### ধাপ ১ পুনঃপরীক্ষা ও ভিত্তি মেরামত
+- ব্যর্থ build-এর পর Release তৈরি বন্ধ; tests → build → release dependency chain।
+- SDK/NDK install ব্যর্থতা আর লুকানো হবে না; pinned SDK/NDK ব্যবহার।
+- diagnostic branch push/force-push ও automatic issue spam সরানো হয়েছে।
+- debug-signed APK ও unsigned release APK আলাদাভাবে চিহ্নিত; Release-এ শুধু installable debug APK এবং SHA256।
+- C++ MemoryPool: invalid dimensions/overflow reject, allocation failure-এ cleanup, double release প্রতিরোধ।
+- RawFrame move assignment যোগ এবং moved-from slot reset; আগের queue assignment-এর compile blocker ঠিক।
+- Linux host native tests: alignment, exhaustion, invalid input, duplicate release, multithreaded reuse, frame moves; ASan/UBSan সহ।
+- README ও architecture-এ বাস্তব অবস্থা লেখা হয়েছে: lock-free, end-to-end zero-copy, ZSTD এবং device-verified recording দাবি প্রত্যাহার।
+
+### যাচাই
+- স্থানীয় `./scripts/test-native.sh`: সফল।
+- স্থানীয় Android build: চালানো যায়নি (JDK/SDK অনুপস্থিত)।
+- নতুন workflow-এর remote run ও physical-device tests: বাকি।
+
+> নিচের পুরোনো v0.1.0-alpha বিবরণ ঐতিহাসিক দাবি; যাচাইকৃত feature list নয়। বর্তমান সীমাবদ্ধতার জন্য README ও docs/ARCHITECTURE.md দেখুন।
+
 ## [v0.1.0-alpha] - 2026-10-19
 ### ধাপ ১ — প্রজেক্ট ইনিশিয়ালাইজেশন ও বেস আর্কিটেকচার
 #### ✨ নতুন ফিচার

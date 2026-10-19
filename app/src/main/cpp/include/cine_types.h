@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <array>
 #include <string>
+#include <utility>
 
 namespace cinecam {
 
@@ -77,13 +78,21 @@ struct RawFrame {
     RawFrame(const RawFrame&) = delete;
     RawFrame& operator=(const RawFrame&) = delete;
     RawFrame(RawFrame&& other) noexcept {
+        *this = std::move(other);
+    }
+    // Non-owning view: the pipeline must release any previous pool slot first.
+    RawFrame& operator=(RawFrame&& other) noexcept {
+        if (this == &other) return *this;
         data = other.data;
         sizeBytes = other.sizeBytes;
         metadata = other.metadata;
         poolSlotIndex = other.poolSlotIndex;
         isValid = other.isValid;
         other.data = nullptr;
+        other.sizeBytes = 0;
+        other.poolSlotIndex = -1;
         other.isValid = false;
+        return *this;
     }
 };
 

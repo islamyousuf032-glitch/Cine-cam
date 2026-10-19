@@ -1,10 +1,10 @@
 #pragma once
 /**
- * CineCam Ring Buffer - SPSC Lock-Free Circular Queue for RAW frames
+ * CineCam Ring Buffer - Mutex-Protected Circular Queue for RAW frames
  *
  * MotionCam Architecture:
  * - Single Producer (Camera2 callback thread) -> Single Consumer (Writer thread)
- * - Wait-free push/pop using atomics & sequence numbers (like LMAX Disruptor)
+ * - Mutex-protected push/pop; condition-variable wait for consumer
  * - Zero-copy: only indices/metadata are copied, pixel data stays in MemoryPool
  * - Overflow policy: drop oldest (configurable) or drop newest
  */
@@ -68,7 +68,7 @@ public:
 private:
     struct Slot {
         RawFrame frame;
-        std::atomic<uint64_t> sequence{0}; // For sequence-based lock-free
+        std::atomic<uint64_t> sequence{0}; // Reserved; not used for synchronization
         bool occupied = false;
     };
 
