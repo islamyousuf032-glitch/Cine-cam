@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — File reservation / finalization timing] — 2026-10-20
+- F23 v69: দুই mode-এ 8/8 exact timestamp pairs, no unmatched; Burst 6/8 written, 2 poolExhausted, Paced 8/8। Native copy max ~15.5/12.4ms; write/finalization stalls এখনও বড়।
+- Warning dialog-এ separate file-space reserve switch (default ON); capture-এর আগে `posix_fallocate` দিয়ে bounded native frame budget-এর file space reserve। OFF রাখলে আগের allocation path দিয়ে A/B করা যায়।
+- Unsupported allocation APIs/filesystems-এ fallback; ENOSPC ও অন্য genuine errors-এ start fail, নীরবে উপেক্ষা নয়। Reserve startup নিজে slow হতে পারে; background storage traffic/flush/scheduling ঠিক করার guarantee নয়।
+- সফল finalize-এ unused reservation `ftruncate` করে exact EOF, তারপর fsync/close/rename। Frame সংখ্যা কম হলে file ছোটই হবে। Partial preallocated file-এ zero tail থাকতে পারে; complete/valid capture বলা যাবে না।
+- Allocation/error/reserved bytes, max write-call time/count, truncate/close/rename timings report-এ যোগ; fsync EINTR হলে retry, close EINTR-এ unsafe retry নয়।
+- Native reserve/plain byte equality, exact-EOF, zero-frame, ENOSPC, unsupported fallback, EINTR এবং independent Python reader tests। Hardware CRC, pool3, capture limits, pairing policy, DNG/preview অপরিবর্তিত। নতুন device comparison pending।
+
 ## [Unreleased — Bounded pairing / buffer warm-up] — 2026-10-20
 - F23 v68 hardware CRC verified by report (~7ms/written frame); Burst worsened to 3/8 written: 3 poolExhausted rejects + 2 unmatched images/pending results। Paced still 8/8, fsync ~3.29s। Full summary `docs/device-tests/F23-v68-summary.md`।
 - Image acquisition এখন <=2 held Images হলে pause/resume করে; আগে তৃতীয় Image নেওয়ার পরে oldest Image বন্ধ করা হতো। Exact timestamp join অপরিবর্তিত, no nearest-timestamp guessing, no extra RAW copy/buffer।

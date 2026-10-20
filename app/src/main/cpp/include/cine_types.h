@@ -109,6 +109,7 @@ struct RecordingConfig {
     RawFormat format = RawFormat::RAW_SENSOR;
     std::string outputPath;           // e.g., /storage/emulated/0/DCIM/CineCam/session_001
     std::string container = "mcraw";  // "mcraw" | "cinemadng"
+    bool preallocateCcraw = false;
     bool enableZstd = false;
     int32_t zstdLevel = 3;            // 1-22, 3 is good tradeoff
     bool enableAudio = false;

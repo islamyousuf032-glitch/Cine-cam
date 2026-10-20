@@ -1,6 +1,7 @@
 #include "ccraw_writer.h"
 #include "pipeline_timing.h"
 #include <array>
+#include <algorithm>
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
@@ -45,7 +46,8 @@ uint32_t ccrawCrc32Portable(const uint8_t* p, size_t size) {
 }
 CcrawWriter::Timings CcrawWriter::timings() const {
     return {crcNs_.load(), writeNs_.load(), fsyncNs_.load(), appendNs_.load(),
-            maxAppendNs_.load(), finalizeNs_.load(), payloadBytes_.load()};
+            maxAppendNs_.load(), finalizeNs_.load(), payloadBytes_.load(), allocationNs_.load(), reservedBytes_.load(),
+            truncateNs_.load(), closeNs_.load(), renameNs_.load(), writeCalls_.load(), maxWriteNs_.load(), allocationError_.load()};
 }
 CcrawWriter::~CcrawWriter() { if (fd_ >= 0) ::close(fd_); }
 bool CcrawWriter::writeAll(const void* data, size_t size) {
@@ -54,15 +56,18 @@ bool CcrawWriter::writeAll(const void* data, size_t size) {
         const auto begin = pipelineNowNs();
         const auto n = ::write(fd_, p, size);
         const auto writeErrno = errno;
-        writeNs_.fetch_add(pipelineNowNs() - begin);
+        const auto elapsed = pipelineNowNs() - begin;
+        writeNs_.fetch_add(elapsed); writeCalls_.fetch_add(1);
+        if (elapsed > maxWriteNs_.load()) maxWriteNs_.store(elapsed);
         errno = writeErrno;
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { failed_ = true; error_ = "CCRAW write failed (errno=" + std::to_string(errno) + ")"; return false; }
+        fileOffset_ += static_cast<uint64_t>(n);
         p += n; size -= static_cast<size_t>(n);
     }
     return true;
 }
-bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t height, int64_t epoch) {
+bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t height, int64_t epoch, bool preallocate) {
     if (fd_ >= 0 || width == 0 || height == 0 || width > 16384 || height > 16384 || epoch < 0 ||
         uint64_t(width) * height * 2 > 256ULL * 1024 * 1024) { error_ = "Invalid CCRAW configuration"; return false; }
     partial_ = directory + "/capture.ccraw.partial";
@@ -73,6 +78,25 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
     if (fd_ < 0) { error_ = "Cannot exclusively create CCRAW partial"; return false; }
     crcNs_.store(0); writeNs_.store(0); fsyncNs_.store(0);
     appendNs_.store(0); maxAppendNs_.store(0); finalizeNs_.store(0); payloadBytes_.store(0);
+    allocationNs_.store(0); reservedBytes_.store(0); allocationError_.store(0);
+    truncateNs_.store(0); closeNs_.store(0); renameNs_.store(0); writeCalls_.store(0); maxWriteNs_.store(0);
+    fileOffset_ = 0; preallocated_ = false; error_.clear();
+    if (preallocate) {
+        const uint64_t frameBytes = uint64_t(width) * height * 2;
+        const uint64_t frames = std::min<uint64_t>(8, (256ULL * 1024 * 1024) / frameBytes);
+        const int64_t reserve = static_cast<int64_t>(64 + frames * (96 + frameBytes) + 32);
+        const auto begin = pipelineNowNs();
+        int result;
+        do { result = allocator_ ? allocator_(fd_, reserve) : ::posix_fallocate(fd_, 0, static_cast<off_t>(reserve)); }
+        while (result == EINTR);
+        allocationNs_.store(pipelineNowNs() - begin); allocationError_.store(result);
+        if (result == 0) { preallocated_ = true; reservedBytes_.store(reserve); }
+        else if (result != EOPNOTSUPP && result != ENOSYS && result != EINVAL) {
+            error_ = "CCRAW preallocation failed (errno=" + std::to_string(result) + ")";
+            ::close(fd_); fd_ = -1;
+            return false; // ENOSPC/permission/I/O errors are not silently ignored.
+        }
+    }
     width_ = width; height_ = height; epoch_ = epoch;
     count_ = 0; payload_ = 0; lastTimestamp_ = -1; failed_ = false;
     std::array<uint8_t, 64> h{};
@@ -127,15 +151,30 @@ bool CcrawWriter::finish() {
         put32(footer.data() + 24, ccrawCrc32(footer.data(), 24));
         ok = writeAll(footer.data(), footer.size());
     }
+    if (ok && preallocated_) {
+        const auto truncateBegin = pipelineNowNs();
+        int result;
+        do { result = ::ftruncate(fd_, static_cast<off_t>(fileOffset_)); } while (result != 0 && errno == EINTR);
+        truncateNs_.store(pipelineNowNs() - truncateBegin);
+        if (result != 0) { error_ = "CCRAW truncate failed"; ok = false; }
+    }
     if (ok) {
         const auto syncBegin = pipelineNowNs();
-        const auto result = ::fsync(fd_);
+        int result;
+        do { result = ::fsync(fd_); } while (result != 0 && errno == EINTR);
         fsyncNs_.fetch_add(pipelineNowNs() - syncBegin);
         if (result != 0) { error_ = "CCRAW fsync failed"; ok = false; }
     }
+    const auto closeBegin = pipelineNowNs();
     if (::close(fd_) != 0) { error_ = "CCRAW close failed"; ok = false; }
+    closeNs_.store(pipelineNowNs() - closeBegin);
     fd_ = -1;
-    if (ok && ::rename(partial_.c_str(), final_.c_str()) != 0) { error_ = "CCRAW finalize rename failed"; ok = false; }
+    if (ok) {
+        const auto renameBegin = pipelineNowNs();
+        const auto result = ::rename(partial_.c_str(), final_.c_str());
+        renameNs_.store(pipelineNowNs() - renameBegin);
+        if (result != 0) { error_ = "CCRAW finalize rename failed"; ok = false; }
+    }
     finalizeNs_.store(pipelineNowNs() - finishBegin);
     return ok;
 }

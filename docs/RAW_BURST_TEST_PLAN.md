@@ -63,3 +63,16 @@ Burst OFF/ON comparison একইভাবে করুন (Paced OFF = Burst)�
 `native.poolPreTouchNs` হলো আগে থেকেই বরাদ্দ 3টি native buffer-এর pages capture শুরুর আগে স্পর্শ করার সময়। `captureWindowNs`-এ এই setup আছে; rowCopyNs-এ নেই। Allocated bytes বাড়ে না, কিন্তু physical resident pages আগে materialize হয়। OS reclaim করতে পারে; warm-up মানেই first-copy latency কমবেই নয়।
 
 লক্ষ্য: আগে 2টি unmatched pair হওয়া repeat হয় কি না, exact timestamp arrays মেলে কি না, first-copy max ও Burst written count কেমন বদলায়। fsync বাদ দেওয়া হয়নি; finalizing কয়েক সেকেন্ড থাকতে পারে। 8 frames হলেও sustained30fps নয়।
+
+## File reservation A/B পরীক্ষা
+
+নতুন warning dialog-এ দুটি আলাদা switch। এই তুলনায় **Paced OFF** রাখুন:
+1. **আগে file space reserve ON** → Burst test → report।
+2. কয়েক সেকেন্ড বিশ্রাম দিয়ে **আগে file space reserve OFF** → Burst test → দ্বিতীয় report।
+ঐচ্ছিক Paced ON + reserve ON run দিয়ে full8-frame regression দেখুন। একই scene/exposure/power/thermal conditions যতটা সম্ভব রাখুন। 650MiB free-space guard অপরিবর্তিত।
+
+`preallocationRequested` user choice। `native.writerTimings.reservedBytes>0` মানে reservation successful; `allocationError` errno-style result। Unsupported (EINVAL/ENOSYS/EOPNOTSUPP)-এ zero reservation ও regular writes; ENOSPC/other genuine error-এ start fail। `allocationNs` capture setup-এর অংশ, 12s capture deadline বা OS operation-এর total timeout নয়। Reserve setup-ও ধীর হতে পারে; pool/pre-touch/camera একই থাকে।
+
+`maxWriteNs/writeCalls` write syscall-এর max elapsed/count (partial write/EINTR attempts included); `truncateNs/closeNs/renameNs` আলাদা finalize phase। These overlap enclosing finalize/append totals, তাই যোগ করে overall elapsed নয়। Unsupported/off reservation-এ truncate phase0; skipped rename0। Full fsync safety আছে; preallocation durability/30fps guarantee নয়।
+
+সফল file-এর unused reserved tail সরানো হয়; final 6-frame file এখনও149818272 bytes, 8-frame199757664 bytes। Interrupted/failed preallocated `.partial` বড় logical size দেখাতে পারে—size থেকে completed frame count অনুমান করবেন না; complete footer/checksums/exact EOF দরকার।

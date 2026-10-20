@@ -65,3 +65,7 @@ CRC32 is the standard reflected IEEE polynomial 0xedb88320; compatible with Pyth
 Slicing-by-8 optimization CRC32 polynomial/output/file layout বদলায়নি। পুরোনো/new writer একই bytes-এর জন্য একই checksum দেয়; Python reader compatibility tests অপরিবর্তিত। Paced/Burst শুধু capture scheduling/report metadata-র পার্থক্য; header fixed FPS=0 এবং actual sensor timestamps দুটো mode-এই অপরিবর্তিত semantics।
 
 ARM64 hardware CRC backend runtime-selected হলেও একই IEEE CRC32 (not CRC32C), initial/final XOR ও exact stored bytes থাকে। ARM64 +crc availability HWCAP দিয়ে এবং known-vector/offset/tail self-test দিয়ে যাচাই না হলে portable software ব্যবহৃত হয়। Format version bump প্রয়োজন নেই; original reader একই থাকবে।
+
+## Optional file reservation
+
+Preallocated output-এ actual written offset পর্যন্ত truncate করে তারপর fsync/close/rename করা হয়। Successful file-এর bytes/header/footer/checksums/exact EOF regular writer-এর সমান। `.partial`-এর reserved zero tail valid frames নয় এবং interrupted output complete বলে গ্রহণ করা যাবে না। Reservation count bounded by8 frames/native256MiB payload guard; Android requested payload budget192MiB অপরিবর্তিত।

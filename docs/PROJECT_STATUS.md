@@ -118,3 +118,9 @@ Patch replaces acquire-then-evict with acquisition backpressure at2 held Images,
 
 ### v69 delivery confirmed
 CI `39384711171`/69 succeeded: ARM64/x86_64 sanitizers, Android unit tests (including timestamp pairing), lint/debug/release এবং publish। Release `v0.1.69-alpha-dabef97`, APK 14,740,632 bytes, verified uploaded asset। Physical-device matching/pre-touch benefit এবং sustained throughput যাচাই বাকি।
+
+## v69 device result → file reservation patch
+
+Evidence in `docs/device-tests/F23-v69-summary.md`: both modes matched8/8, no unmatched; Burst6written/2poolExhausted, Paced8written. Pre-touch ~40–42ms, copy max12–16ms. Writes ~3.5–3.8s, append max~1.75s; Paced finalize2.62s vs fsync1.13s needs phase breakdown. No original-file independent validation/sustained FPS proof.
+
+Patch adds optional/default-ON bounded posix_fallocate before capture (unsupported fallback, genuine errors fail), exact-EOF truncation before existing fsync/close/rename, allocation/max-write/truncate/close/rename stats and UI A/B switch. Pool3, pairing/CRC/format/capture budgets unchanged. Local native reserve/plain/error/reader tests passed; Android CI and device benefit pending.

@@ -46,6 +46,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var timeout: Runnable? = null
     private var clipActive = false
     private var clipPaced = true
+    private var clipPreallocate = true
     private var clipGate: PacedRequestGate? = null
     private var clipPump: Runnable? = null
     private var clipFailedRequests = 0
@@ -273,7 +274,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -298,11 +299,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
                     JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"))
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
-                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs)) {
+                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate)) {
                     engine.getLastError()
                 }
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
+                clipPreallocate = preallocate
                 clipPaced = paced
                 clipGate = if (paced) PacedRequestGate(clipLimit) else null
                 clipFailedRequests = 0; clipCapacityWaitNs = 0; clipCapacityWaitStartNs = 0
@@ -500,6 +502,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("pendingImageTimestampsAtStop", JSONArray(pendingImageTimestamps))
             put("pendingResultTimestampsAtStop", JSONArray(pendingResultTimestamps))
             put("evictedResultTimestamps", JSONArray(clipEvictedResultTimestamps.toList()))
+            put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
             put("submittedRequests", if (clipPaced) clipGate?.submitted ?: 0 else clipLimit)
             put("failedRequests", clipFailedRequests); put("pacedCapacityWaitNs", clipCapacityWaitNs)

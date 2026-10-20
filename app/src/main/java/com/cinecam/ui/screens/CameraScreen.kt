@@ -58,6 +58,7 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
+    var preallocateRawTest by remember { mutableStateOf(true) }
     var pacedRawTest by remember { mutableStateOf(true) }
     var showRawWarning by remember { mutableStateOf(false) }
     var showClipReport by remember { mutableStateOf(false) }
@@ -216,13 +217,18 @@ fun CameraScreen() {
                         Text("Paced mode", Modifier.weight(1f))
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
                     }
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("আগে file space reserve", Modifier.weight(1f))
+                        Switch(checked = preallocateRawTest, onCheckedChange = { preallocateRawTest = it })
+                    }
+                    Text("ON: capture শুরুর আগে space reserve; setup বেশি সময় নিতে পারে। OFF: আগের allocation। Flush বন্ধ নয়।")
                     Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
                          else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
                 }
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

@@ -186,7 +186,9 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         "\"timestampRejected\":%llu,\"queueRejected\":%llu,\"notRecording\":%llu,\"writerUnavailable\":%llu},"
         "\"rowCopyNs\":%llu,\"maxRowCopyNs\":%llu,"
         "\"writerTimings\":{\"crcBackend\":\"%s\",\"hardwareCrcStatus\":\"%s\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
-        "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu}}",
+        "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu,"
+        "\"allocationNs\":%llu,\"reservedBytes\":%llu,\"allocationError\":%d,\"truncateNs\":%llu,"
+        "\"closeNs\":%llu,\"renameNs\":%llu,\"writeCalls\":%llu,\"maxWriteNs\":%llu}}",
         stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, (unsigned long long)stats.poolPreTouchNs, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
         (unsigned long long)stats.framesPushed, (unsigned long long)stats.framesDropped, (unsigned long long)stats.framesWritten,
         static_cast<int>(stats.writerStatus), engine->isRecording() ? "true" : "false",
@@ -198,7 +200,11 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         (unsigned long long)stats.writerTimings.payloadBytes, (unsigned long long)stats.writerTimings.crcNs,
         (unsigned long long)stats.writerTimings.writeSyscallNs, (unsigned long long)stats.writerTimings.fsyncNs,
         (unsigned long long)stats.writerTimings.appendNs, (unsigned long long)stats.writerTimings.maxAppendNs,
-        (unsigned long long)stats.writerTimings.finalizeNs);
+        (unsigned long long)stats.writerTimings.finalizeNs,
+        (unsigned long long)stats.writerTimings.allocationNs, (unsigned long long)stats.writerTimings.reservedBytes,
+        stats.writerTimings.allocationError, (unsigned long long)stats.writerTimings.truncateNs,
+        (unsigned long long)stats.writerTimings.closeNs, (unsigned long long)stats.writerTimings.renameNs,
+        (unsigned long long)stats.writerTimings.writeCalls, (unsigned long long)stats.writerTimings.maxWriteNs);
 
     return env->NewStringUTF(json);
 }
@@ -234,13 +240,14 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 // Bounded diagnostic burst: RAW_SENSOR storage is 16-bit, sensor precision is separate metadata.
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
-        JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs) {
+        JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs, jboolean preallocate) {
     auto* engine = GetGlobalEngine();
     const auto directory = jstringToStd(env, path);
     if (env->ExceptionCheck() || epochNs < 0) return JNI_FALSE;
     if (!engine->initialize(width, height, 16, 3, true)) return JNI_FALSE;
     RecordingConfig config;
     config.width = width; config.height = height; config.bitDepth = 16;
+    config.preallocateCcraw = preallocate == JNI_TRUE;
     config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
     config.outputPath = directory; config.enableAudio = false; config.enableZstd = false;
     std::string error;

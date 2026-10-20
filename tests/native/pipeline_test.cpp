@@ -11,6 +11,10 @@
 #include <vector>
 #include <cstring>
 #include <cstdio>
+#include <cerrno>
+#include <fstream>
+#include <iterator>
+#include <fcntl.h>
 #if defined(CINECAM_ARM64_CRC) && defined(__aarch64__) && defined(__linux__)
 #include <sys/auxv.h>
 #include <asm/hwcap.h>
@@ -227,6 +231,7 @@ int main() {
         assert(engine.initialize(4, 2, 16, 3));
         RecordingConfig config;
         config.width = 4; config.height = 2; config.bitDepth = 16;
+        config.preallocateCcraw = true;
         config.container = "ccraw"; config.epochNs = 100; config.outputPath = folder;
         std::string error;
         assert(engine.startRecording(config, error));
@@ -250,6 +255,12 @@ int main() {
         assert(stats.writerTimings.crcNs > 0 && stats.writerTimings.writeSyscallNs > 0);
         assert(stats.writerTimings.fsyncNs > 0 && stats.writerTimings.finalizeNs >= stats.writerTimings.fsyncNs);
         assert(stats.writerTimings.appendNs >= stats.writerTimings.maxAppendNs);
+        assert(stats.writerTimings.writeCalls >= 6 && stats.writerTimings.maxWriteNs <= stats.writerTimings.writeSyscallNs);
+        assert(stats.writerTimings.allocationNs > 0 && stats.writerTimings.closeNs > 0 && stats.writerTimings.renameNs > 0);
+        if (stats.writerTimings.allocationError == 0) {
+            assert(stats.writerTimings.reservedBytes == 992);
+            assert(stats.writerTimings.truncateNs > 0);
+        }
         assert(engine.ingestionCapacity() == -1);
         assert(engine.getStats().poolAvailable == 3);
         assert(std::filesystem::file_size(folder + "/capture.ccraw") == 320);
@@ -267,6 +278,52 @@ int main() {
         assert(!invalid.append(frame)); // Duplicate timestamp poisons finalization.
         assert(!invalid.finish());
         assert(!std::filesystem::exists(folder + "/invalid/capture.ccraw"));
+    }
+
+    {
+        const std::string root = "build/native-tests/allocation";
+        std::filesystem::remove_all(root);
+        auto folder = [&](const char* name) { auto path = root + "/" + name; std::filesystem::create_directories(path); return path; };
+        uint8_t data[16]{};
+        RawFrame frame; frame.data = data; frame.sizeBytes = 16; frame.isValid = true;
+        frame.metadata.width = 4; frame.metadata.height = 2; frame.metadata.stride = 8;
+        frame.metadata.bitDepth = 16; frame.metadata.timestampNs = 200;
+        CcrawWriter plain;
+        const auto plainDir = folder("plain");
+        assert(plain.open(plainDir, 4, 2, 100, false));
+        assert(plain.append(frame)); assert(plain.finish());
+        assert(plain.timings().reservedBytes == 0 && plain.timings().allocationNs == 0);
+        CcrawWriter reserved;
+        const auto reservedDir = folder("reserved");
+        assert(reserved.open(reservedDir, 4, 2, 100, true));
+        if (reserved.timings().reservedBytes > 0)
+            assert(std::filesystem::file_size(reservedDir + "/capture.ccraw.partial") == 992);
+        assert(reserved.append(frame)); assert(reserved.finish());
+        auto bytes = [](const std::string& dir) {
+            std::ifstream in(dir + "/capture.ccraw", std::ios::binary);
+            return std::vector<char>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        assert(bytes(plainDir) == bytes(reservedDir)); // No preallocated zero tail; exact same format/checksums.
+        assert(bytes(reservedDir).size() == 208);
+        CcrawWriter unsupported([](int, int64_t) { return EOPNOTSUPP; });
+        assert(unsupported.open(folder("unsupported"), 4, 2, 100, true));
+        assert(unsupported.timings().allocationError == EOPNOTSUPP && unsupported.timings().reservedBytes == 0);
+        assert(unsupported.append(frame)); assert(unsupported.finish());
+        CcrawWriter noSpace([](int, int64_t) { return ENOSPC; });
+        assert(!noSpace.open(folder("full"), 4, 2, 100, true));
+        assert(noSpace.timings().allocationError == ENOSPC);
+        assert(!std::filesystem::exists(root + "/full/capture.ccraw"));
+        CcrawWriter interrupted([](int fd, int64_t size) {
+            static int count = 0;
+            if (count++ == 0) return EINTR;
+            return ::posix_fallocate(fd, 0, static_cast<off_t>(size));
+        });
+        assert(interrupted.open(folder("interrupted"), 4, 2, 100, true));
+        assert(interrupted.append(frame)); assert(interrupted.finish());
+        CcrawWriter empty;
+        assert(empty.open(folder("empty"), 4, 2, 100, true));
+        assert(empty.finish());
+        assert(std::filesystem::file_size(root + "/empty/capture.ccraw") == 96);
     }
 
 }

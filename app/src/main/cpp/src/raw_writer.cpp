@@ -43,7 +43,7 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
-    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs)) {
+    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs, config.preallocateCcraw)) {
         lastError_ = ccraw_.error(); return WriterStatus::IO_ERROR;
     }
 
