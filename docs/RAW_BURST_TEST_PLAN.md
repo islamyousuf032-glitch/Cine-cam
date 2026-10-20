@@ -89,3 +89,15 @@ Burst OFF/ON comparison একইভাবে করুন (Paced OFF = Burst)�
 `wallUntilDrainNs` native capture/drain পর্যন্ত, final copy বাদ। `exportDataCopyNs` data+metadata pending Downloads copy/insert/close পর্যন্ত; report copy/publish/cleanup বাদ। তাই native speedup হলেও final export slow থাকতে পারে। Successful export-এর পর temporary source delete; error-এ source retained, pending exports rollback। Private source file manager-এ সরাসরি দেখা যায় না; uninstall/clear-data করলে হারাবে। Export error পেলে report/error পাঠান, আগে app data clear/uninstall করবেন না; automatic retry UI এখনও নেই।
 
 v70 reserve ON-এ errno95 হওয়ায় reservation হয়নি; 5/6 frames তুলনায় allocation benefit প্রমাণ হয়নি। New internal path-এ reservation support ভিন্ন হতে পারে, কিন্তু প্রথম তুলনায় OFF-ই রাখুন। Same pool3/8-frame budget/fsync; no compression/audio/sustained FPS claim।
+
+## Saved file readback ও DNG sample
+
+প্রথমে **Paced ON, reserve OFF, Saved RAW যাচাই + DNG sample ON** রাখুন; Internal staging default ON থাকতে পারে। Finalizing-এ extra time লাগবে: native flush-এর পরে full RAW readback, তারপর sample DNG, তারপর Download export। 650MiB guard অপরিবর্তিত; sample প্রায়25MB extra। 12s limit শুধু capture; verification/export OS operations total-time-bounded নয়।
+
+Export folder-এ `capture.ccraw`, `metadata.json`, `report.json` এবং সফল হলে **first_frame.dng** থাকবে। DNG-টি ওই saved file-এর প্রথম frame; পুরোনো DCIM still-এর সঙ্গে গুলিয়ে ফেলবেন না। DNG-capable viewer-এ খুলে scene/orientation/exposure দেখুন, report পাঠান। Phone gallery DNG support/thumbnail behavior ভিন্ন হতে পারে; cannot-open screenshot/error-ও উপকারী।
+
+Expected report: `readbackRequested=true`, `readbackOk=true`, `readbackFrames`=native.framesWritten, `readbackPayloadBytes`, `firstFrameDngOk=true`, sample timestamp=firstAcceptedSensorNs। Verification fail হলে sample তৈরি হয় না, report-এ error; original RAW/report export হয় কিন্তু UI verified-success দাবি করে না। DNG failure independently reported; RAW remains।
+
+`readbackNs` ও `firstFrameDngNs` capture/wallUntilDrainNs-এর পরে, `exportDataCopyNs`-এ generated DNG-ও অন্তর্ভুক্ত। নতুন timings-কে আগের native writer benchmark-এর সঙ্গে যোগ করবেন না। Performance-only comparison-এ sample switch OFF রাখা যায়।
+
+Verifier native CRC implementation ব্যবহার করে না; Java standard CRC32 দিয়ে saved bytes re-read। CRC authenticity/scene/color calibration প্রমাণ নয়; DngCreator matching capture metadata ব্যবহার করলেও actual visual decoder test দরকার। Native3-slot cap unchanged, verifier64KiB scratch; DngCreator's own memory is SDK-dependent। No continuous RAW, MP4/audio/compression/FPS claim।

@@ -79,7 +79,7 @@ internal object RawClipStore {
             fun copyPending(file: File) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, file.name)
-                    put(MediaStore.Downloads.MIME_TYPE, if (file.extension == "json") "application/json" else "application/octet-stream")
+                    put(MediaStore.Downloads.MIME_TYPE, when (file.extension) { "json" -> "application/json"; "dng" -> "image/x-adobe-dng"; else -> "application/octet-stream" })
                     put(MediaStore.Downloads.RELATIVE_PATH, "Download/CineCam/${folder.name}")
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }

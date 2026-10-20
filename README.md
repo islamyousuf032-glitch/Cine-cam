@@ -124,3 +124,7 @@ RAW_SENSOR, RAW10/RAW12 stream format, sensor bit depth এবং নির্�
 ### Internal staging comparison
 
 API29+ RAW test-এ Internal staging switch দিয়ে private filesDir বনাম আগের app-specific external spool তুলনা করা যায়; output এখনও Download/CineCam-এ export হয়। Path test-এর জন্য reservation default OFF। App-private temporary capture নিজে user-visible video নয়; export failure হলে app data clear/uninstall করবেন না (retained private files হারাবে)। Details: `docs/RAW_BURST_TEST_PLAN.md`।
+
+### Saved RAW readback + first-frame DNG
+
+RAW test dialog-এর নতুন sample switch saved `.ccraw` Java CRC32 দিয়ে streaming verify করে এবং প্রথম **saved** payload থেকে `first_frame.dng` বানায় (matching Camera2 metadata + platform DngCreator)। এটি নতুন live still নয়; output একই Download test folder-এ। Extra readback/DNG/export সময় লাগে; performance-only test-এ OFF করা যায়। Calibration/visual correctness ফোনের DNG viewer দিয়ে যাচাই বাকি; playable RAW video নয়।

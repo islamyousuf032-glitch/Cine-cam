@@ -46,6 +46,9 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var timeout: Runnable? = null
     private var clipActive = false
     private var clipPaced = true
+    private var clipVerify = true
+    private var clipFirstResult: TotalCaptureResult? = null
+    private var clipSampleOrientation = 1
     private var clipPreallocate = false
     private var internalStagingRequested = true
     private var clipPrepared: RawClipStore.PreparedClip? = null
@@ -276,7 +279,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -308,6 +311,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
                 internalStagingRequested = internalStaging
+                clipVerify = verifyAndSample; clipFirstResult = null; clipSampleOrientation = orientation
                 clipPreallocate = preallocate
                 clipPaced = paced
                 clipGate = if (paced) PacedRequestGate(clipLimit) else null
@@ -455,7 +459,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         if (accepted) {
                             wasAccepted = true
                             clipAccepted++
-                            if (clipFirstNs == 0L) clipFirstNs = timestamp
+                            if (clipFirstNs == 0L) { clipFirstNs = timestamp; clipFirstResult = result }
                             clipLastNs = timestamp
                         }
                     }
@@ -531,6 +535,10 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             if (resumePreview) repeatPreview()
         } catch (_: Exception) {}
         onClipState("finalizing"); onStatus("RAW writer drain ও Download export হচ্ছে…")
+        val verifySample = clipVerify
+        val sampleResult = clipFirstResult; clipFirstResult = null
+        val sampleChars = characteristics
+        val sampleOrientation = clipSampleOrientation
         storage.execute {
             val engine = NativeRawEngine.getInstance()
             var message: String
@@ -545,8 +553,34 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 report.put("fileBytes", File(folder, "capture.ccraw").length())
                 report.put("partialFileBytes", File(folder, "capture.ccraw.partial").length())
                 val written = stats.optLong("framesWritten")
+                report.put("readbackRequested", verifySample)
+                if (verifySample && ok) {
+                    val verifyBegin = SystemClock.elapsedRealtimeNanos()
+                    var verified: CcrawVerifier.Verified? = null
+                    try {
+                        verified = CcrawVerifier.verify(File(folder, "capture.ccraw"))
+                        check(verified.frames.size.toLong() == written) { "Written/readback frame count mismatch" }
+                        report.put("readbackOk", true); report.put("readbackFrames", verified.frames.size)
+                        report.put("readbackPayloadBytes", verified.payloadBytes)
+                        report.put("readbackBackend", "java.util.zip.CRC32 / 64KiB streaming")
+                    } catch (e: Exception) {
+                        verified = null; report.put("readbackOk", false); report.put("readbackError", e.message)
+                    }
+                    report.put("readbackNs", SystemClock.elapsedRealtimeNanos() - verifyBegin)
+                    if (verified != null && verified.frames.isNotEmpty()) {
+                        val dngBegin = SystemClock.elapsedRealtimeNanos()
+                        try {
+                            check(sampleChars != null && sampleResult != null) { "First-frame calibration metadata missing" }
+                            ClipDngSample.write(folder, verified, sampleChars, sampleResult, sampleOrientation)
+                            report.put("firstFrameDngOk", true)
+                            report.put("firstFrameDngBytes", File(folder, "first_frame.dng").length())
+                            report.put("firstFrameDngTimestampNs", verified.frames.first().timestampNs)
+                        } catch (e: Exception) { report.put("firstFrameDngOk", false); report.put("firstFrameDngError", e.message) }
+                        report.put("firstFrameDngNs", SystemClock.elapsedRealtimeNanos() - dngBegin)
+                    }
+                }
                 val target = RawClipStore.export(app, folder, report)
-                message = "RAW test ${if (ok && written > 0) "সংরক্ষিত" else "অসম্পূর্ণ"}: $written frames • $target"
+                message = "RAW test ${if (ok && written > 0 && (!verifySample || report.optBoolean("readbackOk"))) "সংরক্ষিত" else "অসম্পূর্ণ/যাচাই ব্যর্থ"}: $written frames • $target"
             } catch (e: Exception) {
                 report.put("exportError", e.message)
                 try { File(folder, "report.json").writeText(report.toString(2)) } catch (_: Exception) { }

@@ -58,6 +58,7 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
+    var verifyRawSample by remember { mutableStateOf(true) }
     var internalRawStaging by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
     var preallocateRawTest by remember { mutableStateOf(false) }
     var pacedRawTest by remember { mutableStateOf(true) }
@@ -229,13 +230,18 @@ fun CameraScreen() {
                         Switch(checked = preallocateRawTest, onCheckedChange = { preallocateRawTest = it })
                     }
                     Text("ON: capture শুরুর আগে space reserve; setup বেশি সময় নিতে পারে। OFF: আগের allocation। Flush বন্ধ নয়।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Saved RAW যাচাই + DNG sample", Modifier.weight(1f))
+                        Switch(checked = verifyRawSample, onCheckedChange = { verifyRawSample = it })
+                    }
+                    Text("ON: saved file আবার পড়ে CRC/structure যাচাই; প্রথম saved frame থেকে first_frame.dng। অতিরিক্ত সময় ও প্রায় 25 MB লাগবে; RAW video playback নয়।")
                     Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
                          else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
                 }
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

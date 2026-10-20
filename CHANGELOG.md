@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Saved RAW verification / DNG sample] — 2026-10-20
+- v71 F23 দুই staging path-এ matched8/8, written6/8, 2 poolExhausted; acquisition deferrals3/5 হলেও কোনো unmatched pair নেই। Internal path বেশি frame দেয়নি; different conditions-এ storage winner বলা যাবে না।
+- Optional/default Saved RAW যাচাই + DNG sample switch। Native stop-এর পরে saved CCRAW001 Java CRC32 দিয়ে re-read; strict geometry/header/payload/footer/count/timestamp/exact EOF validation, 64KiB verifier buffer। Native CRC code পুনর্ব্যবহার নয়।
+- সফল readback-এর প্রথম saved payload থেকে `first_frame.dng`, Android DngCreator-এর exact retained first accepted capture result/characteristics/orientation দিয়ে। নতুন still capture নয়; পূর্ণ RAW byte array তৈরি করা হয় না (SDK DngCreator memory implementation-dependent)।
+- readbackOk/frames/bytes/error/ns এবং firstFrameDngOk/bytes/timestamp/error/ns রিপোর্ট; verification/DNG extra I/O ও ~25MB extra output, capture hot path-এর পরে। Readback failure হলে success দাবি নয়; original files/report export হয়, DNG বাদ।
+- DNG metadata/SDK failure আলাদাভাবে report হয়, RAW মুছে ফেলা হয় না। CRC accidental-corruption check, authenticity/pixel calibration বা rendered-video validation নয়।
+- Kotlin verifier tests: independent constructed fixture, payload/header/footer corruption, truncation/trailing data, re-signed geometry/count mismatch। Native pool3, capture budgets, format, CRC/fsync, existing still/preview unchanged। Physical device readback/DNG tests pending।
+
 ## [Unreleased — Internal staging A/B] — 2026-10-20
 - v70 F23: requested reserve ON returned EOPNOTSUPP95, reservedBytes0, safe fallback; ON/OFF দুটোই regular writes। 5/6 frame difference দিয়ে reservation speedup বলা যাবে না। Matching8/8, drops only poolExhausted; write/fsync waits বড়, close/rename ছোট।
 - API29+ default app-private internal temporary capture, final export এখনও Download/CineCam। Warning dialog-এ Internal staging switch দিয়ে পুরোনো app-external path রাখা হয়েছে। API26–28 unchanged external staging/export।
