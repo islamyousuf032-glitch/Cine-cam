@@ -2,6 +2,17 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Bounded RAW test burst] — 2026-10-19
+- ব্যবহারকারীর Camera 0 report-এ REALTIME/BOOTTIME clock ও DNG regression success নিশ্চিত।
+- নতুন opt-in RAW test: সর্বোচ্চ 8 request/192 MiB payload, 12-second safety timeout; continuous recording/30fps guarantee নয়।
+- Camera2 Image/TotalCaptureResult timestamp matching, bounded pending images/results, native RAW16 row packing ও pool-full drop counters। DNG/viewfinder transform অপরিবর্তিত।
+- C++ CCRAW001 container: explicit little-endian headers, প্রতি-frame capture metadata ও payload/header CRC32, footer counts, fsync/partial finalization; `.mcraw` compatibility দাবি নয়।
+- BOOTTIME epoch ও monotonic timestamp validation; 3 native buffers, RAW ImageReader সর্বোচ্চ 3 images।
+- Android 10+ এ MediaStore Download/CineCam-এ capture.ccraw + metadata.json + report.json export; upfront storage warning ও minimum 650 MiB free-space check।
+- Calibration sidecar ও per-frame metadata summary, app-এর RAW test report copy UI। Export successful হলে temporary duplicate payload delete।
+- Independent Python reader verifier এবং C++→Python round-trip, padded-row byte equality, checksum corruption/truncation/unfinished-file tests সফল।
+- No microphone, compression, MP4 playback, validated DNG conversion বা sustained RAW FPS দাবি। ফোনে burst/stop/resume/export পরীক্ষা বাকি।
+
 ## [Unreleased — Phase 4 foundation] — 2026-10-19
 - ব্যবহারকারী নিশ্চিত করেছেন preview orientation এখন ঠিক; DNG/manual controls আগেই ফোনে সফল।
 - মূলত C++ প্যাচ: pool-aware queue drop/clear/destructor reclamation, locked overflow policy ও metadata-only peek। Rejected frame-এর ownership producer-এর কাছেই থাকে।

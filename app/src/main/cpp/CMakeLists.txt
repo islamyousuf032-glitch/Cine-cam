@@ -31,6 +31,7 @@ add_library(cinecam_raw SHARED
         src/cine_raw_engine.cpp
         src/sync_timeline.cpp
         src/ring_buffer.cpp
+        src/ccraw_writer.cpp
         src/raw_writer.cpp
         src/cinemadng_writer.cpp
         src/memory_pool.cpp

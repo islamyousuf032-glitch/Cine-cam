@@ -47,6 +47,8 @@ public:
     // data points to AHardwareBuffer or raw pointer; we copy into pooled buffer
     bool onRawFrameAvailable(const uint8_t* data, size_t size, const FrameMetadata& metadata);
 
+    bool onRaw16PlaneAvailable(const uint8_t* data, size_t size, const FrameMetadata& metadata);
+
     // Direct pooled write (zero-copy path when caller already has pooled buffer)
     bool pushPooledFrame(int32_t poolIndex, size_t size, const FrameMetadata& metadata);
 
@@ -79,6 +81,8 @@ private:
     std::string lastError_;
     std::atomic<int32_t> logLevel_{2};
     int32_t width_ = 0, height_ = 0, bitDepth_ = 0;
+    bool strictTimestamps_ = false;
+    int64_t lastAcceptedTimestamp_ = -1, recordingEpoch_ = 0;
     uint64_t lastFramesWritten_ = 0;
     WriterStatus lastWriterStatus_ = WriterStatus::OK; // 0=verbose, 1=debug, 2=info, 3=warn, 4=error
 
@@ -86,6 +90,7 @@ private:
     std::atomic<uint64_t> framesPushed_{0};
     std::atomic<uint64_t> framesDropped_{0};
 
+    bool ingest(const uint8_t* data, size_t size, const FrameMetadata& metadata, bool packRows);
     void releaseLocked();
     void setError(const std::string& err); // caller holds mutex_
 };

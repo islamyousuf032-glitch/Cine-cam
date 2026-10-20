@@ -26,7 +26,7 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
-    if (!ringBuffer_ || !memoryPool_ || config.outputPath.empty() || config.container != "mcraw" ||
+    if (!ringBuffer_ || !memoryPool_ || config.outputPath.empty() || (config.container != "mcraw" && config.container != "ccraw") ||
         config.enableZstd || config.enableAudio) {
         lastError_ = "Unsupported or invalid experimental writer configuration";
         return WriterStatus::ENCODING_ERROR;
@@ -41,6 +41,10 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         lastError_ = "Failed to create output dir: " + baseOutputPath_;
         LOGE("%s", lastError_.c_str());
         return WriterStatus::IO_ERROR;
+    }
+
+    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs)) {
+        lastError_ = ccraw_.error(); return WriterStatus::IO_ERROR;
     }
 
     // Prepare mcraw metadata sidecar
@@ -60,6 +64,8 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         metadataFile_ << "  \"frames\": [\n";
         metadataFile_.flush();
         if (!metadataFile_) { lastError_ = "RAW metadata header write failed"; return WriterStatus::IO_ERROR; }
+    } else if (config.container == "ccraw") {
+        // Explicit endian-stable container managed by CcrawWriter.
     } else if (config.container == "cinemadng") {
         // For CinemaDNG, each frame is a file; no single output file needed
         LOGI("CinemaDNG mode: frames will be written as individual .dng files");
@@ -106,6 +112,9 @@ WriterStatus RawWriter::stop() {
         writerThread_.join();
     }
 
+    if (config_.container == "ccraw" && !ccraw_.finish()) {
+        lastError_ = ccraw_.error(); status_.store(WriterStatus::IO_ERROR);
+    }
     if (outputFile_.is_open()) {
         outputFile_.flush();
         if (!outputFile_) { lastError_ = "RAW stream finalize failed"; status_.store(WriterStatus::IO_ERROR); }
@@ -133,7 +142,13 @@ WriterStatus RawWriter::stop() {
 void RawWriter::consume(RawFrame& frame) {
     if (status_.load() == WriterStatus::OK && frame.isValid) {
         try {
-            const auto result = writeMcrawFrame(frame);
+            WriterStatus result;
+            if (config_.container == "ccraw") {
+                if (ccraw_.append(frame)) {
+                    updateStats(frame.sizeBytes + 96); framesWritten_.fetch_add(1);
+                    result = WriterStatus::OK;
+                } else { lastError_ = ccraw_.error(); result = WriterStatus::IO_ERROR; }
+            } else result = writeMcrawFrame(frame);
             if (result != WriterStatus::OK) status_.store(result);
         } catch (...) {
             lastError_ = "Exception during RAW write";

@@ -104,6 +104,7 @@ struct RecordingConfig {
     int32_t width = 4032;
     int32_t height = 3024;
     int32_t fps = 24;
+    int64_t epochNs = 0;
     int32_t bitDepth = 10;
     RawFormat format = RawFormat::RAW_SENSOR;
     std::string outputPath;           // e.g., /storage/emulated/0/DCIM/CineCam/session_001

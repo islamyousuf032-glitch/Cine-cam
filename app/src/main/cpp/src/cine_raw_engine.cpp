@@ -103,7 +103,7 @@ bool CineRawEngine::startRecording(const RecordingConfig& config, std::string& o
     }
 
     if (config.width != width_ || config.height != height_ || config.bitDepth != bitDepth_ || config.fps <= 0 ||
-        config.format != RawFormat::RAW_SENSOR || config.container != "mcraw" || config.enableZstd || config.enableAudio) {
+        config.format != RawFormat::RAW_SENSOR || (config.container != "mcraw" && config.container != "ccraw") || config.enableZstd || config.enableAudio) {
         outError = "Only experimental uncompressed RAW_SENSOR dump is implemented; no CinemaDNG/ZSTD/audio yet";
         setError(outError); return false;
     }
@@ -129,6 +129,8 @@ bool CineRawEngine::startRecording(const RecordingConfig& config, std::string& o
     }
 
     lastFramesWritten_ = 0; lastWriterStatus_ = WriterStatus::OK;
+    strictTimestamps_ = config.container == "ccraw";
+    lastAcceptedTimestamp_ = -1; recordingEpoch_ = config.epochNs;
     state_.store(EngineState::RECORDING);
     LOGI("Recording started");
     return true;
@@ -165,16 +167,25 @@ bool CineRawEngine::stopRecording() {
 }
 
 bool CineRawEngine::onRawFrameAvailable(const uint8_t* data, size_t size, const FrameMetadata& metadata) {
+    return ingest(data, size, metadata, false);
+}
+bool CineRawEngine::onRaw16PlaneAvailable(const uint8_t* data, size_t size, const FrameMetadata& metadata) {
+    return ingest(data, size, metadata, true);
+}
+bool CineRawEngine::ingest(const uint8_t* data, size_t size, const FrameMetadata& metadata, bool packRows) {
     // Never wait for control-path stop/drain or reinitialization on the capture callback.
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if (!lock.owns_lock()) { framesDropped_.fetch_add(1); return false; }
     if (!initialized_.load()) return false;
     if (!memoryPool_ || !ringBuffer_ || state_.load() != EngineState::RECORDING || !rawWriter_ || !rawWriter_->isRunning()) return false;
     if (!data || metadata.width != width_ || metadata.height != height_ || metadata.bitDepth != bitDepth_ ||
-        !validRaw16Layout(size, memoryPool_->getBufferSize(), metadata)) {
+        !validRaw16Layout(size, packRows ? size : memoryPool_->getBufferSize(), metadata)) {
         framesDropped_.fetch_add(1); return false;
     }
 
+    if (strictTimestamps_ && (metadata.timestampNs < recordingEpoch_ || metadata.timestampNs <= lastAcceptedTimestamp_)) {
+        framesDropped_.fetch_add(1); return false;
+    }
     // Acquire pooled buffer
     int32_t slot = memoryPool_->acquire();
     if (slot < 0) {
@@ -191,13 +202,19 @@ bool CineRawEngine::onRawFrameAvailable(const uint8_t* data, size_t size, const 
     }
 
     // Copy (could be zero-copy if AHardwareBuffer path is used; here we copy for safety)
-    size_t copySize = size; // Validated above; never silently truncate RAW input.
-    memcpy(dest, data, copySize);
+    size_t copySize = size;
+    if (packRows) {
+        const size_t row = static_cast<size_t>(width_) * 2;
+        copySize = row * static_cast<size_t>(height_);
+        for (int32_t y = 0; y < height_; ++y)
+            memcpy(dest + static_cast<size_t>(y) * row, data + static_cast<size_t>(y) * metadata.stride, row);
+    } else memcpy(dest, data, copySize);
 
     RawFrame frame;
     frame.data = dest;
     frame.sizeBytes = copySize;
     frame.metadata = metadata;
+    if (packRows) frame.metadata.stride = width_ * 2;
     frame.poolSlotIndex = slot;
     frame.isValid = true;
 
@@ -209,6 +226,7 @@ bool CineRawEngine::onRawFrameAvailable(const uint8_t* data, size_t size, const 
         return false;
     }
 
+    lastAcceptedTimestamp_ = metadata.timestampNs;
     framesPushed_.fetch_add(1);
     return true;
 }

@@ -56,12 +56,18 @@ fun CameraScreen() {
     var showReport by remember { mutableStateOf(false) }
     val main = remember { android.os.Handler(android.os.Looper.getMainLooper()) }
     var disposed by remember { mutableStateOf(false) }
+    var clipState by remember { mutableStateOf("idle") }
+    var clipReport by remember { mutableStateOf("") }
+    var showRawWarning by remember { mutableStateOf(false) }
+    var showClipReport by remember { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(ManualSettings()) }
     var showControls by remember { mutableStateOf(false) }
     val controller = remember { CameraController(context.applicationContext, onStatus = { message ->
         main.post { if (!disposed) status = message }
-    }, onCaptureState = { busy -> main.post { if (!disposed) capturing = busy } }) }
+    }, onCaptureState = { busy -> main.post { if (!disposed) capturing = busy } },
+        onClipState = { state -> main.post { if (!disposed) clipState = state } },
+        onClipReport = { report -> main.post { if (!disposed) clipReport = report } }) }
     LaunchedEffect(manual) { delay(150); controller.setManual(manual) }
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
 
@@ -120,7 +126,7 @@ fun CameraScreen() {
 
     Column(Modifier.fillMaxSize().background(Color.Black)) {
         Column(Modifier.fillMaxWidth().padding(12.dp)) {
-            Text("CineCam • ধাপ ৩", color = Color.White)
+            Text("CineCam • RAW test", color = Color.White)
             Text(camera?.let { "Camera ${it.cameraId} • ${it.hardwareLevelString()} • RAW=${it.supportsRawSensor}" }
                 ?: "ক্যামেরা নির্বাচন হয়নি", color = Color.LightGray)
             Text(scanError ?: if (granted) status else "ক্যামেরা অনুমতি প্রয়োজন", color = Color.LightGray)
@@ -171,10 +177,24 @@ fun CameraScreen() {
                     Text(if (capturing) "সংরক্ষণ হচ্ছে…" else "RAW DNG তুলুন")
                 }
             }
+            Row {
+                Button(onClick = {
+                    if (clipState == "recording") controller.stopRawClip() else showRawWarning = true
+                }, enabled = clipState == "recording" || (clipState == "idle" && !capturing && granted && resumed &&
+                    camera?.supportsRawSensor == true && camera.timestampSource == 1)) {
+                    Text(when (clipState) {
+                        "recording" -> "RAW test বন্ধ করুন"
+                        "starting" -> "RAW প্রস্তুতি…"
+                        "finalizing" -> "RAW export হচ্ছে…"
+                        else -> "RAW test • সর্বোচ্চ 8 frames"
+                    })
+                }
+            }
+            TextButton(onClick = { showClipReport = true }, enabled = clipReport.isNotEmpty()) { Text("শেষ RAW test report") }
             if (showControls && camera != null) {
                 ManualStillControls(camera, manual, !capturing) { manual = it }
             }
-            Text("WB: Auto • RAW video পরবর্তী ধাপে • DNG: DCIM/CineCam", color = Color.LightGray)
+            Text("WB: Auto • RAW test: no audio/MP4 • DNG: DCIM/CineCam", color = Color.LightGray)
         }
     }
     if (showReport) {
@@ -186,6 +206,25 @@ fun CameraScreen() {
             }) { Text("কপি করুন") } },
             dismissButton = { TextButton(onClick = { showReport = false }) { Text("বন্ধ") } })
     }
+    if (showRawWarning) {
+        AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW burst") },
+            text = { Text("সর্বোচ্চ 8 RAW frames; Galaxy F23-তে প্রায় 200 MB। Export-এর জন্য অন্তত 650 MiB ফাঁকা storage লাগবে। এটি MP4 নয়; audio/compression নেই, 30fps নিশ্চিত নয়। ফাইল Download/CineCam-এ যাবে।") },
+            confirmButton = { TextButton(onClick = {
+                showRawWarning = false
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0)
+            }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
+            dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
+    }
+    if (showClipReport) {
+        AlertDialog(onDismissRequest = { showClipReport = false }, title = { Text("শেষ RAW test report") },
+            text = { Text(clipReport, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
+            confirmButton = { TextButton(onClick = {
+                (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("CineCam RAW test", clipReport))
+            }) { Text("কপি করুন") } },
+            dismissButton = { TextButton(onClick = { showClipReport = false }) { Text("বন্ধ") } })
+    }
+
 }
 
 @Composable

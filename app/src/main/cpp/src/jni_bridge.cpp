@@ -221,3 +221,36 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG, "CineCam JNI_OnLoad: NDK engine loaded (v0.1.0-alpha)");
     return JNI_VERSION_1_6;
 }
+
+// Bounded diagnostic burst: RAW_SENSOR storage is 16-bit, sensor precision is separate metadata.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
+        JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs) {
+    auto* engine = GetGlobalEngine();
+    const auto directory = jstringToStd(env, path);
+    if (env->ExceptionCheck() || epochNs < 0) return JNI_FALSE;
+    if (!engine->initialize(width, height, 16, 3)) return JNI_FALSE;
+    RecordingConfig config;
+    config.width = width; config.height = height; config.bitDepth = 16;
+    config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
+    config.outputPath = directory; config.enableAudio = false; config.enableZstd = false;
+    std::string error;
+    return engine->startRecording(config, error) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativePushRawPlane(
+        JNIEnv* env, jobject, jobject buffer, jint width, jint height, jint rowStride, jint pixelStride,
+        jlong timestamp, jlong exposure, jint iso, jint number,
+        jfloat focus, jfloat neutralR, jfloat neutralG, jfloat neutralB) {
+    if (!buffer || pixelStride != 2) return JNI_FALSE;
+    const auto capacity = env->GetDirectBufferCapacity(buffer);
+    auto* data = static_cast<uint8_t*>(env->GetDirectBufferAddress(buffer));
+    if (!data || capacity <= 0 || static_cast<uint64_t>(capacity) > SIZE_MAX) return JNI_FALSE;
+    FrameMetadata metadata;
+    metadata.width = width; metadata.height = height; metadata.stride = rowStride; metadata.bitDepth = 16;
+    metadata.timestampNs = timestamp; metadata.exposureTimeNs = exposure; metadata.iso = iso;
+    metadata.frameNumber = number; metadata.focusDistance = focus;
+    metadata.neutralWhitePoint[0] = neutralR; metadata.neutralWhitePoint[1] = neutralG; metadata.neutralWhitePoint[2] = neutralB;
+    return GetGlobalEngine()->onRaw16PlaneAvailable(data, static_cast<size_t>(capacity), metadata) ? JNI_TRUE : JNI_FALSE;
+}

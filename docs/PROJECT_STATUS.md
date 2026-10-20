@@ -83,4 +83,15 @@ User-provided Galaxy F23 report:
 - SyncTimeline C++ framework: video timestamp source REALTIME→BOOTTIME, UNKNOWN→explicit measured offset required; audio needs AudioTimestamp TIMEBASE_BOOTTIME frame-position anchor। এখনো microphone capture/JNI sync plumbing/mux/resampling নেই।
 - `./scripts/test-native.sh` স্থানীয়ভাবে ASan/UBSan সহ সফল; real queue/engine/writer tests এবং 5000-frame concurrent transfer যুক্ত।
 - RAW video UI, validated container/reader, actual frame metadata matching, compression, audio integration, thermal/storage benchmark, WB Kelvin ও focus peaking বাকি।
-- নতুন Android CI/release যাচাই চলছে; ফোনে recording বা sync সফল বলে দাবি নয়।
+- Commit `294f701`; Release `v0.1.65-alpha-294f701`-এ APK (14,658,716 bytes) ও checksum asset এবং target commit GitHub API দিয়ে যাচাই হয়েছে।
+- Run `39284029694`-এর status API release প্রকাশের পরও queued দেখিয়েছে; remote test conclusion আলাদাভাবে নিশ্চিত নয়। Local ASan/UBSan tests সফল। ফোনে recording/sync test হয়নি।
+
+## Bounded RAW test burst patch
+
+User confirms Camera 0 REALTIME/BOOTTIME timestamps and existing DNG/manual path still works। New opt-in finite captureBurst (up to 8 requests / 192 MiB payload; 12-second timeout) feeds matched RAW_SENSOR planes to C++ with row-stride packing, 3-slot pool, bounded pending Image/result maps।
+
+New C++ CCRAW001 writer and independent streaming Python reader document/validate little-endian metadata, frame/header CRC and completion footer। It is NOT MotionCam MCRAW, MP4 or a calibrated DNG video sequence। Native ingestion rejects old/duplicate timestamps before they can poison the file।
+
+Android MediaStore Downloads export carries calibration metadata.json and diagnostic report.json। Successful export removes private duplicate; failed export retains temporary data and error path। Preview transform and still DngCreator path unchanged (ImageReader maxImages is now 3)।
+
+Local native ASan/UBSan and independent reader tests passed; new remote build and physical-device validation pending। Next: user RAW test report, actual dropped-frame/write throughput analysis; then sustained recording/validated DNG conversion/audio/compression in separate patches।

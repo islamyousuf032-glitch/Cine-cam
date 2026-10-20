@@ -12,11 +12,19 @@ import android.os.HandlerThread
 import android.util.Size
 import android.view.Surface
 import java.util.concurrent.Executors
+import java.io.File
+import java.util.TreeMap
+import android.os.SystemClock
+import org.json.JSONObject
+import org.json.JSONArray
+import com.cinecam.engine.NativeRawEngine
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Camera/session state is handler-confined; one bounded still is owned by the storage worker. */
 class CameraController(context: Context, private val onStatus: (String) -> Unit,
-                       private val onCaptureState: (Boolean) -> Unit = {}) {
+                       private val onCaptureState: (Boolean) -> Unit = {},
+                       private val onClipState: (String) -> Unit = {},
+                       private val onClipReport: (String) -> Unit = {}) {
     private val app = context.applicationContext
     private val manager = app.getSystemService(CameraManager::class.java)
     private val thread = HandlerThread("CineCamCamera").apply { start() }
@@ -36,6 +44,22 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var captureSerial = 0L
     private var captureOrientation = 1
     private var timeout: Runnable? = null
+    private var clipActive = false
+    private var clipSerial = 0L
+    private var clipFolder: File? = null
+    private var clipLimit = 8
+    private var clipMatched = 0
+    private var clipAccepted = 0
+    private var clipImagesReceived = 0
+    private var clipResultsReceived = 0
+    private var clipUnmatched = 0
+    private var clipFirstNs = 0L
+    private var clipLastNs = 0L
+    private var clipStartNs = 0L
+    private var clipTimeout: Runnable? = null
+    private val clipFrameMetadata = mutableListOf<JSONObject>()
+    private val clipImages = TreeMap<Long, Image>()
+    private val clipResults = TreeMap<Long, TotalCaptureResult>()
     @Volatile private var released = false
 
     @SuppressLint("MissingPermission")
@@ -55,17 +79,24 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 val rawCap = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
                     ?.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_RAW) == true
                 if (rawCap && rawSize != null) {
-                    reader = ImageReader.newInstance(rawSize.width, rawSize.height, ImageFormat.RAW_SENSOR, 2).apply {
+                    reader = ImageReader.newInstance(rawSize.width, rawSize.height, ImageFormat.RAW_SENSOR, 3).apply {
                         setOnImageAvailableListener({ source ->
                             try {
                                 val image = source.acquireNextImage() ?: return@setOnImageAvailableListener
-                                if (token != generation || !capturePending) image.close()
+                                if (token != generation) image.close()
+                                else if (clipActive) receiveClipImage(image)
+                                else if (!capturePending) image.close()
                                 else {
                                     pendingImage?.close()
                                     pendingImage = image
                                     matchAndSave(token)
                                 }
-                            } catch (e: Exception) { if (token == generation) cancelCapture("RAW image: ${e.message}") }
+                            } catch (e: Exception) {
+                                if (token == generation) {
+                                    if (clipActive) stopClipInternal("RAW image error: ${e.message}", true)
+                                    else cancelCapture("RAW image: ${e.message}")
+                                }
+                            }
                         }, handler)
                     }
                 }
@@ -229,6 +260,188 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         }
     }
 
+    /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
+    fun startRawClip(displayRotation: Int) {
+        if (released) return
+        handler.post {
+            val camera = device; val current = session; val raw = reader; val chars = characteristics
+            if (camera == null || current == null || raw == null || chars == null) {
+                onStatus("RAW session প্রস্তুত নয়"); return@post
+            }
+            if (chars.get(CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE) != CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME) {
+                onStatus("এই test-এর জন্য REALTIME sensor clock প্রয়োজন"); return@post
+            }
+            if (!saving.compareAndSet(false, true)) return@post
+            onCaptureState(true); onClipState("starting")
+            val engine = NativeRawEngine.getInstance()
+            try {
+                val displayDegrees = when (displayRotation) {
+                    Surface.ROTATION_90 -> 90
+                    Surface.ROTATION_180 -> 180
+                    Surface.ROTATION_270 -> 270
+                    else -> 0
+                }
+                val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
+                    displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
+                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation)
+                clipStartNs = SystemClock.elapsedRealtimeNanos()
+                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs)) {
+                    engine.getLastError()
+                }
+                clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
+                check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
+                clipFrameMetadata.clear()
+                clipMatched = 0; clipAccepted = 0; clipUnmatched = 0
+                clipImagesReceived = 0; clipResultsReceived = 0; clipFirstNs = 0; clipLastNs = 0
+                val id = ++clipSerial
+                val token = generation
+                clipActive = true
+                onClipState("recording")
+                val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                    addTarget(raw.surface)
+                    surface?.let { addTarget(it) }
+                    applyControls(this)
+                    setTag(id)
+                }.build()
+                clipTimeout = Runnable {
+                    if (clipActive && id == clipSerial) stopClipInternal("12-second safety timeout", true)
+                }.also { handler.postDelayed(it, 12000) }
+                current.captureBurst(List(clipLimit) { request }, object : CameraCaptureSession.CaptureCallback() {
+                    override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
+                        if (!clipActive || generation != token || id != clipSerial) return
+                        clipResultsReceived++
+                        result.get(CaptureResult.SENSOR_TIMESTAMP)?.let { clipResults[it] = result }
+                        while (clipResults.size > 12) clipResults.pollFirstEntry()
+                        matchClipFrames()
+                    }
+                    override fun onCaptureSequenceCompleted(s: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
+                        handler.postDelayed({
+                            if (clipActive && generation == token && id == clipSerial) stopClipInternal("burst completed; late-image grace elapsed", true)
+                        }, 1200)
+                    }
+                    override fun onCaptureFailed(s: CameraCaptureSession, r: CaptureRequest, failure: CaptureFailure) {
+                        if (clipActive && generation == token && id == clipSerial) onStatus("RAW request failed: ${failure.reason}; test চলমান")
+                    }
+                }, handler)
+                onStatus("RAW test: সর্বোচ্চ $clipLimit frames • no audio • fixed FPS নয়")
+            } catch (e: Exception) {
+                if (clipActive) stopClipInternal("Burst error: ${e.message}", true)
+                else {
+                    engine.stopRecording(); engine.release()
+                    clipFolder?.deleteRecursively(); clipFolder = null
+                    saving.set(false); onCaptureState(false); onClipState("idle")
+                    onStatus("RAW test শুরু হয়নি: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun stopRawClip() { if (!released) handler.post { stopClipInternal("user stop", true) } }
+
+    private fun receiveClipImage(image: Image) {
+        clipImagesReceived++
+        clipImages.put(image.timestamp, image)?.close()
+        matchClipFrames()
+        // ImageReader has 3 slots: retain at most 2 while waiting for capture metadata.
+        while (clipImages.size > 2) { clipImages.pollFirstEntry().value.close(); clipUnmatched++ }
+    }
+
+    private fun matchClipFrames() {
+        for (timestamp in clipImages.keys.toList()) {
+            val result = clipResults.remove(timestamp) ?: continue
+            val image = clipImages.remove(timestamp) ?: continue
+            clipMatched++
+            var wasAccepted = false
+            try {
+                image.use {
+                    val exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
+                    val iso = result.get(CaptureResult.SENSOR_SENSITIVITY)
+                    if (exposure != null && iso != null && image.format == ImageFormat.RAW_SENSOR) {
+                        val plane = image.planes.single()
+                        val neutral = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)
+                        val accepted = NativeRawEngine.getInstance().nativePushRawPlane(plane.buffer.slice(), image.width, image.height,
+                            plane.rowStride, plane.pixelStride, timestamp, exposure, iso, result.frameNumber.toInt(),
+                            result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f,
+                            neutral?.getOrNull(0)?.toFloat() ?: 0f, neutral?.getOrNull(1)?.toFloat() ?: 0f,
+                            neutral?.getOrNull(2)?.toFloat() ?: 0f)
+                        if (accepted) {
+                            wasAccepted = true
+                            clipAccepted++
+                            if (clipFirstNs == 0L) clipFirstNs = timestamp
+                            clipLastNs = timestamp
+                        }
+                    }
+                }
+            } catch (e: Exception) { onStatus("RAW frame reject: ${e.message}") }
+            try { clipFrameMetadata.add(JSONObject().apply {
+                put("timestampNs", timestamp); put("sourceFrameNumber", result.frameNumber); put("accepted", wasAccepted)
+                put("exposureNs", result.get(CaptureResult.SENSOR_EXPOSURE_TIME))
+                put("iso", result.get(CaptureResult.SENSOR_SENSITIVITY))
+                put("neutralColorPoint", result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)?.let { JSONArray(it.map { value -> value.toString() }) } ?: JSONObject.NULL)
+                put("dynamicBlackLevel", result.get(CaptureResult.SENSOR_DYNAMIC_BLACK_LEVEL)?.let { JSONArray(it.toList()) } ?: JSONObject.NULL)
+                put("dynamicWhiteLevel", result.get(CaptureResult.SENSOR_DYNAMIC_WHITE_LEVEL))
+                put("cropRegion", result.get(CaptureResult.SCALER_CROP_REGION)?.let { JSONArray(listOf(it.left, it.top, it.right, it.bottom)) } ?: JSONObject.NULL)
+            }) } catch (e: Exception) {
+                clipFrameMetadata.add(JSONObject().put("timestampNs", timestamp).put("accepted", wasAccepted)
+                    .put("metadataError", e.message))
+            }
+            if (clipMatched >= clipLimit) { stopClipInternal("frame limit reached", true); return }
+        }
+    }
+
+    private fun stopClipInternal(reason: String, resumePreview: Boolean) {
+        if (!clipActive) return
+        clipActive = false
+        clipTimeout?.let { handler.removeCallbacks(it) }; clipTimeout = null
+        clipUnmatched += clipImages.size
+        clipImages.values.forEach { it.close() }; clipImages.clear()
+        val pendingResults = clipResults.size; clipResults.clear()
+        val folder = clipFolder ?: return
+        clipFolder = null
+        val report = JSONObject().apply {
+            put("frames", JSONArray(clipFrameMetadata.toList()))
+            put("schema", "cinecam-raw-test-1"); put("reason", reason)
+            put("requestedFrames", clipLimit); put("imagesReceived", clipImagesReceived); put("resultsReceived", clipResultsReceived)
+            put("matchedFrames", clipMatched); put("acceptedFrames", clipAccepted)
+            put("unmatchedImages", clipUnmatched); put("pendingResultsAtStop", pendingResults)
+            put("matchedButRejected", clipMatched - clipAccepted)
+            put("firstAcceptedSensorNs", clipFirstNs); put("lastAcceptedSensorNs", clipLastNs)
+            put("epochBoottimeNs", clipStartNs)
+            put("sensorSpanNs", if (clipAccepted > 1) clipLastNs - clipFirstNs else 0)
+            put("warning", "Short diagnostic RAW burst only; not sustained FPS, playable video, audio sync or MotionCam compatibility")
+        }
+        try {
+            session?.abortCaptures()
+            if (resumePreview) repeatPreview()
+        } catch (_: Exception) {}
+        onClipState("finalizing"); onStatus("RAW writer drain ও Download export হচ্ছে…")
+        storage.execute {
+            val engine = NativeRawEngine.getInstance()
+            var message: String
+            try {
+                val ok = engine.stopRecording()
+                val stats = JSONObject(engine.getStatsJson())
+                report.put("nativeStopOk", ok); report.put("native", stats)
+                report.put("nativeError", if (ok) "" else engine.getLastError())
+                report.put("wallUntilDrainNs", SystemClock.elapsedRealtimeNanos() - report.getLong("epochBoottimeNs"))
+                report.put("fileBytes", File(folder, "capture.ccraw").length())
+                report.put("partialFileBytes", File(folder, "capture.ccraw.partial").length())
+                val written = stats.optLong("framesWritten")
+                val target = RawClipStore.export(app, folder, report)
+                message = "RAW test ${if (ok && written > 0) "সংরক্ষিত" else "অসম্পূর্ণ"}: $written frames • $target"
+            } catch (e: Exception) {
+                report.put("exportError", e.message)
+                message = "RAW test error: ${e.message}"
+            } finally { engine.release() }
+            val posted = handler.post {
+                saving.set(false)
+                onCaptureState(false); onClipState("idle"); onClipReport(report.toString(2))
+                if (!released) onStatus(message)
+            }
+            if (!posted) saving.set(false)
+        }
+    }
+
     private fun cancelCapture(message: String? = null) {
         captureSerial++ // A timed-out request must never complete/cancel a later still.
         timeout?.let { handler.removeCallbacks(it) }; timeout = null
@@ -251,6 +464,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
     private fun closeInternal() {
         generation++
+        stopClipInternal("camera closed/background", false)
         cancelCapture()
         session?.close(); session = null
         device?.close(); device = null

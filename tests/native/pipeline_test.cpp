@@ -1,6 +1,7 @@
 #include "cine_raw_engine.h"
 #include "raw_layout.h"
 #include "sync_timeline.h"
+#include "ccraw_writer.h"
 #include <cassert>
 #include <filesystem>
 #include <future>
@@ -154,4 +155,47 @@ int main() {
         engine.release();
         std::filesystem::remove_all(config.outputPath);
     }
+    {
+        const uint8_t known[] = {'1','2','3','4','5','6','7','8','9'};
+        assert(ccrawCrc32(known, 9) == 0xcbf43926U);
+        const std::string folder = "build/native-tests/ccraw";
+        std::filesystem::remove_all(folder);
+        CineRawEngine engine;
+        assert(engine.initialize(4, 2, 16, 3));
+        RecordingConfig config;
+        config.width = 4; config.height = 2; config.bitDepth = 16;
+        config.container = "ccraw"; config.epochNs = 100; config.outputPath = folder;
+        std::string error;
+        assert(engine.startRecording(config, error));
+        FrameMetadata metadata;
+        metadata.width = 4; metadata.height = 2; metadata.stride = 12; metadata.bitDepth = 16;
+        metadata.exposureTimeNs = 1000; metadata.iso = 200;
+        uint8_t plane[20];
+        for (int i = 0; i < 20; ++i) plane[i] = static_cast<uint8_t>(i);
+        metadata.timestampNs = 200;
+        assert(!engine.onRaw16PlaneAvailable(plane, 19, metadata));
+        assert(engine.onRaw16PlaneAvailable(plane, 20, metadata));
+        assert(!engine.onRaw16PlaneAvailable(plane, 20, metadata)); // Reject duplicate before it can poison writer.
+        metadata.timestampNs = 300; metadata.frameNumber = 1;
+        assert(engine.onRaw16PlaneAvailable(plane, 20, metadata));
+        assert(engine.stopRecording());
+        assert(engine.getStats().framesWritten == 2);
+        assert(engine.getStats().poolAvailable == 3);
+        assert(std::filesystem::file_size(folder + "/capture.ccraw") == 320);
+        assert(!std::filesystem::exists(folder + "/capture.ccraw.partial"));
+        engine.release();
+        CcrawWriter collision;
+        assert(!collision.open(folder, 4, 2, 100)); // Existing output must not be overwritten.
+        std::filesystem::create_directories(folder + "/invalid");
+        CcrawWriter invalid;
+        assert(invalid.open(folder + "/invalid", 4, 2, 100));
+        RawFrame frame; frame.data = plane; frame.sizeBytes = 16; frame.isValid = true;
+        frame.metadata = metadata; frame.metadata.stride = 8;
+        frame.metadata.timestampNs = 200;
+        assert(invalid.append(frame));
+        assert(!invalid.append(frame)); // Duplicate timestamp poisons finalization.
+        assert(!invalid.finish());
+        assert(!std::filesystem::exists(folder + "/invalid/capture.ccraw"));
+    }
+
 }

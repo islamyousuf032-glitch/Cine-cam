@@ -32,6 +32,18 @@ Queue/pool reclamation, bounded 256 MiB allocation (default 8 buffers), engine l
 
 এটি এখনো **RAW video/audio recording চালু করে না**। SyncTimeline standalone framework; actual audio capture, video container validation, JNI integration এবং physical-device sync/throughput tests বাকি। Preview/DNG capture আগের কার্যকর platform path-এই আছে। বিস্তারিত: `docs/PHASE4_PIPELINE.md`।
 
+## সীমিত RAW test burst
+
+নতুন opt-in **RAW test • সর্বোচ্চ 8 frames** Camera2 থেকে আসল RAW plane ও matching metadata C++ writer-এ পাঠায়। এটি একটি সীমিত diagnostic burst, **চলমান RAW video/MP4 recording নয়**। প্রায় 200 MB ফাইল ও export copy-এর জন্য 650 MiB free storage প্রয়োজন। ফোনে কার্যকারিতা পরীক্ষা বাকি।
+
+Android 14-এ output: `Download/CineCam/<session>/capture.ccraw`, `metadata.json`, `report.json`। `.ccraw` একটি নথিভুক্ত experimental format, MotionCam `.mcraw` নয়। যাচাই:
+
+```bash
+python3 scripts/inspect_ccraw.py capture.ccraw
+```
+
+Format spec ও test instructions: `docs/CCRAW_FORMAT.md`, `docs/RAW_BURST_TEST_PLAN.md`। Audio, compression, normal video playback ও DNG sequence conversion এখনো নেই।
+
 ## ডিরেক্টরি
 
 ```text

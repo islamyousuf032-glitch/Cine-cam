@@ -7,6 +7,7 @@
  */
 
 #include "cine_types.h"
+#include "ccraw_writer.h"
 #include "ring_buffer.h"
 #include "memory_pool.h"
 #include <thread>
@@ -61,6 +62,7 @@ private:
     RingBuffer* ringBuffer_ = nullptr;
     MemoryPool* memoryPool_ = nullptr;
     RecordingConfig config_;
+    CcrawWriter ccraw_;
 
     std::thread writerThread_;
     std::atomic<WriterStatus> status_{WriterStatus::OK};
