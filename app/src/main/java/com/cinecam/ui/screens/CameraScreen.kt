@@ -58,7 +58,8 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
-    var preallocateRawTest by remember { mutableStateOf(true) }
+    var internalRawStaging by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
+    var preallocateRawTest by remember { mutableStateOf(false) }
     var pacedRawTest by remember { mutableStateOf(true) }
     var showRawWarning by remember { mutableStateOf(false) }
     var showClipReport by remember { mutableStateOf(false) }
@@ -218,6 +219,12 @@ fun CameraScreen() {
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
                     }
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Internal staging", Modifier.weight(1f))
+                        Switch(checked = internalRawStaging, onCheckedChange = { internalRawStaging = it },
+                            enabled = android.os.Build.VERSION.SDK_INT >= 29)
+                    }
+                    Text("ON: app-private internal temporary file। OFF: আগের app-external path। দুটোই শেষে Download/CineCam-এ export হবে (Android 10+)।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("আগে file space reserve", Modifier.weight(1f))
                         Switch(checked = preallocateRawTest, onCheckedChange = { preallocateRawTest = it })
                     }
@@ -228,7 +235,7 @@ fun CameraScreen() {
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

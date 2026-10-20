@@ -46,7 +46,9 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var timeout: Runnable? = null
     private var clipActive = false
     private var clipPaced = true
-    private var clipPreallocate = true
+    private var clipPreallocate = false
+    private var internalStagingRequested = true
+    private var clipPrepared: RawClipStore.PreparedClip? = null
     private var clipGate: PacedRequestGate? = null
     private var clipPump: Runnable? = null
     private var clipFailedRequests = 0
@@ -274,7 +276,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = true) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -296,14 +298,16 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
-                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
-                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"))
+                val prepared = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
+                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging)
+                clipPrepared = prepared; clipFolder = prepared.folder
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate)) {
                     engine.getLastError()
                 }
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
+                internalStagingRequested = internalStaging
                 clipPreallocate = preallocate
                 clipPaced = paced
                 clipGate = if (paced) PacedRequestGate(clipLimit) else null
@@ -502,6 +506,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("pendingImageTimestampsAtStop", JSONArray(pendingImageTimestamps))
             put("pendingResultTimestampsAtStop", JSONArray(pendingResultTimestamps))
             put("evictedResultTimestamps", JSONArray(clipEvictedResultTimestamps.toList()))
+            clipPrepared?.let {
+                put("stagingLocation", it.stagingLocation)
+                put("captureAvailableBytesAtPrepare", it.captureAvailableBytes)
+                put("exportAvailableBytesAtPrepare", it.exportAvailableBytes)
+            }
+            put("internalStagingRequested", internalStagingRequested)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
             put("submittedRequests", if (clipPaced) clipGate?.submitted ?: 0 else clipLimit)
@@ -539,6 +549,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 message = "RAW test ${if (ok && written > 0) "সংরক্ষিত" else "অসম্পূর্ণ"}: $written frames • $target"
             } catch (e: Exception) {
                 report.put("exportError", e.message)
+                try { File(folder, "report.json").writeText(report.toString(2)) } catch (_: Exception) { }
                 message = "RAW test error: ${e.message}"
             } finally { engine.release() }
             val posted = handler.post {

@@ -127,3 +127,9 @@ Patch adds optional/default-ON bounded posix_fallocate before capture (unsupport
 
 ### v70 delivery confirmed
 CI `39418510595`/70 successful: ARM64/x86_64 sanitizers, Android unit/lint/debug/release এবং publish। Verified release `v0.1.70-alpha-6210de4`, APK 14,740,636 bytes। Reservation ON/OFF F23 comparison ও original RAW independent validation pending; no sustained FPS/performance success claim।
+
+## v70 results → internal staging patch
+
+Detailed evidence `docs/device-tests/F23-v70-summary.md`: reserve ON actually unsupported95 and fell back; both regular paths5/6written, matched8/8, no unmatched, only poolExhausted. write total3.2–3.7s/fsync4.7–5.5s; close/rename <1ms. No claim reservation improved performance or FUSE proven cause.
+
+Patch: API29+ private internal spool default, external staging A/B switch, unchanged final Downloads export/native pool/format/CRC/fsync; reservation defaults OFF to isolate variable. Check both source/export free space; API26–28 keep original external flow. Report actual location and export data-copy measurements; source retained on error, private recovery not exposed via file manager and uninstall/clear-data loses it (no automatic retry UI yet). Local native tests pass; new policy tests added; Android CI/device results pending.

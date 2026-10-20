@@ -120,3 +120,7 @@ RAW_SENSOR, RAW10/RAW12 stream format, sensor bit depth এবং নির্�
 ### Runtime hardware CRC follow-up
 
 নতুন patch supported ARM64-এ HWCAP+self-test gated IEEE CRC32 acceleration দেয়; unsupported CPU-তে slicing-by-8 fallback। Actual backend report ও metadata-তে দেখা যায়। v67 paired phone result: Paced 8/8, Burst 6/8 এবং 2 poolExhausted—`docs/device-tests/F23-v67-summary.md`। নতুন hardware-backend device performance এখনও যাচাই বাকি; checksum/fsync বন্ধ বা pool বাড়ানো হয়নি।
+
+### Internal staging comparison
+
+API29+ RAW test-এ Internal staging switch দিয়ে private filesDir বনাম আগের app-specific external spool তুলনা করা যায়; output এখনও Download/CineCam-এ export হয়। Path test-এর জন্য reservation default OFF। App-private temporary capture নিজে user-visible video নয়; export failure হলে app data clear/uninstall করবেন না (retained private files হারাবে)। Details: `docs/RAW_BURST_TEST_PLAN.md`।

@@ -76,3 +76,16 @@ Burst OFF/ON comparison একইভাবে করুন (Paced OFF = Burst)�
 `maxWriteNs/writeCalls` write syscall-এর max elapsed/count (partial write/EINTR attempts included); `truncateNs/closeNs/renameNs` আলাদা finalize phase। These overlap enclosing finalize/append totals, তাই যোগ করে overall elapsed নয়। Unsupported/off reservation-এ truncate phase0; skipped rename0। Full fsync safety আছে; preallocation durability/30fps guarantee নয়।
 
 সফল file-এর unused reserved tail সরানো হয়; final 6-frame file এখনও149818272 bytes, 8-frame199757664 bytes। Interrupted/failed preallocated `.partial` বড় logical size দেখাতে পারে—size থেকে completed frame count অনুমান করবেন না; complete footer/checksums/exact EOF দরকার।
+
+## Internal staging A/B (reservation OFF)
+
+এই পরীক্ষায় **Paced OFF, আগে file space reserve OFF**—দুটিই স্থির রাখুন:
+1. **Internal staging ON** → Burst → report।
+2. কিছুক্ষণ বিরতি → **Internal staging OFF** → Burst → দ্বিতীয় report।
+ঐচ্ছিক Paced ON + Internal ON regression। Same scene/settings/power conditions রাখুন; 40ms exposure-এ30fps দাবি করা যাবে না।
+
+`stagingLocation` actual `app-private-internal` / `app-specific-external`; `internalStagingRequested` UI choice। API26–28-এ internal disabled ও পুরোনো external fallback। No automatic performance-based path switching। `captureAvailableBytesAtPrepare` / `exportAvailableBytesAtPrepare` প্রত্যেকটিতে650MiB guard; একই volume হলে capacity যোগ করবেন না। Internal path app filesDir, not cacheDir (OS cache cleanup নয়), not a new physical disk guarantee।
+
+`wallUntilDrainNs` native capture/drain পর্যন্ত, final copy বাদ। `exportDataCopyNs` data+metadata pending Downloads copy/insert/close পর্যন্ত; report copy/publish/cleanup বাদ। তাই native speedup হলেও final export slow থাকতে পারে। Successful export-এর পর temporary source delete; error-এ source retained, pending exports rollback। Private source file manager-এ সরাসরি দেখা যায় না; uninstall/clear-data করলে হারাবে। Export error পেলে report/error পাঠান, আগে app data clear/uninstall করবেন না; automatic retry UI এখনও নেই।
+
+v70 reserve ON-এ errno95 হওয়ায় reservation হয়নি; 5/6 frames তুলনায় allocation benefit প্রমাণ হয়নি। New internal path-এ reservation support ভিন্ন হতে পারে, কিন্তু প্রথম তুলনায় OFF-ই রাখুন। Same pool3/8-frame budget/fsync; no compression/audio/sustained FPS claim।

@@ -7,6 +7,7 @@ import android.hardware.camera2.params.ColorSpaceTransform
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.os.SystemClock
 import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
@@ -14,9 +15,17 @@ import java.io.File
 import java.util.UUID
 
 internal object RawClipStore {
-    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String): File {
-        val root = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Storage unavailable")
-        check(StatFs(root.absolutePath).availableBytes >= 650L * 1024 * 1024) { "RAW test-এর জন্য অন্তত 650 MiB ফাঁকা জায়গা প্রয়োজন" }
+    data class PreparedClip(val folder: File, val stagingLocation: String,
+                            val captureAvailableBytes: Long, val exportAvailableBytes: Long)
+    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean): PreparedClip {
+        val external = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Export storage unavailable")
+        val useInternal = RawStoragePolicy.useInternal(internalStaging, Build.VERSION.SDK_INT)
+        val root = if (useInternal) File(context.filesDir, "raw-clips") else external
+        check(root.isDirectory || root.mkdirs()) { "Capture staging folder তৈরি হয়নি" }
+        val captureFree = StatFs(root.absolutePath).availableBytes
+        val exportFree = StatFs(external.absolutePath).availableBytes
+        RawStoragePolicy.checkFreeSpace(captureFree, exportFree)
+        val location = if (useInternal) "app-private-internal" else "app-specific-external"
         val folder = File(root, "CineCam_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}")
         check(folder.mkdirs()) { "RAW clip folder তৈরি হয়নি" }
         try {
@@ -29,6 +38,8 @@ internal object RawClipStore {
             val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             val metadata = JSONObject().apply {
                 put("schema", "cinecam-calibration-1")
+                put("stagingLocation", location)
+                put("captureAvailableBytesAtPrepare", captureFree); put("exportAvailableBytesAtPrepare", exportFree)
                 put("captureMode", mode); put("poolSlots", 3); put("crcBackend", crcBackend)
                 put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("androidApi", Build.VERSION.SDK_INT)
@@ -52,7 +63,7 @@ internal object RawClipStore {
                 put("warning", "Experimental bounded RAW burst; no audio, compression, fixed FPS or MotionCam compatibility")
             }
             File(folder, "metadata.json").writeText(metadata.toString(2))
-            return folder
+            return PreparedClip(folder, location, captureFree, exportFree)
         } catch (e: Exception) { folder.deleteRecursively(); throw e }
     }
 
@@ -64,8 +75,8 @@ internal object RawClipStore {
         val resolver = context.contentResolver
         val inserted = mutableListOf<android.net.Uri>()
         try {
-            val files = folder.listFiles()?.filter { it.isFile } ?: error("Clip files পাওয়া যায়নি")
-            for (file in files) {
+            val files = folder.listFiles()?.filter { it.isFile && it.name != "report.json" } ?: error("Clip files পাওয়া যায়নি")
+            fun copyPending(file: File) {
                 val values = ContentValues().apply {
                     put(MediaStore.Downloads.DISPLAY_NAME, file.name)
                     put(MediaStore.Downloads.MIME_TYPE, if (file.extension == "json") "application/json" else "application/octet-stream")
@@ -77,6 +88,15 @@ internal object RawClipStore {
                 resolver.openOutputStream(uri, "w")?.use { output -> file.inputStream().use { it.copyTo(output, 256 * 1024) } }
                     ?: error("Download output খোলা যায়নি")
             }
+            val copyBegin = SystemClock.elapsedRealtimeNanos()
+            var dataBytes = 0L
+            files.forEach { copyPending(it); dataBytes += it.length() }
+            report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
+            report.put("exportDataBytes", dataBytes)
+            // Write report last so exported and UI reports contain the same data-copy measurements.
+            val reportFile = File(folder, "report.json")
+            reportFile.writeText(report.toString(2))
+            copyPending(reportFile)
             inserted.forEach { uri ->
                 check(resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) == 1)
             }

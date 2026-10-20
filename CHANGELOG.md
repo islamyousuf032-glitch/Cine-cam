@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Internal staging A/B] — 2026-10-20
+- v70 F23: requested reserve ON returned EOPNOTSUPP95, reservedBytes0, safe fallback; ON/OFF দুটোই regular writes। 5/6 frame difference দিয়ে reservation speedup বলা যাবে না। Matching8/8, drops only poolExhausted; write/fsync waits বড়, close/rename ছোট।
+- API29+ default app-private internal temporary capture, final export এখনও Download/CineCam। Warning dialog-এ Internal staging switch দিয়ে পুরোনো app-external path রাখা হয়েছে। API26–28 unchanged external staging/export।
+- Capture ও export locations-এ পৃথক free-space check; same physical volume হলে available values যোগ করা যাবে না। Report/sidecar-এ actual staging location/free bytes; no hidden internal→external fallback।
+- Reservation default OFF for path-only A/B; native pool3, bounded capture/pairing/pre-touch/CRC/format/fsync অপরিবর্তিত।
+- Export data-copy ns/bytes report-এ; exported report লেখা হয় data files-এর পরে। এটি report copy/publication/cleanup-এর total export latency নয়। Failure-এ pending entries rollback এবং source/report retained; private source uninstall/clear-data-তে হারাবে।
+- Storage-policy unit tests (API fallback, both volume space limits); device speedup/endurance/original RAW validation pending।
+
 ## [Unreleased — File reservation / finalization timing] — 2026-10-20
 - F23 v69: দুই mode-এ 8/8 exact timestamp pairs, no unmatched; Burst 6/8 written, 2 poolExhausted, Paced 8/8। Native copy max ~15.5/12.4ms; write/finalization stalls এখনও বড়।
 - Warning dialog-এ separate file-space reserve switch (default ON); capture-এর আগে `posix_fallocate` দিয়ে bounded native frame budget-এর file space reserve। OFF রাখলে আগের allocation path দিয়ে A/B করা যায়।
