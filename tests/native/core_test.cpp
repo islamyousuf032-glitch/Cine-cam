@@ -18,7 +18,19 @@ int main() {
     try { MemoryPool pool(1, -1); }
     catch (const std::invalid_argument&) { rejected = true; }
     assert(rejected);
+    {
+        MemoryPool warm(8193, 3, true);
+        assert(warm.preTouchNs() > 0);
+        assert(warm.getAvailableCount() == 3 && warm.getStats().totalAcquires == 0);
+        for (int n = 0; n < 3; ++n) {
+            const int slot = warm.acquire();
+            assert(slot >= 0);
+            const auto* data = warm.getBuffer(slot);
+            assert(data[0] == 0 && data[4096] == 0 && data[8192] == 0 && data[warm.getBufferSize() - 1] == 0);
+        }
+    }
     MemoryPool pool(4097, 4);
+    assert(pool.preTouchNs() == 0);
     assert(pool.getBufferSize() == 8192);
     std::vector<int> slots;
     for (int i = 0; i < 4; ++i) {

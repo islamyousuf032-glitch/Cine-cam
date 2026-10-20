@@ -32,7 +32,7 @@ public:
     CineRawEngine& operator=(const CineRawEngine&) = delete;
 
     // Lifecycle
-    bool initialize(int32_t width, int32_t height, int32_t bitDepth, int32_t poolSize = kDefaultRingBufferSize);
+    bool initialize(int32_t width, int32_t height, int32_t bitDepth, int32_t poolSize = kDefaultRingBufferSize, bool preTouch = false);
     void release();
     bool isInitialized() const { return initialized_.load(); }
 
@@ -67,6 +67,7 @@ public:
         uint64_t queueRejected = 0, notRecording = 0, writerUnavailable = 0;
         uint64_t rowCopyNs = 0, maxRowCopyNs = 0;
         int32_t poolPeakUsed = 0;
+        uint64_t poolPreTouchNs = 0;
         CcrawWriter::Timings writerTimings;
     };
     EngineStats getStats() const;

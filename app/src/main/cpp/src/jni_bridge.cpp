@@ -179,7 +179,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
 
     char json[4096];
     snprintf(json, sizeof(json),
-        "{\"poolAvailable\":%d,\"poolTotal\":%d,\"poolPeakUsed\":%d,\"ringSize\":%d,\"ringCapacity\":%d,"
+        "{\"poolAvailable\":%d,\"poolTotal\":%d,\"poolPeakUsed\":%d,\"poolPreTouchNs\":%llu,\"ringSize\":%d,\"ringCapacity\":%d,"
         "\"ringFill\":%.3f,\"framesPushed\":%llu,\"framesDropped\":%llu,\"framesWritten\":%llu,"
         "\"writerStatus\":%d,\"isRecording\":%s,"
         "\"dropReasons\":{\"poolExhausted\":%llu,\"controlBusy\":%llu,\"invalidLayout\":%llu,"
@@ -187,7 +187,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         "\"rowCopyNs\":%llu,\"maxRowCopyNs\":%llu,"
         "\"writerTimings\":{\"crcBackend\":\"%s\",\"hardwareCrcStatus\":\"%s\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
         "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu}}",
-        stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
+        stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, (unsigned long long)stats.poolPreTouchNs, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
         (unsigned long long)stats.framesPushed, (unsigned long long)stats.framesDropped, (unsigned long long)stats.framesWritten,
         static_cast<int>(stats.writerStatus), engine->isRecording() ? "true" : "false",
         (unsigned long long)stats.poolExhausted, (unsigned long long)stats.controlBusy, (unsigned long long)stats.invalidLayout,
@@ -238,7 +238,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
     auto* engine = GetGlobalEngine();
     const auto directory = jstringToStd(env, path);
     if (env->ExceptionCheck() || epochNs < 0) return JNI_FALSE;
-    if (!engine->initialize(width, height, 16, 3)) return JNI_FALSE;
+    if (!engine->initialize(width, height, 16, 3, true)) return JNI_FALSE;
     RecordingConfig config;
     config.width = width; config.height = height; config.bitDepth = 16;
     config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";

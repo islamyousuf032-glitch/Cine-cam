@@ -20,7 +20,7 @@ CineRawEngine::~CineRawEngine() {
     release();
 }
 
-bool CineRawEngine::initialize(int32_t width, int32_t height, int32_t bitDepth, int32_t poolSize) {
+bool CineRawEngine::initialize(int32_t width, int32_t height, int32_t bitDepth, int32_t poolSize, bool preTouch) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (initialized_.load()) {
         LOGW("Already initialized, releasing first");
@@ -44,7 +44,7 @@ bool CineRawEngine::initialize(int32_t width, int32_t height, int32_t bitDepth, 
     LOGI("Initializing engine: %dx%d @%d-bit, pool=%d, frameBytes=%zu", width, height, bitDepth, poolSize, frameBytes);
 
     try {
-        memoryPool_ = std::make_unique<MemoryPool>(frameBytes, poolSize);
+        memoryPool_ = std::make_unique<MemoryPool>(frameBytes, poolSize, preTouch);
         ringBuffer_ = std::make_unique<RingBuffer>(poolSize, OverflowPolicy::DropNewest, memoryPool_.get());
         // RawWriter depends on ring+pool, created on startRecording
     } catch (const std::exception& e) {
@@ -279,6 +279,7 @@ CineRawEngine::EngineStats CineRawEngine::getStats() const {
     if (memoryPool_) {
         s.poolAvailable = memoryPool_->getAvailableCount();
         s.poolTotal = memoryPool_->getNumBuffers();
+        s.poolPreTouchNs = memoryPool_->preTouchNs();
         s.poolPeakUsed = memoryPool_->getStats().peakUsed;
     }
     if (ringBuffer_) {

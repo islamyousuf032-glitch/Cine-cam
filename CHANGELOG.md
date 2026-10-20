@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Bounded pairing / buffer warm-up] — 2026-10-20
+- F23 v68 hardware CRC verified by report (~7ms/written frame); Burst worsened to 3/8 written: 3 poolExhausted rejects + 2 unmatched images/pending results। Paced still 8/8, fsync ~3.29s। Full summary `docs/device-tests/F23-v68-summary.md`।
+- Image acquisition এখন <=2 held Images হলে pause/resume করে; আগে তৃতীয় Image নেওয়ার পরে oldest Image বন্ধ করা হতো। Exact timestamp join অপরিবর্তিত, no nearest-timestamp guessing, no extra RAW copy/buffer।
+- Pure bounded timestamp pairing helper + tests; report-এ received/pending/evicted timestamp lists ও acquisition deferrals। নতুন policy driver backpressure দিতে পারে; 12s safety limit অপরিবর্তিত।
+- Native RAW test-এর existing three buffers pre-touch before capture; `poolPreTouchNs` আলাদা রিপোর্ট। First-copy page faults কমানোর চেষ্টা, actual speedup guaranteed নয়; physical memory pages আগে materialize হয়, allocation/pool cap বাড়ে না, no mlock।
+- Hardware/software CRC, CCRAW001 bytes, DNG/preview এবং fsync safety unchanged। Local native suites passed; new Android/device validation pending।
+
 ## [Unreleased — Runtime hardware CRC patch] — 2026-10-20
 - F23 v67 reports: দুই Paced run-এ 8/8 written, Burst 6/8 written এবং ঠিক 2 poolExhausted rejects। 200/150 MB file sizes frame count-এর সঙ্গে মেলে; original payload এখনও independently verified নয়। বিস্তারিত `docs/device-tests/F23-v67-summary.md`।
 - Supported ARM64 CPU-তে runtime HWCAP detection + startup self-test-এর পর IEEE CRC32 hardware backend। Unsupported CPU/self-test failure-এ portable slicing-by-8 fallback; ARM32/x86 baseline অপরিবর্তিত।

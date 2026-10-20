@@ -55,3 +55,11 @@ Valid complete container হলে JSON summary ও frame metadata আসবে�
 নতুন APK-তে আগে Burst (Paced OFF), পরে Paced ON test দিন। দুই report-এ `native.writerTimings.crcBackend` ও `hardwareCrcStatus` দেখুন। Supported+verified ARM64 path: `arm64-crc32`/`passed`; unsupported CPU: `slicing-by-8`/`unavailable`; self-test failure: `slicing-by-8-self-test-fallback`/`failed`। Backend fallback নিরাপত্তার জন্য; unsupported CPU-কে +crc চালাতে বাধ্য করা হবে না।
 
 একই 3 native slots, 8-frame budget, no compression; 8 frames হলে আবার ~200 MB-ই হবে। `captureWindowNs` setupসহ stop requested পর্যন্ত, `stopDrainNs` native stop/drain/finalize call-এর elapsed time; `wallUntilDrainNs` export বাদ দেয়। fsync অপরিবর্তিত, তাই finalizing কয়েক সেকেন্ড থাকতে পারে। CRC দ্রুত হলেও copy/write/camera overhead-এর কারণে Burst-এ drop থাকতে পারে। Thermal/power/storage variation-এর জন্য ideally একই settings/scene-এ paired tests দরকার।
+
+## Bounded pairing / pre-touch patch
+
+Burst OFF/ON comparison একইভাবে করুন (Paced OFF = Burst)। New report: `pairingPolicy=bounded-acquisition-no-eviction`, `imageAcquisitionDeferrals`, received `imageTimestamps/resultTimestamps`, pending-at-stop arrays ও `evictedResultTimestamps`; exact matching এখনও mandatory। 2 held Images হলে unread ImageReader buffers acquire না করে metadata আসার পর আবার drain হয়। Driver backpressure হতে পারে; deadline অপরিবর্তিত।
+
+`native.poolPreTouchNs` হলো আগে থেকেই বরাদ্দ 3টি native buffer-এর pages capture শুরুর আগে স্পর্শ করার সময়। `captureWindowNs`-এ এই setup আছে; rowCopyNs-এ নেই। Allocated bytes বাড়ে না, কিন্তু physical resident pages আগে materialize হয়। OS reclaim করতে পারে; warm-up মানেই first-copy latency কমবেই নয়।
+
+লক্ষ্য: আগে 2টি unmatched pair হওয়া repeat হয় কি না, exact timestamp arrays মেলে কি না, first-copy max ও Burst written count কেমন বদলায়। fsync বাদ দেওয়া হয়নি; finalizing কয়েক সেকেন্ড থাকতে পারে। 8 frames হলেও sustained30fps নয়।

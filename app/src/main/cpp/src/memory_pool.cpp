@@ -5,6 +5,7 @@
 #include <new>
 #include "cine_log.h"
 #include <unistd.h>
+#include "pipeline_timing.h"
 
 #define LOG_TAG "CineMemPool"
 #define LOGI(...) CINE_LOGI(LOG_TAG, __VA_ARGS__)
@@ -12,7 +13,7 @@
 
 namespace cinecam {
 
-MemoryPool::MemoryPool(size_t bufferSizeBytes, int32_t numBuffers)
+MemoryPool::MemoryPool(size_t bufferSizeBytes, int32_t numBuffers, bool preTouch)
     : bufferSizeBytes_(bufferSizeBytes), numBuffers_(numBuffers) {
     if (numBuffers <= 0 || bufferSizeBytes == 0 ||
         bufferSizeBytes > std::numeric_limits<size_t>::max() - 4095) {
@@ -21,6 +22,19 @@ MemoryPool::MemoryPool(size_t bufferSizeBytes, int32_t numBuffers)
     size_t aligned = ((bufferSizeBytes + 4095) / 4096) * 4096;
     bufferSizeBytes_ = aligned;
     allocateBuffers();
+    if (preTouch) {
+        const auto begin = pipelineNowNs();
+        const auto pageSize = ::sysconf(_SC_PAGESIZE);
+        const size_t page = pageSize > 0 ? static_cast<size_t>(pageSize) : 4096;
+        for (auto* buffer : buffers_) {
+            // Volatile writes materialize backing pages now, not during the first RAW copy.
+            // Not mlock: OS may still reclaim pages. Existing allocation budget is unchanged.
+            auto* bytes = static_cast<volatile uint8_t*>(buffer);
+            for (size_t offset = 0; offset < bufferSizeBytes_; offset += page) bytes[offset] = 0;
+            bytes[bufferSizeBytes_ - 1] = 0;
+        }
+        preTouchNs_ = pipelineNowNs() - begin;
+    }
     LOGI("MemoryPool created: %d buffers x %zu bytes (aligned)", numBuffers_, bufferSizeBytes_);
 }
 

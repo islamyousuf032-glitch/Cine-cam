@@ -20,7 +20,7 @@ namespace cinecam {
 
 class MemoryPool {
 public:
-    MemoryPool(size_t bufferSizeBytes, int32_t numBuffers);
+    MemoryPool(size_t bufferSizeBytes, int32_t numBuffers, bool preTouch = false);
     ~MemoryPool();
 
     MemoryPool(const MemoryPool&) = delete;
@@ -36,6 +36,7 @@ public:
     uint8_t* getBuffer(int32_t index);
     const uint8_t* getBuffer(int32_t index) const;
 
+    uint64_t preTouchNs() const { return preTouchNs_; }
     size_t getBufferSize() const { return bufferSizeBytes_; }
     int32_t getNumBuffers() const { return numBuffers_; }
     int32_t getAvailableCount() const;
@@ -55,6 +56,7 @@ public:
     Stats getStats() const;
 
 private:
+    uint64_t preTouchNs_ = 0;
     size_t bufferSizeBytes_;
     int32_t numBuffers_;
 

@@ -13,7 +13,6 @@ import android.util.Size
 import android.view.Surface
 import java.util.concurrent.Executors
 import java.io.File
-import java.util.TreeMap
 import android.os.SystemClock
 import org.json.JSONObject
 import org.json.JSONArray
@@ -65,8 +64,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var clipStartNs = 0L
     private var clipTimeout: Runnable? = null
     private val clipFrameMetadata = mutableListOf<JSONObject>()
-    private val clipImages = TreeMap<Long, Image>()
-    private val clipResults = TreeMap<Long, TotalCaptureResult>()
+    private val clipPairs = TimestampPairingWindow<Image, TotalCaptureResult>()
+    private var clipAcquisitionDeferrals = 0
+    private val clipImageTimestamps = mutableListOf<Long>()
+    private val clipResultTimestamps = mutableListOf<Long>()
+    private val clipEvictedResultTimestamps = mutableListOf<Long>()
     @Volatile private var released = false
 
     @SuppressLint("MissingPermission")
@@ -89,9 +91,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     reader = ImageReader.newInstance(rawSize.width, rawSize.height, ImageFormat.RAW_SENSOR, 3).apply {
                         setOnImageAvailableListener({ source ->
                             try {
+                                if (token == generation && clipActive) {
+                                    drainClipImages(source, token)
+                                    return@setOnImageAvailableListener
+                                }
                                 val image = source.acquireNextImage() ?: return@setOnImageAvailableListener
                                 if (token != generation) image.close()
-                                else if (clipActive) receiveClipImage(image)
                                 else if (!capturePending) image.close()
                                 else {
                                     pendingImage?.close()
@@ -301,6 +306,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipPaced = paced
                 clipGate = if (paced) PacedRequestGate(clipLimit) else null
                 clipFailedRequests = 0; clipCapacityWaitNs = 0; clipCapacityWaitStartNs = 0
+                clipAcquisitionDeferrals = 0
+                clipImageTimestamps.clear(); clipResultTimestamps.clear(); clipEvictedResultTimestamps.clear()
                 clipFrameMetadata.clear()
                 clipMatched = 0; clipAccepted = 0; clipUnmatched = 0
                 clipImagesReceived = 0; clipResultsReceived = 0; clipFirstNs = 0; clipLastNs = 0
@@ -321,9 +328,13 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
                         if (!clipActive || generation != token || id != clipSerial) return
                         clipResultsReceived++
-                        result.get(CaptureResult.SENSOR_TIMESTAMP)?.let { clipResults[it] = result }
-                        while (clipResults.size > 12) clipResults.pollFirstEntry()
+                        result.get(CaptureResult.SENSOR_TIMESTAMP)?.let {
+                            clipResultTimestamps.add(it)
+                            clipPairs.addResult(it, result)?.let { evicted -> clipEvictedResultTimestamps.add(evicted) }
+                        }
                         matchClipFrames()
+                        // Resume unread ImageReader buffers when metadata frees a held Image slot.
+                        if (clipActive) reader?.let { drainClipImages(it, token) }
                     }
                     override fun onCaptureSequenceCompleted(s: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
                         if (!clipPaced) handler.postDelayed({
@@ -390,18 +401,27 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
 
     fun stopRawClip() { if (!released) handler.post { stopClipInternal("user stop", true) } }
 
-    private fun receiveClipImage(image: Image) {
-        clipImagesReceived++
-        clipImages.put(image.timestamp, image)?.let { it.close(); clipUnmatched++ }
-        matchClipFrames()
-        // ImageReader has 3 slots: retain at most 2 while waiting for capture metadata.
-        while (clipImages.size > 2) { clipImages.pollFirstEntry().value.close(); clipUnmatched++ }
+    private fun drainClipImages(source: ImageReader, token: Int) {
+        if (!clipActive || generation != token || source !== reader) return
+        if (!clipPairs.canAcquire) { clipAcquisitionDeferrals++; return }
+        try {
+            // At most 8 requests exist. Keep <=2 acquired Images, leaving a driver slot free.
+            while (clipActive && clipPairs.canAcquire) {
+                val image = source.acquireNextImage() ?: break
+                clipImagesReceived++
+                clipImageTimestamps.add(image.timestamp)
+                clipPairs.addImage(image.timestamp, image)?.let { it.close(); clipUnmatched++ }
+                matchClipFrames()
+            }
+        } catch (e: Exception) { stopClipInternal("RAW image drain error: ${e.message}", true) }
     }
 
     private fun matchClipFrames() {
-        for (timestamp in clipImages.keys.toList()) {
-            val result = clipResults.remove(timestamp) ?: continue
-            val image = clipImages.remove(timestamp) ?: continue
+        while (clipActive) {
+            val pair = clipPairs.pollMatch() ?: break
+            val timestamp = pair.timestamp
+            val result = pair.result
+            val image = pair.image
             clipMatched++
             var wasAccepted = false
             var rejectionReason = "missing sensor metadata or unsupported format"
@@ -462,15 +482,24 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         clipPump?.let { handler.removeCallbacks(it) }; clipPump = null
         finishCapacityWait()
         clipTimeout?.let { handler.removeCallbacks(it) }; clipTimeout = null
-        clipUnmatched += clipImages.size
-        clipImages.values.forEach { it.close() }; clipImages.clear()
-        val pendingResults = clipResults.size; clipResults.clear()
+        val pendingImageTimestamps = clipPairs.imageTimestamps
+        val pendingResultTimestamps = clipPairs.resultTimestamps
+        clipUnmatched += pendingImageTimestamps.size
+        clipPairs.clearImages().forEach { it.close() }
+        val pendingResults = pendingResultTimestamps.size; clipPairs.clearResults()
         val folder = clipFolder ?: return
         clipFolder = null
         val report = JSONObject().apply {
             put("frames", JSONArray(clipFrameMetadata.toList()))
             put("schema", "cinecam-raw-test-2"); put("reason", reason)
             put("appVersion", BuildConfig.VERSION_NAME)
+            put("pairingPolicy", "bounded-acquisition-no-eviction")
+            put("imageAcquisitionDeferrals", clipAcquisitionDeferrals)
+            put("imageTimestamps", JSONArray(clipImageTimestamps.toList()))
+            put("resultTimestamps", JSONArray(clipResultTimestamps.toList()))
+            put("pendingImageTimestampsAtStop", JSONArray(pendingImageTimestamps))
+            put("pendingResultTimestampsAtStop", JSONArray(pendingResultTimestamps))
+            put("evictedResultTimestamps", JSONArray(clipEvictedResultTimestamps.toList()))
             put("captureMode", if (clipPaced) "paced" else "burst")
             put("submittedRequests", if (clipPaced) clipGate?.submitted ?: 0 else clipLimit)
             put("failedRequests", clipFailedRequests); put("pacedCapacityWaitNs", clipCapacityWaitNs)
