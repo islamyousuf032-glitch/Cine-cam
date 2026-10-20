@@ -115,3 +115,6 @@ Next patch uses isolated ARM64 CRC instructions behind HWCAP+self-test, fallback
 Device reports prove hardware backend selected/self-test passed: CRC ~7ms/frame। Paced 8/8; Burst3/8 with 3 poolExhausted + 2 unmatched images/pending results (not just native drops)। Burst row-copy max99.56ms, write total313.85ms/3 frames; Paced fsync3.289s। No overall performance success or 30fps claim; original binary not independently verified। Full evidence: `docs/device-tests/F23-v68-summary.md`。
 
 Patch replaces acquire-then-evict with acquisition backpressure at2 held Images, resumes on metadata callbacks, adds exact timestamp diagnostics/testable bounded join। Three native buffers pre-touched once before capture (measured) to move possible page faults out of callback; same allocation cap, earlier resident pages, not mlock/performance guarantee। Hardware CRC/format/fsync/limits unchanged। Local native tests passed; Android CI/device check pending。
+
+### v69 delivery confirmed
+CI `39384711171`/69 succeeded: ARM64/x86_64 sanitizers, Android unit tests (including timestamp pairing), lint/debug/release এবং publish। Release `v0.1.69-alpha-dabef97`, APK 14,740,632 bytes, verified uploaded asset। Physical-device matching/pre-touch benefit এবং sustained throughput যাচাই বাকি।
