@@ -102,4 +102,10 @@ F23 user test of v0.1.66: images/results/matched=8, accepted/written=4, rejected
 
 Old report lacks per-stage time/reject reason, so do not state CRC or storage is proven bottleneck。 New patch replaces bytewise CRC with slicing-by-8 (same format), exposes per-reason/per-stage timing, and offers Paced/default vs Burst mode with unchanged 3 native slots。 Paced is one-request-at-a-time with capacity wait, not fixed FPS or sustained-recording success।
 
-Local native ASan/UBSan + independent reader tests passed। Host-only O3 CRC sample (5×24,969,600 bytes): old ~304ms, new ~72ms; not phone performance or a gating threshold। Kotlin request gate tests added; new Android CI/release/device tests pending। Next: compare two new F23 reports, then decide compression/format/camera pipeline changes from actual timings।
+Local native ASan/UBSan + independent reader tests passed। Host-only O3 CRC sample (5×24,969,600 bytes): old ~304ms, new ~72ms; not phone performance or a gating threshold। Kotlin request gate tests, Android unit/lint/debug+release builds এবং publish CI run 39375263600/67 সফল। Release `v0.1.67-alpha-24a8b7e` published; নতুন physical-device tests pending। Next: compare two new F23 reports, then decide compression/format/camera pipeline changes from actual timings।
+
+## v67 paired device test → runtime CRC patch
+
+User supplied two Paced reports (8/8, 0 drop, pool peak1) and one Burst report (6/8, 2 poolExhausted, pool peak3); clean stop/all slots returned in all three। Detailed timings/exact sizes in `docs/device-tests/F23-v67-summary.md`। No original binary independently verified। Burst CRC mean ~50ms and append mean ~105ms per written frame; one Paced fsync ~2.55s। Do not sum overlapping phase timings or call old/new samples controlled speedup।
+
+Next patch uses isolated ARM64 CRC instructions behind HWCAP+self-test, fallback on other CPUs/failure, actual backend reporting, unchanged pool/format/fsync। Local x86 selected+forced fallback sanitizer/reader tests passed; ARM64 CI/Android/device results pending।

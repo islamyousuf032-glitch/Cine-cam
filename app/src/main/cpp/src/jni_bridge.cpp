@@ -185,7 +185,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         "\"dropReasons\":{\"poolExhausted\":%llu,\"controlBusy\":%llu,\"invalidLayout\":%llu,"
         "\"timestampRejected\":%llu,\"queueRejected\":%llu,\"notRecording\":%llu,\"writerUnavailable\":%llu},"
         "\"rowCopyNs\":%llu,\"maxRowCopyNs\":%llu,"
-        "\"writerTimings\":{\"crcBackend\":\"slicing-by-8\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
+        "\"writerTimings\":{\"crcBackend\":\"%s\",\"hardwareCrcStatus\":\"%s\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
         "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu}}",
         stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
         (unsigned long long)stats.framesPushed, (unsigned long long)stats.framesDropped, (unsigned long long)stats.framesWritten,
@@ -194,6 +194,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         (unsigned long long)stats.timestampRejected, (unsigned long long)stats.queueRejected,
         (unsigned long long)stats.notRecording, (unsigned long long)stats.writerUnavailable,
         (unsigned long long)stats.rowCopyNs, (unsigned long long)stats.maxRowCopyNs,
+        ccrawCrcBackend(), ccrawHardwareCrcStatus(),
         (unsigned long long)stats.writerTimings.payloadBytes, (unsigned long long)stats.writerTimings.crcNs,
         (unsigned long long)stats.writerTimings.writeSyscallNs, (unsigned long long)stats.writerTimings.fsyncNs,
         (unsigned long long)stats.writerTimings.appendNs, (unsigned long long)stats.writerTimings.maxAppendNs,
@@ -213,7 +214,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetLastError(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeGetVersion(
         JNIEnv* env, jobject /*thiz*/) {
-    return env->NewStringUTF("CineCam CCRAW001 / slicing-by-8 CRC / bounded paced test (C++17)");
+    return env->NewStringUTF("CineCam CCRAW001 / runtime CRC dispatch / bounded paced test (C++17)");
 }
 
 // ---------------------------------------------------------------------------

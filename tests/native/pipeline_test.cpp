@@ -9,6 +9,12 @@
 #include <thread>
 #include <array>
 #include <vector>
+#include <cstring>
+#include <cstdio>
+#if defined(CINECAM_ARM64_CRC) && defined(__aarch64__) && defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#endif
 
 using namespace cinecam;
 RawFrame pooled(MemoryPool& pool, int number) {
@@ -37,16 +43,36 @@ uint32_t referenceCrc(const uint8_t* data, size_t size) {
 }
 
 int main() {
+    std::printf("CRC backend: %s; hardware self-test: %s\n", ccrawCrcBackend(), ccrawHardwareCrcStatus());
+#ifdef CINECAM_FORCE_PORTABLE_CRC
+    assert(std::strcmp(ccrawCrcBackend(), "slicing-by-8-forced") == 0);
+#elif defined(CINECAM_ARM64_CRC) && defined(__aarch64__) && defined(__linux__)
+    if (getauxval(AT_HWCAP) & HWCAP_CRC32) {
+#ifdef CINECAM_CRC_TEST_FAIL_SELFTEST
+        assert(std::strcmp(ccrawCrcBackend(), "slicing-by-8-self-test-fallback") == 0);
+        assert(std::strcmp(ccrawHardwareCrcStatus(), "failed") == 0);
+#else
+        assert(std::strcmp(ccrawCrcBackend(), "arm64-crc32") == 0);
+        assert(std::strcmp(ccrawHardwareCrcStatus(), "passed") == 0);
+#endif
+    } else assert(std::strcmp(ccrawCrcBackend(), "slicing-by-8") == 0);
+#else
+    assert(std::strcmp(ccrawCrcBackend(), "slicing-by-8") == 0);
+#endif
     {
         std::vector<uint8_t> data(262144 + 16);
         uint32_t seed = 7;
         for (auto& byte : data) { seed = seed * 1664525U + 1013904223U; byte = seed >> 24; }
         assert(ccrawCrc32(nullptr, 0) == 0);
         for (size_t offset = 0; offset < 16; ++offset) {
-            for (size_t size = 0; size < 80; ++size)
+            for (size_t size = 0; size < 80; ++size) {
+                assert(ccrawCrc32Portable(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
                 assert(ccrawCrc32(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
-            for (size_t size : {4095U, 65536U, 262144U})
+            }
+            for (size_t size : {4095U, 65536U, 262144U}) {
+                assert(ccrawCrc32Portable(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
                 assert(ccrawCrc32(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
+            }
         }
     }
     {

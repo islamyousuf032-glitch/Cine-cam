@@ -32,6 +32,7 @@ add_library(cinecam_raw SHARED
         src/sync_timeline.cpp
         src/ring_buffer.cpp
         src/ccraw_writer.cpp
+        src/crc32_dispatch.cpp
         src/raw_writer.cpp
         src/cinemadng_writer.cpp
         src/memory_pool.cpp
@@ -56,4 +57,12 @@ target_link_libraries(cinecam_raw
 # Note: camera2ndk optionally linked if found
 if(camera2ndk-lib)
   target_link_libraries(cinecam_raw ${camera2ndk-lib})
+endif()
+
+# CRC instructions ONLY in this isolated TU. Baseline ARM64 code remains armv8-a.
+# Runtime HWCAP detection + self-test must succeed before any call into it.
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    target_sources(cinecam_raw PRIVATE src/crc32_arm64.cpp)
+    set_source_files_properties(src/crc32_arm64.cpp PROPERTIES COMPILE_OPTIONS "-march=armv8-a+crc;-fno-lto")
+    target_compile_definitions(cinecam_raw PRIVATE CINECAM_ARM64_CRC=1)
 endif()

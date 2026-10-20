@@ -49,3 +49,9 @@ Valid complete container হলে JSON summary ও frame metadata আসবে�
 - CRC backend `slicing-by-8` checksum-compatible; file size বা compression ratio বদলায় না। Actual device speed report দিয়েই বিচার করতে হবে।
 
 এই patch audio, compression, MP4 playback বা calibrated DNG conversion চালু করে না। পুরোনো personal files স্বয়ংক্রিয়ভাবে মুছে ফেলা হবে না।
+
+## Runtime hardware CRC patch পরীক্ষা
+
+নতুন APK-তে আগে Burst (Paced OFF), পরে Paced ON test দিন। দুই report-এ `native.writerTimings.crcBackend` ও `hardwareCrcStatus` দেখুন। Supported+verified ARM64 path: `arm64-crc32`/`passed`; unsupported CPU: `slicing-by-8`/`unavailable`; self-test failure: `slicing-by-8-self-test-fallback`/`failed`। Backend fallback নিরাপত্তার জন্য; unsupported CPU-কে +crc চালাতে বাধ্য করা হবে না।
+
+একই 3 native slots, 8-frame budget, no compression; 8 frames হলে আবার ~200 MB-ই হবে। `captureWindowNs` setupসহ stop requested পর্যন্ত, `stopDrainNs` native stop/drain/finalize call-এর elapsed time; `wallUntilDrainNs` export বাদ দেয়। fsync অপরিবর্তিত, তাই finalizing কয়েক সেকেন্ড থাকতে পারে। CRC দ্রুত হলেও copy/write/camera overhead-এর কারণে Burst-এ drop থাকতে পারে। Thermal/power/storage variation-এর জন্য ideally একই settings/scene-এ paired tests দরকার।

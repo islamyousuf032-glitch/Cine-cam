@@ -290,7 +290,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
-                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst")
+                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
+                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"))
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs)) {
                     engine.getLastError()
@@ -480,6 +481,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("firstAcceptedSensorNs", clipFirstNs); put("lastAcceptedSensorNs", clipLastNs)
             put("epochBoottimeNs", clipStartNs)
             put("sensorSpanNs", if (clipAccepted > 1) clipLastNs - clipFirstNs else 0)
+            put("captureWindowNs", SystemClock.elapsedRealtimeNanos() - clipStartNs)
             put("warning", "Short diagnostic RAW burst only; not sustained FPS, playable video, audio sync or MotionCam compatibility")
         }
         try {
@@ -491,7 +493,9 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             val engine = NativeRawEngine.getInstance()
             var message: String
             try {
+                val stopBeginNs = SystemClock.elapsedRealtimeNanos()
                 val ok = engine.stopRecording()
+                report.put("stopDrainNs", SystemClock.elapsedRealtimeNanos() - stopBeginNs)
                 val stats = JSONObject(engine.getStatsJson())
                 report.put("nativeStopOk", ok); report.put("native", stats)
                 report.put("nativeError", if (ok) "" else engine.getLastError())

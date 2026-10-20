@@ -30,4 +30,8 @@ private:
     std::atomic<uint64_t> appendNs_{0}, maxAppendNs_{0}, finalizeNs_{0}, payloadBytes_{0};
 };
 uint32_t ccrawCrc32(const uint8_t* bytes, size_t size);
+// Portable oracle/fallback, also used to self-test runtime-selected acceleration.
+uint32_t ccrawCrc32Portable(const uint8_t* bytes, size_t size);
+const char* ccrawCrcBackend();
+const char* ccrawHardwareCrcStatus();
 }

@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Runtime hardware CRC patch] — 2026-10-20
+- F23 v67 reports: দুই Paced run-এ 8/8 written, Burst 6/8 written এবং ঠিক 2 poolExhausted rejects। 200/150 MB file sizes frame count-এর সঙ্গে মেলে; original payload এখনও independently verified নয়। বিস্তারিত `docs/device-tests/F23-v67-summary.md`।
+- Supported ARM64 CPU-তে runtime HWCAP detection + startup self-test-এর পর IEEE CRC32 hardware backend। Unsupported CPU/self-test failure-এ portable slicing-by-8 fallback; ARM32/x86 baseline অপরিবর্তিত।
+- ISA-specific source আলাদাভাবে +crc/no-LTO compile; global +crc নয়, noinline hardware entry; payload copy/precision/checksum/container byte format অপরিবর্তিত।
+- Report/sidecar backend এখন actual selection; `hardwareCrcStatus` ও capture-window/stop-drain সময় যোগ। Pool 3, capture limits, Paced/Burst scheduler ও fsync safety অপরিবর্তিত।
+- CI native tests x86_64 এবং ARM64; selected/forced-portable/ARM64 simulated self-test-failure paths এবং independent Python reader। নতুন physical-device speed/drop tests pending।
+
 ## [Unreleased — RAW pacing/diagnostics patch] — 2026-10-20
 - F23 user report: 8/8 Image/result pairs matched, 4 accepted/written, 4 native rejects, clean stop/pool return। 99,878,880-byte size exactly matches four 4080×3060 RAW16 frames plus container overhead; actual payload sample স্বাধীনভাবে পরীক্ষা করা হয়নি।
 - CRC32 bytewise implementation replaced by portable slicing-by-8; CCRAW001 bytes/checksum semantics unchanged। Correctness tests cover offsets, short/tail lengths, larger pseudorandom data এবং independent Python reader।

@@ -8,11 +8,27 @@ mkdir -p build/native-tests
   app/src/main/cpp/src/memory_pool.cpp -o build/native-tests/core_test
 build/native-tests/core_test
 printf 'Native core tests passed.\n'
-"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -pthread \
-  -fsanitize=address,undefined -fno-omit-frame-pointer \
-  -Iapp/src/main/cpp/include tests/native/pipeline_test.cpp \
-  app/src/main/cpp/src/{memory_pool,ring_buffer,cine_raw_engine,raw_writer,ccraw_writer,cinemadng_writer,sync_timeline}.cpp \
-  -o build/native-tests/pipeline_test
-timeout 30s build/native-tests/pipeline_test
-printf 'Native queue, engine lifecycle, writer failure and sync timeline tests passed.\n'
-python3 tests/native/test_ccraw_reader.py
+crc_flags=()
+crc_objects=()
+if [[ "$(uname -m)" == "aarch64" ]]; then
+  "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+    -fno-omit-frame-pointer -march=armv8-a+crc -fno-lto \
+    -c app/src/main/cpp/src/crc32_arm64.cpp -o build/native-tests/crc32_arm64.o
+  crc_flags=(-DCINECAM_ARM64_CRC=1)
+  crc_objects=(build/native-tests/crc32_arm64.o)
+fi
+modes=(selected forced-portable)
+if [[ "$(uname -m)" == "aarch64" ]]; then modes+=(self-test-failure); fi
+for mode in "${modes[@]}"; do
+  flags=("${crc_flags[@]}")
+  if [[ "$mode" == "forced-portable" ]]; then flags+=(-DCINECAM_FORCE_PORTABLE_CRC=1); fi
+  if [[ "$mode" == "self-test-failure" ]]; then flags+=(-DCINECAM_CRC_TEST_FAIL_SELFTEST=1); fi
+  "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer "${flags[@]}" \
+    -Iapp/src/main/cpp/include tests/native/pipeline_test.cpp \
+    app/src/main/cpp/src/{memory_pool,ring_buffer,cine_raw_engine,raw_writer,ccraw_writer,crc32_dispatch,cinemadng_writer,sync_timeline}.cpp \
+    "${crc_objects[@]}" -o build/native-tests/pipeline_test
+  timeout 30s build/native-tests/pipeline_test
+  printf 'Native queue, lifecycle, writer, sync and CRC tests passed (%s).\n' "$mode"
+  python3 tests/native/test_ccraw_reader.py
+done

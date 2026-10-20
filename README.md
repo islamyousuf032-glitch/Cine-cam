@@ -116,3 +116,7 @@ APK build:
 6. স্থায়ী signing, APK install ও physical-device acceptance tests।
 
 RAW_SENSOR, RAW10/RAW12 stream format, sensor bit depth এবং নির্দিষ্ট resolution-এ 24/30/60fps ভিন্ন বিষয়। ক্যামেরার advertised capabilities ও বাস্তব পরীক্ষা ছাড়া কোনোটি নিশ্চিত নয়।
+
+### Runtime hardware CRC follow-up
+
+নতুন patch supported ARM64-এ HWCAP+self-test gated IEEE CRC32 acceleration দেয়; unsupported CPU-তে slicing-by-8 fallback। Actual backend report ও metadata-তে দেখা যায়। v67 paired phone result: Paced 8/8, Burst 6/8 এবং 2 poolExhausted—`docs/device-tests/F23-v67-summary.md`। নতুন hardware-backend device performance এখনও যাচাই বাকি; checksum/fsync বন্ধ বা pool বাড়ানো হয়নি।

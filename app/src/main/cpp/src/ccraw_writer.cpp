@@ -15,7 +15,7 @@ void putFloat(uint8_t* p, float n) { uint32_t bits; static_assert(sizeof(n) == 4
 }
 // Portable slicing-by-8 CRC32. Same IEEE polynomial/bytes as CCRAW001 v1.
 // No unaligned uint32 dereference, host-endian assumption, ISA requirement or extra copy.
-uint32_t ccrawCrc32(const uint8_t* p, size_t size) {
+uint32_t ccrawCrc32Portable(const uint8_t* p, size_t size) {
     static const auto table = [] {
         std::array<std::array<uint32_t, 256>, 8> t{};
         for (uint32_t i = 0; i < 256; ++i) {
