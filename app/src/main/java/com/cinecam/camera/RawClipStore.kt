@@ -14,7 +14,7 @@ import java.io.File
 import java.util.UUID
 
 internal object RawClipStore {
-    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int): File {
+    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String): File {
         val root = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Storage unavailable")
         check(StatFs(root.absolutePath).availableBytes >= 650L * 1024 * 1024) { "RAW test-এর জন্য অন্তত 650 MiB ফাঁকা জায়গা প্রয়োজন" }
         val folder = File(root, "CineCam_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}")
@@ -29,6 +29,7 @@ internal object RawClipStore {
             val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             val metadata = JSONObject().apply {
                 put("schema", "cinecam-calibration-1")
+                put("captureMode", mode); put("poolSlots", 3); put("crcBackend", "slicing-by-8")
                 put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("androidApi", Build.VERSION.SDK_INT)
                 put("width", width); put("height", height); put("storageBits", 16)

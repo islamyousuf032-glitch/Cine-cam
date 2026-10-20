@@ -42,6 +42,7 @@ public:
         double avgFps = 0.0;
         double writeSpeedMBps = 0.0;
         int64_t currentFileSize = 0;
+        CcrawWriter::Timings timings;
     };
     WriterStats getStats() const;
 

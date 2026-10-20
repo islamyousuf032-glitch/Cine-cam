@@ -18,6 +18,7 @@ import android.os.SystemClock
 import org.json.JSONObject
 import org.json.JSONArray
 import com.cinecam.engine.NativeRawEngine
+import com.cinecam.app.BuildConfig
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Camera/session state is handler-confined; one bounded still is owned by the storage worker. */
@@ -45,6 +46,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var captureOrientation = 1
     private var timeout: Runnable? = null
     private var clipActive = false
+    private var clipPaced = true
+    private var clipGate: PacedRequestGate? = null
+    private var clipPump: Runnable? = null
+    private var clipFailedRequests = 0
+    private var clipCapacityWaitStartNs = 0L
+    private var clipCapacityWaitNs = 0L
     private var clipSerial = 0L
     private var clipFolder: File? = null
     private var clipLimit = 8
@@ -261,7 +268,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -283,13 +290,16 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
-                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation)
+                clipFolder = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst")
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs)) {
                     engine.getLastError()
                 }
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
+                clipPaced = paced
+                clipGate = if (paced) PacedRequestGate(clipLimit) else null
+                clipFailedRequests = 0; clipCapacityWaitNs = 0; clipCapacityWaitStartNs = 0
                 clipFrameMetadata.clear()
                 clipMatched = 0; clipAccepted = 0; clipUnmatched = 0
                 clipImagesReceived = 0; clipResultsReceived = 0; clipFirstNs = 0; clipLastNs = 0
@@ -306,7 +316,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipTimeout = Runnable {
                     if (clipActive && id == clipSerial) stopClipInternal("12-second safety timeout", true)
                 }.also { handler.postDelayed(it, 12000) }
-                current.captureBurst(List(clipLimit) { request }, object : CameraCaptureSession.CaptureCallback() {
+                val callback = object : CameraCaptureSession.CaptureCallback() {
                     override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
                         if (!clipActive || generation != token || id != clipSerial) return
                         clipResultsReceived++
@@ -315,15 +325,42 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         matchClipFrames()
                     }
                     override fun onCaptureSequenceCompleted(s: CameraCaptureSession, sequenceId: Int, frameNumber: Long) {
-                        handler.postDelayed({
+                        if (!clipPaced) handler.postDelayed({
                             if (clipActive && generation == token && id == clipSerial) stopClipInternal("burst completed; late-image grace elapsed", true)
                         }, 1200)
                     }
                     override fun onCaptureFailed(s: CameraCaptureSession, r: CaptureRequest, failure: CaptureFailure) {
-                        if (clipActive && generation == token && id == clipSerial) onStatus("RAW request failed: ${failure.reason}; test চলমান")
+                        if (!clipActive || generation != token || id != clipSerial) return
+                        clipFailedRequests++
+                        onStatus("RAW request failed: ${failure.reason}")
+                        if (clipPaced) advancePaced()
                     }
-                }, handler)
-                onStatus("RAW test: সর্বোচ্চ $clipLimit frames • no audio • fixed FPS নয়")
+                    override fun onCaptureSequenceAborted(s: CameraCaptureSession, sequenceId: Int) {
+                        if (clipActive && generation == token && id == clipSerial) stopClipInternal("camera sequence aborted", true)
+                    }
+                }
+                if (clipPaced) {
+                    clipPump = Runnable {
+                        if (!clipActive || generation != token || id != clipSerial) return@Runnable
+                        val gate = clipGate ?: return@Runnable
+                        if (gate.inFlight) return@Runnable
+                        if (gate.exhausted) { stopClipInternal("paced request limit reached", true); return@Runnable }
+                        val capacity = engine.nativeRawClipCapacity()
+                        if (capacity < 0) { stopClipInternal("native writer unavailable", true); return@Runnable }
+                        if (capacity == 0) {
+                            if (clipCapacityWaitStartNs == 0L) clipCapacityWaitStartNs = SystemClock.elapsedRealtimeNanos()
+                            clipPump?.let { handler.postDelayed(it, 10) }
+                            return@Runnable
+                        }
+                        finishCapacityWait()
+                        if (gate.trySubmit(capacity)) {
+                            try { current.capture(request, callback, handler) }
+                            catch (e: Exception) { stopClipInternal("paced request error: ${e.message}", true) }
+                        }
+                    }
+                    clipPump?.let { handler.post(it) }
+                } else current.captureBurst(List(clipLimit) { request }, callback, handler)
+                onStatus("RAW ${if (clipPaced) "Paced" else "Burst"}: সর্বোচ্চ $clipLimit frames • variable FPS • no audio")
             } catch (e: Exception) {
                 if (clipActive) stopClipInternal("Burst error: ${e.message}", true)
                 else {
@@ -336,11 +373,25 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         }
     }
 
+    private fun finishCapacityWait() {
+        if (clipCapacityWaitStartNs != 0L) {
+            clipCapacityWaitNs += SystemClock.elapsedRealtimeNanos() - clipCapacityWaitStartNs
+            clipCapacityWaitStartNs = 0L
+        }
+    }
+
+    private fun advancePaced() {
+        if (!clipActive || !clipPaced) return
+        clipGate?.finish()
+        if (clipGate?.exhausted == true) stopClipInternal("paced request limit reached", true)
+        else clipPump?.let { handler.post(it) }
+    }
+
     fun stopRawClip() { if (!released) handler.post { stopClipInternal("user stop", true) } }
 
     private fun receiveClipImage(image: Image) {
         clipImagesReceived++
-        clipImages.put(image.timestamp, image)?.close()
+        clipImages.put(image.timestamp, image)?.let { it.close(); clipUnmatched++ }
         matchClipFrames()
         // ImageReader has 3 slots: retain at most 2 while waiting for capture metadata.
         while (clipImages.size > 2) { clipImages.pollFirstEntry().value.close(); clipUnmatched++ }
@@ -352,18 +403,28 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             val image = clipImages.remove(timestamp) ?: continue
             clipMatched++
             var wasAccepted = false
+            var rejectionReason = "missing sensor metadata or unsupported format"
+            var sourceRowStride = 0
+            var sourcePixelStride = 0
+            var nativeIngestNs = 0L
+            val pairingAtNs = SystemClock.elapsedRealtimeNanos()
             try {
                 image.use {
                     val exposure = result.get(CaptureResult.SENSOR_EXPOSURE_TIME)
                     val iso = result.get(CaptureResult.SENSOR_SENSITIVITY)
                     if (exposure != null && iso != null && image.format == ImageFormat.RAW_SENSOR) {
                         val plane = image.planes.single()
+                        sourceRowStride = plane.rowStride; sourcePixelStride = plane.pixelStride
+                        require(plane.pixelStride == 2 && plane.buffer.isDirect) { "RAW16 needs direct buffer and pixelStride=2" }
                         val neutral = result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)
+                        val ingestBegin = SystemClock.elapsedRealtimeNanos()
                         val accepted = NativeRawEngine.getInstance().nativePushRawPlane(plane.buffer.slice(), image.width, image.height,
                             plane.rowStride, plane.pixelStride, timestamp, exposure, iso, result.frameNumber.toInt(),
                             result.get(CaptureResult.LENS_FOCUS_DISTANCE) ?: 0f,
                             neutral?.getOrNull(0)?.toFloat() ?: 0f, neutral?.getOrNull(1)?.toFloat() ?: 0f,
                             neutral?.getOrNull(2)?.toFloat() ?: 0f)
+                        nativeIngestNs = SystemClock.elapsedRealtimeNanos() - ingestBegin
+                        rejectionReason = if (accepted) "" else "native rejected; see native.dropReasons"
                         if (accepted) {
                             wasAccepted = true
                             clipAccepted++
@@ -372,9 +433,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         }
                     }
                 }
-            } catch (e: Exception) { onStatus("RAW frame reject: ${e.message}") }
+            } catch (e: Exception) { rejectionReason = e.message ?: "frame error"; onStatus("RAW frame reject: ${e.message}") }
             try { clipFrameMetadata.add(JSONObject().apply {
                 put("timestampNs", timestamp); put("sourceFrameNumber", result.frameNumber); put("accepted", wasAccepted)
+                put("rejectionReason", rejectionReason); put("sourceRowStride", sourceRowStride); put("sourcePixelStride", sourcePixelStride)
+                put("nativeIngestNs", nativeIngestNs); put("pairingLatencyNs", pairingAtNs - timestamp)
                 put("exposureNs", result.get(CaptureResult.SENSOR_EXPOSURE_TIME))
                 put("iso", result.get(CaptureResult.SENSOR_SENSITIVITY))
                 put("neutralColorPoint", result.get(CaptureResult.SENSOR_NEUTRAL_COLOR_POINT)?.let { JSONArray(it.map { value -> value.toString() }) } ?: JSONObject.NULL)
@@ -385,13 +448,18 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipFrameMetadata.add(JSONObject().put("timestampNs", timestamp).put("accepted", wasAccepted)
                     .put("metadataError", e.message))
             }
-            if (clipMatched >= clipLimit) { stopClipInternal("frame limit reached", true); return }
+            if (clipPaced) {
+                advancePaced()
+                if (!clipActive) return
+            } else if (clipMatched >= clipLimit) { stopClipInternal("frame limit reached", true); return }
         }
     }
 
     private fun stopClipInternal(reason: String, resumePreview: Boolean) {
         if (!clipActive) return
         clipActive = false
+        clipPump?.let { handler.removeCallbacks(it) }; clipPump = null
+        finishCapacityWait()
         clipTimeout?.let { handler.removeCallbacks(it) }; clipTimeout = null
         clipUnmatched += clipImages.size
         clipImages.values.forEach { it.close() }; clipImages.clear()
@@ -400,7 +468,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         clipFolder = null
         val report = JSONObject().apply {
             put("frames", JSONArray(clipFrameMetadata.toList()))
-            put("schema", "cinecam-raw-test-1"); put("reason", reason)
+            put("schema", "cinecam-raw-test-2"); put("reason", reason)
+            put("appVersion", BuildConfig.VERSION_NAME)
+            put("captureMode", if (clipPaced) "paced" else "burst")
+            put("submittedRequests", if (clipPaced) clipGate?.submitted ?: 0 else clipLimit)
+            put("failedRequests", clipFailedRequests); put("pacedCapacityWaitNs", clipCapacityWaitNs)
             put("requestedFrames", clipLimit); put("imagesReceived", clipImagesReceived); put("resultsReceived", clipResultsReceived)
             put("matchedFrames", clipMatched); put("acceptedFrames", clipAccepted)
             put("unmatchedImages", clipUnmatched); put("pendingResultsAtStop", pendingResults)

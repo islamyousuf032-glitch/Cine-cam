@@ -62,6 +62,7 @@ class NativeRawEngine private constructor() {
         frameNumber: Int
     ): Boolean
     external fun nativeGetStatsJson(): String
+    external fun nativeRawClipCapacity(): Int
     external fun nativeStartRawClip(width: Int, height: Int, path: String, epochNs: Long): Boolean
     external fun nativePushRawPlane(buffer: ByteBuffer, width: Int, height: Int, rowStride: Int, pixelStride: Int,
         timestamp: Long, exposure: Long, iso: Int, number: Int, focus: Float, neutralR: Float, neutralG: Float, neutralB: Float): Boolean

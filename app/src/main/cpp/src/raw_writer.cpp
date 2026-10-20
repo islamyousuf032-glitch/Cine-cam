@@ -313,6 +313,7 @@ void RawWriter::updateStats(size_t bytesWritten) {
 
 RawWriter::WriterStats RawWriter::getStats() const {
     WriterStats s{};
+    s.timings = ccraw_.timings();
     s.framesWritten = framesWritten_.load();
     s.bytesWritten = bytesWritten_.load();
     s.framesDropped = framesDropped_.load();

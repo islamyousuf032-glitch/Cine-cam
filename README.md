@@ -44,6 +44,12 @@ python3 scripts/inspect_ccraw.py capture.ccraw
 
 Format spec ও test instructions: `docs/CCRAW_FORMAT.md`, `docs/RAW_BURST_TEST_PLAN.md`। Audio, compression, normal video playback ও DNG sequence conversion এখনো নেই।
 
+## RAW test: Paced / Burst তুলনা
+
+সর্বশেষ diagnostic patch-এ warning dialog-এর **Paced mode** switch দিয়ে mode নির্বাচন করা যায়। Paced mode একটি matching Image/result সম্পূর্ণ হওয়ার পর এবং native capacity ফাঁকা থাকলে পরের request দেয়; Burst আগের মতো দ্রুত batch দেয়। দুটিতেই native pool 3 slots, সর্বোচ্চ 8 frames ও একই byte limits। Paced mode-এর সম্পূর্ণ delivery-কে fixed/sustained FPS বলা যাবে না।
+
+নতুন report-এ native drop reasons ও CRC/write/fsync/copy timing আছে। CRC32 slicing-by-8-এ optimized; `.ccraw` layout ও পুরোনো reader compatibility অপরিবর্তিত। Optional host-only benchmark: `./scripts/benchmark-crc.sh`। নতুন F23 performance এখনো যাচাই বাকি; পরীক্ষা: `docs/RAW_BURST_TEST_PLAN.md`।
+
 ## ডিরেক্টরি
 
 ```text

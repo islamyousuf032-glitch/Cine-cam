@@ -58,6 +58,7 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
+    var pacedRawTest by remember { mutableStateOf(true) }
     var showRawWarning by remember { mutableStateOf(false) }
     var showClipReport by remember { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
@@ -207,11 +208,21 @@ fun CameraScreen() {
             dismissButton = { TextButton(onClick = { showReport = false }) { Text("বন্ধ") } })
     }
     if (showRawWarning) {
-        AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW burst") },
-            text = { Text("সর্বোচ্চ 8 RAW frames; Galaxy F23-তে প্রায় 200 MB। Export-এর জন্য অন্তত 650 MiB ফাঁকা storage লাগবে। এটি MP4 নয়; audio/compression নেই, 30fps নিশ্চিত নয়। ফাইল Download/CineCam-এ যাবে।") },
+        AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW test") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text("সর্বোচ্চ 8 RAW frames; প্রায় 200 MB। অন্তত 650 MiB free storage লাগবে। MP4/audio/compression নেই; 30fps নিশ্চিত নয়। Download/CineCam-এ export হবে।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Paced mode", Modifier.weight(1f))
+                        Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
+                    }
+                    Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
+                         else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
+                }
+            },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

@@ -1,4 +1,5 @@
 #include "ccraw_writer.h"
+#include "pipeline_timing.h"
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -12,25 +13,49 @@ void put32(uint8_t* p, uint32_t n) { for (int i = 0; i < 4; ++i) p[i] = static_c
 void put64(uint8_t* p, uint64_t n) { for (int i = 0; i < 8; ++i) p[i] = static_cast<uint8_t>(n >> (8 * i)); }
 void putFloat(uint8_t* p, float n) { uint32_t bits; static_assert(sizeof(n) == 4); std::memcpy(&bits, &n, 4); put32(p, bits); }
 }
+// Portable slicing-by-8 CRC32. Same IEEE polynomial/bytes as CCRAW001 v1.
+// No unaligned uint32 dereference, host-endian assumption, ISA requirement or extra copy.
 uint32_t ccrawCrc32(const uint8_t* p, size_t size) {
     static const auto table = [] {
-        std::array<uint32_t, 256> t{};
+        std::array<std::array<uint32_t, 256>, 8> t{};
         for (uint32_t i = 0; i < 256; ++i) {
             uint32_t n = i;
             for (int b = 0; b < 8; ++b) n = (n >> 1) ^ ((n & 1) ? 0xedb88320U : 0);
-            t[i] = n;
+            t[0][i] = n;
         }
+        for (size_t slice = 1; slice < 8; ++slice)
+            for (size_t i = 0; i < 256; ++i) {
+                const auto n = t[slice - 1][i];
+                t[slice][i] = (n >> 8) ^ t[0][n & 255];
+            }
         return t;
     }();
     uint32_t crc = 0xffffffffU;
-    for (size_t i = 0; i < size; ++i) crc = table[(crc ^ p[i]) & 255] ^ (crc >> 8);
+    while (size >= 8) {
+        const uint32_t word = uint32_t(p[0]) | (uint32_t(p[1]) << 8) |
+            (uint32_t(p[2]) << 16) | (uint32_t(p[3]) << 24);
+        crc ^= word;
+        crc = table[7][crc & 255] ^ table[6][(crc >> 8) & 255] ^
+              table[5][(crc >> 16) & 255] ^ table[4][crc >> 24] ^
+              table[3][p[4]] ^ table[2][p[5]] ^ table[1][p[6]] ^ table[0][p[7]];
+        p += 8; size -= 8;
+    }
+    while (size--) crc = table[0][(crc ^ *p++) & 255] ^ (crc >> 8);
     return crc ^ 0xffffffffU;
+}
+CcrawWriter::Timings CcrawWriter::timings() const {
+    return {crcNs_.load(), writeNs_.load(), fsyncNs_.load(), appendNs_.load(),
+            maxAppendNs_.load(), finalizeNs_.load(), payloadBytes_.load()};
 }
 CcrawWriter::~CcrawWriter() { if (fd_ >= 0) ::close(fd_); }
 bool CcrawWriter::writeAll(const void* data, size_t size) {
     auto p = static_cast<const uint8_t*>(data);
     while (size) {
+        const auto begin = pipelineNowNs();
         const auto n = ::write(fd_, p, size);
+        const auto writeErrno = errno;
+        writeNs_.fetch_add(pipelineNowNs() - begin);
+        errno = writeErrno;
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { failed_ = true; error_ = "CCRAW write failed (errno=" + std::to_string(errno) + ")"; return false; }
         p += n; size -= static_cast<size_t>(n);
@@ -46,6 +71,8 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
     if (::stat(final_.c_str(), &st) == 0) { error_ = "CCRAW destination already exists"; return false; }
     fd_ = ::open(partial_.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (fd_ < 0) { error_ = "Cannot exclusively create CCRAW partial"; return false; }
+    crcNs_.store(0); writeNs_.store(0); fsyncNs_.store(0);
+    appendNs_.store(0); maxAppendNs_.store(0); finalizeNs_.store(0); payloadBytes_.store(0);
     width_ = width; height_ = height; epoch_ = epoch;
     count_ = 0; payload_ = 0; lastTimestamp_ = -1; failed_ = false;
     std::array<uint8_t, 64> h{};
@@ -67,6 +94,7 @@ bool CcrawWriter::append(const RawFrame& frame) {
         m.stride != static_cast<int32_t>(width_ * 2) || m.timestampNs < epoch_ || m.timestampNs <= lastTimestamp_) {
         failed_ = true; error_ = "CCRAW frame layout, limit or timestamp invalid"; return false;
     }
+    const auto appendBegin = pipelineNowNs();
     std::array<uint8_t, 96> h{};
     std::memcpy(h.data(), "FRM1", 4); put32(h.data() + 4, 96);
     put64(h.data() + 8, static_cast<uint64_t>(m.timestampNs));
@@ -76,14 +104,21 @@ bool CcrawWriter::append(const RawFrame& frame) {
     put32(h.data() + 48, static_cast<uint32_t>(m.frameNumber)); put32(h.data() + 52, 16);
     putFloat(h.data() + 56, m.focusDistance);
     for (int i = 0; i < 3; ++i) putFloat(h.data() + 60 + i * 4, m.neutralWhitePoint[i]);
+    const auto crcBegin = pipelineNowNs();
     put32(h.data() + 72, ccrawCrc32(frame.data, frame.sizeBytes));
+    crcNs_.fetch_add(pipelineNowNs() - crcBegin);
     put32(h.data() + 76, ccrawCrc32(h.data(), 76));
     if (!writeAll(h.data(), h.size()) || !writeAll(frame.data, frame.sizeBytes)) return false;
     ++count_; payload_ += expected; lastTimestamp_ = m.timestampNs;
+    payloadBytes_.store(payload_);
+    const auto elapsed = pipelineNowNs() - appendBegin;
+    appendNs_.fetch_add(elapsed);
+    if (elapsed > maxAppendNs_.load()) maxAppendNs_.store(elapsed);
     return true;
 }
 bool CcrawWriter::finish() {
     if (fd_ < 0) return false;
+    const auto finishBegin = pipelineNowNs();
     bool ok = !failed_;
     if (ok) {
         std::array<uint8_t, 32> footer{};
@@ -92,10 +127,16 @@ bool CcrawWriter::finish() {
         put32(footer.data() + 24, ccrawCrc32(footer.data(), 24));
         ok = writeAll(footer.data(), footer.size());
     }
-    if (ok && ::fsync(fd_) != 0) { error_ = "CCRAW fsync failed"; ok = false; }
+    if (ok) {
+        const auto syncBegin = pipelineNowNs();
+        const auto result = ::fsync(fd_);
+        fsyncNs_.fetch_add(pipelineNowNs() - syncBegin);
+        if (result != 0) { error_ = "CCRAW fsync failed"; ok = false; }
+    }
     if (::close(fd_) != 0) { error_ = "CCRAW close failed"; ok = false; }
     fd_ = -1;
     if (ok && ::rename(partial_.c_str(), final_.c_str()) != 0) { error_ = "CCRAW finalize rename failed"; ok = false; }
+    finalizeNs_.store(pipelineNowNs() - finishBegin);
     return ok;
 }
 }

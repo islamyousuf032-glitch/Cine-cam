@@ -2,6 +2,7 @@
 #include "cine_log.h"
 #include <cstring>
 #include "raw_layout.h"
+#include "pipeline_timing.h"
 #include <limits>
 
 #define LOG_TAG "CineRawEngine"
@@ -65,6 +66,9 @@ bool CineRawEngine::initialize(int32_t width, int32_t height, int32_t bitDepth, 
     state_.store(EngineState::IDLE);
     framesPushed_.store(0);
     framesDropped_.store(0);
+    poolExhausted_.store(0); controlBusy_.store(0); invalidLayout_.store(0); timestampRejected_.store(0);
+    queueRejected_.store(0); notRecording_.store(0); writerUnavailable_.store(0);
+    rowCopyNs_.store(0); maxRowCopyNs_.store(0); lastWriterTimings_ = {};
 
     LOGI("Engine initialized successfully");
     return true;
@@ -151,6 +155,7 @@ bool CineRawEngine::stopRecording() {
         success = ws == WriterStatus::OK;
         lastFramesWritten_ = rawWriter_->getStats().framesWritten;
         lastWriterStatus_ = ws;
+        lastWriterTimings_ = rawWriter_->getStats().timings;
         if (!success) setError(rawWriter_->getLastError());
         if (ws != WriterStatus::OK) {
             LOGW("Writer stop returned %d: %s", static_cast<int>(ws), rawWriter_->getLastError().c_str());
@@ -175,33 +180,33 @@ bool CineRawEngine::onRaw16PlaneAvailable(const uint8_t* data, size_t size, cons
 bool CineRawEngine::ingest(const uint8_t* data, size_t size, const FrameMetadata& metadata, bool packRows) {
     // Never wait for control-path stop/drain or reinitialization on the capture callback.
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
-    if (!lock.owns_lock()) { framesDropped_.fetch_add(1); return false; }
-    if (!initialized_.load()) return false;
-    if (!memoryPool_ || !ringBuffer_ || state_.load() != EngineState::RECORDING || !rawWriter_ || !rawWriter_->isRunning()) return false;
+    if (!lock.owns_lock()) return reject(controlBusy_);
+    if (!initialized_.load() || !memoryPool_ || !ringBuffer_ || state_.load() != EngineState::RECORDING)
+        return reject(notRecording_);
+    if (!rawWriter_ || !rawWriter_->isRunning()) return reject(writerUnavailable_);
     if (!data || metadata.width != width_ || metadata.height != height_ || metadata.bitDepth != bitDepth_ ||
         !validRaw16Layout(size, packRows ? size : memoryPool_->getBufferSize(), metadata)) {
-        framesDropped_.fetch_add(1); return false;
+        return reject(invalidLayout_);
     }
 
     if (strictTimestamps_ && (metadata.timestampNs < recordingEpoch_ || metadata.timestampNs <= lastAcceptedTimestamp_)) {
-        framesDropped_.fetch_add(1); return false;
+        return reject(timestampRejected_);
     }
     // Acquire pooled buffer
     int32_t slot = memoryPool_->acquire();
     if (slot < 0) {
-        framesDropped_.fetch_add(1);
         if (logLevel_ <= 3) LOGW("Pool exhausted, dropping frame #%d", metadata.frameNumber);
-        return false;
+        return reject(poolExhausted_);
     }
 
     uint8_t* dest = memoryPool_->getBuffer(slot);
     if (!dest) {
         memoryPool_->release(slot);
-        framesDropped_.fetch_add(1);
-        return false;
+        return reject(invalidLayout_);
     }
 
     // Copy (could be zero-copy if AHardwareBuffer path is used; here we copy for safety)
+    const auto copyBegin = pipelineNowNs();
     size_t copySize = size;
     if (packRows) {
         const size_t row = static_cast<size_t>(width_) * 2;
@@ -209,6 +214,9 @@ bool CineRawEngine::ingest(const uint8_t* data, size_t size, const FrameMetadata
         for (int32_t y = 0; y < height_; ++y)
             memcpy(dest + static_cast<size_t>(y) * row, data + static_cast<size_t>(y) * metadata.stride, row);
     } else memcpy(dest, data, copySize);
+    const auto copyElapsed = pipelineNowNs() - copyBegin;
+    rowCopyNs_.fetch_add(copyElapsed);
+    if (copyElapsed > maxRowCopyNs_.load()) maxRowCopyNs_.store(copyElapsed);
 
     RawFrame frame;
     frame.data = dest;
@@ -222,8 +230,7 @@ bool CineRawEngine::ingest(const uint8_t* data, size_t size, const FrameMetadata
     if (!pushed) {
         // Return to pool if ring rejected (DropNewest)
         memoryPool_->release(slot);
-        framesDropped_.fetch_add(1);
-        return false;
+        return reject(queueRejected_);
     }
 
     lastAcceptedTimestamp_ = metadata.timestampNs;
@@ -246,12 +253,17 @@ bool CineRawEngine::pushPooledFrame(int32_t poolIndex, size_t size, const FrameM
     frame.isValid = true;
 
     bool pushed = ringBuffer_->push(std::move(frame));
-    if (!pushed) {
-        framesDropped_.fetch_add(1);
-        return false;
-    }
+    if (!pushed) return reject(queueRejected_);
     framesPushed_.fetch_add(1);
     return true;
+}
+
+int32_t CineRawEngine::ingestionCapacity() const {
+    std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+    if (!lock.owns_lock()) return 0;
+    if (!initialized_.load() || state_.load() != EngineState::RECORDING || !memoryPool_ || !rawWriter_ ||
+        !rawWriter_->isRunning() || rawWriter_->status() != WriterStatus::OK) return -1;
+    return memoryPool_->getAvailableCount();
 }
 
 CineRawEngine::EngineStats CineRawEngine::getStats() const {
@@ -259,9 +271,15 @@ CineRawEngine::EngineStats CineRawEngine::getStats() const {
     EngineStats s{};
     s.framesWritten = lastFramesWritten_;
     s.writerStatus = lastWriterStatus_;
+    s.writerTimings = lastWriterTimings_;
+    s.poolExhausted = poolExhausted_.load(); s.controlBusy = controlBusy_.load();
+    s.invalidLayout = invalidLayout_.load(); s.timestampRejected = timestampRejected_.load();
+    s.queueRejected = queueRejected_.load(); s.notRecording = notRecording_.load(); s.writerUnavailable = writerUnavailable_.load();
+    s.rowCopyNs = rowCopyNs_.load(); s.maxRowCopyNs = maxRowCopyNs_.load();
     if (memoryPool_) {
         s.poolAvailable = memoryPool_->getAvailableCount();
         s.poolTotal = memoryPool_->getNumBuffers();
+        s.poolPeakUsed = memoryPool_->getStats().peakUsed;
     }
     if (ringBuffer_) {
         s.ringSize = ringBuffer_->size();
@@ -275,8 +293,13 @@ CineRawEngine::EngineStats CineRawEngine::getStats() const {
         auto ws = rawWriter_->getStats();
         s.framesWritten = ws.framesWritten;
         s.writerStatus = rawWriter_->status();
+        s.writerTimings = ws.timings;
     }
     return s;
+}
+
+bool CineRawEngine::reject(std::atomic<uint64_t>& reason) {
+    reason.fetch_add(1); framesDropped_.fetch_add(1); return false;
 }
 
 std::string CineRawEngine::getLastError() const {

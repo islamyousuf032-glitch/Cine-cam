@@ -24,3 +24,28 @@ python3 scripts/inspect_ccraw.py /path/to/capture.ccraw
 ```
 
 Valid complete container হলে JSON summary ও frame metadata আসবে। Truncated/CRC-invalid/unfinished file হলে nonzero exit status। এটি RAW debayer/color renderer নয়। আপাতত বড় file upload না করে report পাঠালেই হবে। Scene ব্যক্তিগত হলে share করবেন না।
+
+## নতুন Paced/Burst তুলনা (report schema 2)
+
+আগের F23 result: 8 matched, 4 written, 4 rejected, clean stop। এর কারণ আলাদা counters ছাড়া নিশ্চিত বলা যায়নি।
+
+1. নতুন APK-তে আগে DNG/preview regression দেখুন।
+2. RAW test warning dialog-এ **Paced mode ON** রেখে test চালান। One request in flight; buffer free না হলে 10ms interval-এ capacity পরীক্ষা করে। এটি camera callback thread-এ sleep/spin নয়। 12-second limit শুধু capture window; stop/drain/export পরে আরও সময় নিতে পারে।
+3. Export শেষ হলে **শেষ RAW test report** কপি করে পাঠান। report.captureMode=`paced` যাচাই করুন।
+4. তারপর dialog-এ **Paced mode OFF** করে একই scene/exposure-এ Burst test; দ্বিতীয় report-ও পাঠান। Mode ছাড়া native pool size/checksum/limits এক। নতুন run-এর জন্য 650 MiB free-space check আবার হবে।
+5. Paced-এ 8 frames পেলেও সেটি 30fps বা performance bottleneck solved প্রমাণ নয়; capture cadence ধীর/variable হতে পারে। Burst result তুলনায় প্রয়োজন।
+
+### নতুন measurements
+
+- `native.dropReasons`: poolExhausted/controlBusy/invalidLayout/timestampRejected/queueRejected/notRecording/writerUnavailable। এগুলো native copied-ingestion rejects; Java missing metadata/unsupported plane errors per-frame rejectionReason-এ।
+- `poolPeakUsed`: maximum leased native slots; 3-এর বেশি হওয়া উচিত নয়।
+- `rowCopyNs`, `maxRowCopyNs`: native row-packing/copy calls-এর elapsed সময়; JNI/driver/metadata wait বাদ।
+- `writerTimings.crcNs`: RAW payload CRC হিসাবের সময়; small header CRC বাদ।
+- `writeSyscallNs`: header/payload/footer write() elapsed calls; OS blocking/cache-এর প্রভাব আছে—pure physical disk benchmark নয়।
+- `fsyncNs`: fsync elapsed time; `finalizeNs`-এ footer/fsync/close/rename আছে, তাই এগুলো যোগ করলে double-count হবে।
+- `appendNs/maxAppendNs`: সফল full-frame append-এর total/max time, যার মধ্যে CRC ও frame write আছে; failed append-এর CRC/write totals আলাদা counter-এ থাকতে পারে।
+- `pacedCapacityWaitNs`: capacity unavailable/busy থাকায় poll-ভিত্তিক wait; camera exposure/metadata delivery time নয়।
+- Per-frame `nativeIngestNs`: JNI call+native ingestion; `pairingLatencyNs` sensor start থেকে matching moment (exposure/driver/queue অন্তর্ভুক্ত)। এগুলো standalone camera/disk FPS নয়।
+- CRC backend `slicing-by-8` checksum-compatible; file size বা compression ratio বদলায় না। Actual device speed report দিয়েই বিচার করতে হবে।
+
+এই patch audio, compression, MP4 playback বা calibrated DNG conversion চালু করে না। পুরোনো personal files স্বয়ংক্রিয়ভাবে মুছে ফেলা হবে না।

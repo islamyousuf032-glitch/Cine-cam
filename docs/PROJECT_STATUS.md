@@ -94,4 +94,12 @@ New C++ CCRAW001 writer and independent streaming Python reader document/validat
 
 Android MediaStore Downloads export carries calibration metadata.json and diagnostic report.json। Successful export removes private duplicate; failed export retains temporary data and error path। Preview transform and still DngCreator path unchanged (ImageReader maxImages is now 3)।
 
-Local native ASan/UBSan and independent reader tests passed; new remote build and physical-device validation pending। Next: user RAW test report, actual dropped-frame/write throughput analysis; then sustained recording/validated DNG conversion/audio/compression in separate patches।
+Local native ASan/UBSan and independent reader tests passed। Remote run `39372351030` সফল: native tests, Android test/build এবং prerelease publishing। Release `v0.1.66-alpha-ec20db2`, commit `ec20db2`। Physical-device RAW burst/export validation pending। Next: user RAW test report, actual dropped-frame/write throughput analysis; then sustained recording/validated DNG conversion/audio/compression in separate patches।
+
+## RAW pacing/diagnostics patch — 2026-10-20
+
+F23 user test of v0.1.66: images/results/matched=8, accepted/written=4, rejected=4, no unmatched frames; writerStatus=0, nativeStopOk=true, poolAvailable=3, ringSize=0। File bytes=99,878,880 matches 4×(4080×3060×2 + 96)+96; screenshot shows three exported files। Payload integrity/visual decode not independently verified from original file।
+
+Old report lacks per-stage time/reject reason, so do not state CRC or storage is proven bottleneck。 New patch replaces bytewise CRC with slicing-by-8 (same format), exposes per-reason/per-stage timing, and offers Paced/default vs Burst mode with unchanged 3 native slots。 Paced is one-request-at-a-time with capacity wait, not fixed FPS or sustained-recording success।
+
+Local native ASan/UBSan + independent reader tests passed। Host-only O3 CRC sample (5×24,969,600 bytes): old ~304ms, new ~72ms; not phone performance or a gating threshold। Kotlin request gate tests added; new Android CI/release/device tests pending। Next: compare two new F23 reports, then decide compression/format/camera pipeline changes from actual timings।

@@ -7,6 +7,8 @@
 #include <future>
 #include <limits>
 #include <thread>
+#include <array>
+#include <vector>
 
 using namespace cinecam;
 RawFrame pooled(MemoryPool& pool, int number) {
@@ -19,7 +21,34 @@ RawFrame pooled(MemoryPool& pool, int number) {
     f.isValid = true;
     return f;
 }
+uint32_t referenceCrc(const uint8_t* data, size_t size) {
+    static const auto table = [] {
+        std::array<uint32_t, 256> t{};
+        for (uint32_t i = 0; i < 256; ++i) {
+            auto n = i;
+            for (int b = 0; b < 8; ++b) n = (n >> 1) ^ ((n & 1) ? 0xedb88320U : 0);
+            t[i] = n;
+        }
+        return t;
+    }();
+    uint32_t crc = 0xffffffffU;
+    for (size_t i = 0; i < size; ++i) crc = table[(crc ^ data[i]) & 255] ^ (crc >> 8);
+    return crc ^ 0xffffffffU;
+}
+
 int main() {
+    {
+        std::vector<uint8_t> data(262144 + 16);
+        uint32_t seed = 7;
+        for (auto& byte : data) { seed = seed * 1664525U + 1013904223U; byte = seed >> 24; }
+        assert(ccrawCrc32(nullptr, 0) == 0);
+        for (size_t offset = 0; offset < 16; ++offset) {
+            for (size_t size = 0; size < 80; ++size)
+                assert(ccrawCrc32(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
+            for (size_t size : {4095U, 65536U, 262144U})
+                assert(ccrawCrc32(data.data() + offset, size) == referenceCrc(data.data() + offset, size));
+        }
+    }
     {
         bool rejected = false;
         try { RingBuffer q(0); } catch (const std::invalid_argument&) { rejected = true; }
@@ -104,6 +133,7 @@ int main() {
         ReleaseGlobalEngine();
         assert(GetGlobalEngine() == singleton);
         CineRawEngine engine;
+        assert(engine.ingestionCapacity() == -1);
         assert(!engine.initialize(-1, 2, 10, 2));
         assert(!engine.getLastError().empty()); // Previously self-deadlocked.
         assert(!engine.initialize(4080, 3060, 10, 90)); // Bounded RAM, no 2GB allocation.
@@ -131,12 +161,19 @@ int main() {
             m.frameNumber = n;
             while (!engine.onRawFrameAvailable(pixels, sizeof(pixels), m)) std::this_thread::yield();
         }
-        std::thread diagnostics([&] { for (int n = 0; n < 100; ++n) (void)engine.getStats(); });
+        std::thread diagnosticReader([&] { for (int n = 0; n < 100; ++n) (void)engine.getStats(); });
         assert(engine.stopRecording());
-        diagnostics.join();
+        diagnosticReader.join();
         assert(engine.getStats().poolAvailable == 4);
         assert(engine.getStats().framesWritten == 32);
-        assert(engine.getStats().framesDropped >= 3);
+        const auto diagnostics = engine.getStats();
+        assert(diagnostics.framesDropped >= 3);
+        assert(diagnostics.invalidLayout == 3);
+        assert(diagnostics.notRecording == 1);
+        assert(diagnostics.poolPeakUsed > 0 && diagnostics.poolPeakUsed <= 4);
+        assert(diagnostics.rowCopyNs > 0 && diagnostics.maxRowCopyNs <= diagnostics.rowCopyNs);
+        assert(diagnostics.framesDropped == diagnostics.poolExhausted + diagnostics.controlBusy + diagnostics.invalidLayout +
+            diagnostics.timestampRejected + diagnostics.queueRejected + diagnostics.notRecording + diagnostics.writerUnavailable);
         assert(std::filesystem::file_size(config.outputPath + "/capture.mcraw") > 32 * 16);
         engine.release(); engine.release();
         assert(!engine.isInitialized());
@@ -179,7 +216,15 @@ int main() {
         metadata.timestampNs = 300; metadata.frameNumber = 1;
         assert(engine.onRaw16PlaneAvailable(plane, 20, metadata));
         assert(engine.stopRecording());
-        assert(engine.getStats().framesWritten == 2);
+        const auto stats = engine.getStats();
+        assert(stats.framesWritten == 2);
+        assert(stats.timestampRejected == 1);
+        assert(stats.invalidLayout == 1);
+        assert(stats.writerTimings.payloadBytes == 32);
+        assert(stats.writerTimings.crcNs > 0 && stats.writerTimings.writeSyscallNs > 0);
+        assert(stats.writerTimings.fsyncNs > 0 && stats.writerTimings.finalizeNs >= stats.writerTimings.fsyncNs);
+        assert(stats.writerTimings.appendNs >= stats.writerTimings.maxAppendNs);
+        assert(engine.ingestionCapacity() == -1);
         assert(engine.getStats().poolAvailable == 3);
         assert(std::filesystem::file_size(folder + "/capture.ccraw") == 320);
         assert(!std::filesystem::exists(folder + "/capture.ccraw.partial"));

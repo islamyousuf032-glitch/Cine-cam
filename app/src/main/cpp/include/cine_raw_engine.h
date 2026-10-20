@@ -63,8 +63,14 @@ public:
         uint64_t framesDropped = 0;
         uint64_t framesWritten = 0;
         WriterStatus writerStatus = WriterStatus::OK;
+        uint64_t poolExhausted = 0, controlBusy = 0, invalidLayout = 0, timestampRejected = 0;
+        uint64_t queueRejected = 0, notRecording = 0, writerUnavailable = 0;
+        uint64_t rowCopyNs = 0, maxRowCopyNs = 0;
+        int32_t poolPeakUsed = 0;
+        CcrawWriter::Timings writerTimings;
     };
     EngineStats getStats() const;
+    int32_t ingestionCapacity() const; // -1 unavailable/error, 0 busy/full, >0 free slots
 
     std::string getLastError() const;
     void setLogLevel(int32_t level) { logLevel_ = level; }
@@ -84,12 +90,17 @@ private:
     bool strictTimestamps_ = false;
     int64_t lastAcceptedTimestamp_ = -1, recordingEpoch_ = 0;
     uint64_t lastFramesWritten_ = 0;
-    WriterStatus lastWriterStatus_ = WriterStatus::OK; // 0=verbose, 1=debug, 2=info, 3=warn, 4=error
+    WriterStatus lastWriterStatus_ = WriterStatus::OK;
+    CcrawWriter::Timings lastWriterTimings_;
 
     // For stats
     std::atomic<uint64_t> framesPushed_{0};
     std::atomic<uint64_t> framesDropped_{0};
 
+    std::atomic<uint64_t> poolExhausted_{0}, controlBusy_{0}, invalidLayout_{0}, timestampRejected_{0};
+    std::atomic<uint64_t> queueRejected_{0}, notRecording_{0}, writerUnavailable_{0};
+    std::atomic<uint64_t> rowCopyNs_{0}, maxRowCopyNs_{0};
+    bool reject(std::atomic<uint64_t>& reason);
     bool ingest(const uint8_t* data, size_t size, const FrameMetadata& metadata, bool packRows);
     void releaseLocked();
     void setError(const std::string& err); // caller holds mutex_

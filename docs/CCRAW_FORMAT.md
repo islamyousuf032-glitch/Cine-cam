@@ -59,3 +59,7 @@ CRC32 is the standard reflected IEEE polynomial 0xedb88320; compatible with Pyth
 - Reader rejects truncated records, invalid CRCs, missing footer, invalid dimensions/timestamps/counts or trailing data। Recovery of intact frames from partial files is future work, not automatically supported。
 - Integrity verification alone does not prove sensor/color calibration correctness。 No DNG conversion or playback viewer yet। `metadata.json` saves static matrices/CFA/levels/orientation; report carries neutral point, dynamic levels and crop when present。 It is not a full DNG metadata contract (lens shading etc. still need future work)।
 - This short burst cannot establish sustained 30fps, thermal stability, storage durability after power loss, audio sync or long-record reliability。
+
+## CRC implementation update
+
+Slicing-by-8 optimization CRC32 polynomial/output/file layout বদলায়নি। পুরোনো/new writer একই bytes-এর জন্য একই checksum দেয়; Python reader compatibility tests অপরিবর্তিত। Paced/Burst শুধু capture scheduling/report metadata-র পার্থক্য; header fixed FPS=0 এবং actual sensor timestamps দুটো mode-এই অপরিবর্তিত semantics।

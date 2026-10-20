@@ -2,6 +2,15 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — RAW pacing/diagnostics patch] — 2026-10-20
+- F23 user report: 8/8 Image/result pairs matched, 4 accepted/written, 4 native rejects, clean stop/pool return। 99,878,880-byte size exactly matches four 4080×3060 RAW16 frames plus container overhead; actual payload sample স্বাধীনভাবে পরীক্ষা করা হয়নি।
+- CRC32 bytewise implementation replaced by portable slicing-by-8; CCRAW001 bytes/checksum semantics unchanged। Correctness tests cover offsets, short/tail lengths, larger pseudorandom data এবং independent Python reader।
+- Native report-এ পৃথক reject counters, pool peak, row-copy timing, CRC/write-syscall/fsync/append/finalize timing। Stop-এর পরেও measurements সংরক্ষণ।
+- Optional/default Paced mode: one request in flight; only submit when native capacity >0। Burst mode remains for same-3-slot-pool comparison; allocation size বাড়ানো হয়নি। Paced variable FPS—30fps/sustained-recording দাবি নয়।
+- Schema `cinecam-raw-test-2`: mode, submitted/failed requests, capacity wait, per-frame source strides/ingest time/rejection detail এবং app version।
+- Pure Kotlin request gate unit tests, C++ counter/timing assertions এবং optional host-only CRC benchmark script।
+- Preview/DNG paths ও container layout অপরিবর্তিত; phone performance/rejection cause এখনো নতুন report দিয়ে যাচাই বাকি।
+
 ## [Unreleased — Bounded RAW test burst] — 2026-10-19
 - ব্যবহারকারীর Camera 0 report-এ REALTIME/BOOTTIME clock ও DNG regression success নিশ্চিত।
 - নতুন opt-in RAW test: সর্বোচ্চ 8 request/192 MiB payload, 12-second safety timeout; continuous recording/30fps guarantee নয়।

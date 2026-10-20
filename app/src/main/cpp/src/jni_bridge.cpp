@@ -177,19 +177,27 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
     auto* engine = GetGlobalEngine();
     auto stats = engine->getStats();
 
-    char json[1024];
+    char json[4096];
     snprintf(json, sizeof(json),
-             "{\"poolAvailable\":%d,\"poolTotal\":%d,\"ringSize\":%d,\"ringCapacity\":%d,"
-             "\"ringFill\":%.3f,\"framesPushed\":%llu,\"framesDropped\":%llu,\"framesWritten\":%llu,"
-             "\"writerStatus\":%d,\"isRecording\":%s}",
-             stats.poolAvailable, stats.poolTotal,
-             stats.ringSize, stats.ringCapacity,
-             stats.ringFillRatio,
-             (unsigned long long)stats.framesPushed,
-             (unsigned long long)stats.framesDropped,
-             (unsigned long long)stats.framesWritten,
-             static_cast<int>(stats.writerStatus),
-             engine->isRecording() ? "true" : "false");
+        "{\"poolAvailable\":%d,\"poolTotal\":%d,\"poolPeakUsed\":%d,\"ringSize\":%d,\"ringCapacity\":%d,"
+        "\"ringFill\":%.3f,\"framesPushed\":%llu,\"framesDropped\":%llu,\"framesWritten\":%llu,"
+        "\"writerStatus\":%d,\"isRecording\":%s,"
+        "\"dropReasons\":{\"poolExhausted\":%llu,\"controlBusy\":%llu,\"invalidLayout\":%llu,"
+        "\"timestampRejected\":%llu,\"queueRejected\":%llu,\"notRecording\":%llu,\"writerUnavailable\":%llu},"
+        "\"rowCopyNs\":%llu,\"maxRowCopyNs\":%llu,"
+        "\"writerTimings\":{\"crcBackend\":\"slicing-by-8\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
+        "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu}}",
+        stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
+        (unsigned long long)stats.framesPushed, (unsigned long long)stats.framesDropped, (unsigned long long)stats.framesWritten,
+        static_cast<int>(stats.writerStatus), engine->isRecording() ? "true" : "false",
+        (unsigned long long)stats.poolExhausted, (unsigned long long)stats.controlBusy, (unsigned long long)stats.invalidLayout,
+        (unsigned long long)stats.timestampRejected, (unsigned long long)stats.queueRejected,
+        (unsigned long long)stats.notRecording, (unsigned long long)stats.writerUnavailable,
+        (unsigned long long)stats.rowCopyNs, (unsigned long long)stats.maxRowCopyNs,
+        (unsigned long long)stats.writerTimings.payloadBytes, (unsigned long long)stats.writerTimings.crcNs,
+        (unsigned long long)stats.writerTimings.writeSyscallNs, (unsigned long long)stats.writerTimings.fsyncNs,
+        (unsigned long long)stats.writerTimings.appendNs, (unsigned long long)stats.writerTimings.maxAppendNs,
+        (unsigned long long)stats.writerTimings.finalizeNs);
 
     return env->NewStringUTF(json);
 }
@@ -205,7 +213,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetLastError(
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeGetVersion(
         JNIEnv* env, jobject /*thiz*/) {
-    return env->NewStringUTF("CineCam RAW Engine phase-4 buffer/sync foundation (C++17)");
+    return env->NewStringUTF("CineCam CCRAW001 / slicing-by-8 CRC / bounded paced test (C++17)");
 }
 
 // ---------------------------------------------------------------------------
@@ -253,4 +261,9 @@ Java_com_cinecam_engine_NativeRawEngine_nativePushRawPlane(
     metadata.frameNumber = number; metadata.focusDistance = focus;
     metadata.neutralWhitePoint[0] = neutralR; metadata.neutralWhitePoint[1] = neutralG; metadata.neutralWhitePoint[2] = neutralB;
     return GetGlobalEngine()->onRaw16PlaneAvailable(data, static_cast<size_t>(capacity), metadata) ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeRawClipCapacity(JNIEnv*, jobject) {
+    return GetGlobalEngine()->ingestionCapacity();
 }
