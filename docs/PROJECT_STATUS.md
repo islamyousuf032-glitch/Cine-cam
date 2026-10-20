@@ -145,3 +145,9 @@ New optional/default post-stop Java CRC32 streaming verifier (64KiB), exact save
 
 ### v72 delivery confirmed
 CI `39435722437`/72 successful: ARM64/x86_64 native sanitizer suites, Android unit tests (saved verifier corruption/layout/EOF cases included), lint/debug/release এবং publish। Release `v0.1.72-alpha-4affb40`, verified uploaded APK14,757,020 bytes। Device readback CRC result, saved-first-frame DNG SDK/visual/calibration behavior pending; no sustained recording/FPS claim।
+
+## v72 visual confirmation → bounded DNG sequence
+
+User confirmed saved first-frame DNG visually correct; Gallery/file-manager screenshots supplied. No new report/original binary, so full-file CRC/metadata correctness not independently certified; preserve EXIF behavior. Evidence `docs/device-tests/F23-v72-visual-summary.md`.
+
+Patch adds all-saved-frame numbered DNG export with exact per-frame Camera2 metadata retained (max8), sequence.json real timestamp/PTS map, no synthetic frames/fixed FPS. Single sample retained. Same capture/CCRAW/native pool; native pool released before saved-file processing. Sequence guard1GiB vs650MiB single/off; extra I/O/storage noted. Sequential SDK generation/rollback/progress and plan/space tests. Local native tests passed; Android CI/device multi-frame rendering pending. Formal CinemaDNG/NLE timing/endurance/audio not validated.

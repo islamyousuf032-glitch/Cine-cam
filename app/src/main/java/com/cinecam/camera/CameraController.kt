@@ -47,7 +47,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var clipActive = false
     private var clipPaced = true
     private var clipVerify = true
-    private var clipFirstResult: TotalCaptureResult? = null
+    private var clipSequence = true
+    private val clipAcceptedResults = mutableMapOf<Long, TotalCaptureResult>()
     private var clipSampleOrientation = 1
     private var clipPreallocate = false
     private var internalStagingRequested = true
@@ -279,7 +280,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -302,7 +303,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
                 val prepared = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
-                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging)
+                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging, verifyAndSample && allFramesDng)
                 clipPrepared = prepared; clipFolder = prepared.folder
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate)) {
@@ -311,7 +312,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
                 internalStagingRequested = internalStaging
-                clipVerify = verifyAndSample; clipFirstResult = null; clipSampleOrientation = orientation
+                clipVerify = verifyAndSample; clipSequence = verifyAndSample && allFramesDng; clipAcceptedResults.clear(); clipSampleOrientation = orientation
                 clipPreallocate = preallocate
                 clipPaced = paced
                 clipGate = if (paced) PacedRequestGate(clipLimit) else null
@@ -459,7 +460,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         if (accepted) {
                             wasAccepted = true
                             clipAccepted++
-                            if (clipFirstNs == 0L) { clipFirstNs = timestamp; clipFirstResult = result }
+                            if (clipFirstNs == 0L) clipFirstNs = timestamp
+                            if (clipVerify) clipAcceptedResults[timestamp] = result
                             clipLastNs = timestamp
                         }
                     }
@@ -536,9 +538,14 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         } catch (_: Exception) {}
         onClipState("finalizing"); onStatus("RAW writer drain ও Download export হচ্ছে…")
         val verifySample = clipVerify
-        val sampleResult = clipFirstResult; clipFirstResult = null
+        val sequenceDng = clipSequence
+        val savedResults = clipAcceptedResults.toMap(); clipAcceptedResults.clear()
         val sampleChars = characteristics
         val sampleOrientation = clipSampleOrientation
+        val statusGeneration = generation
+        fun postStorageStatus(text: String) {
+            handler.post { if (!released && generation == statusGeneration) onStatus(text) }
+        }
         storage.execute {
             val engine = NativeRawEngine.getInstance()
             var message: String
@@ -553,8 +560,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 report.put("fileBytes", File(folder, "capture.ccraw").length())
                 report.put("partialFileBytes", File(folder, "capture.ccraw.partial").length())
                 val written = stats.optLong("framesWritten")
+                engine.release() // Saved-file work no longer needs the 3 native buffers.
+                report.put("dngExportMode", if (!verifySample) "off" else if (sequenceDng) "all-saved-frames" else "first-frame")
                 report.put("readbackRequested", verifySample)
                 if (verifySample && ok) {
+                    postStorageStatus("Saved RAW CRC/structure যাচাই হচ্ছে…")
                     val verifyBegin = SystemClock.elapsedRealtimeNanos()
                     var verified: CcrawVerifier.Verified? = null
                     try {
@@ -570,17 +580,61 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     if (verified != null && verified.frames.isNotEmpty()) {
                         val dngBegin = SystemClock.elapsedRealtimeNanos()
                         try {
-                            check(sampleChars != null && sampleResult != null) { "First-frame calibration metadata missing" }
-                            ClipDngSample.write(folder, verified, sampleChars, sampleResult, sampleOrientation)
-                            report.put("firstFrameDngOk", true)
-                            report.put("firstFrameDngBytes", File(folder, "first_frame.dng").length())
-                            report.put("firstFrameDngTimestampNs", verified.frames.first().timestampNs)
-                        } catch (e: Exception) { report.put("firstFrameDngOk", false); report.put("firstFrameDngError", e.message) }
-                        report.put("firstFrameDngNs", SystemClock.elapsedRealtimeNanos() - dngBegin)
+                            check(sampleChars != null) { "Capture calibration metadata missing" }
+                            if (sequenceDng) {
+                                val plan = DngSequencePlan.entries(verified)
+                                // Validate ALL calibration mappings before creating sequence files.
+                                plan.forEach {
+                                    val result = savedResults[it.frame.timestampNs]
+                                    check(result != null && result.frameNumber == it.frame.sourceFrameNumber) { "Saved sequence metadata missing/mismatched" }
+                                }
+                                val completed = mutableListOf<File>()
+                                try {
+                                    val entries = JSONArray()
+                                    plan.forEachIndexed { index, entry ->
+                                        postStorageStatus("Saved DNG sequence: ${index + 1}/${plan.size}…")
+                                        ClipDngSample.writeFrame(folder, verified, entry.frame, sampleChars,
+                                            savedResults.getValue(entry.frame.timestampNs), sampleOrientation, entry.name)
+                                        completed.add(File(folder, entry.name))
+                                        entries.put(JSONObject().apply {
+                                            put("file", entry.name); put("timestampNs", entry.frame.timestampNs)
+                                            put("ptsNs", entry.ptsNs); put("sourceFrameNumber", entry.frame.sourceFrameNumber)
+                                        })
+                                    }
+                                    val manifest = JSONObject().apply {
+                                        put("schema", "cinecam-dng-sequence-1"); put("frames", entries)
+                                        put("clock", "BOOTTIME"); put("epochNs", verified.epochNs)
+                                        put("fixedFps", JSONObject.NULL); put("audio", false)
+                                        put("warning", "Numbered DNG still sequence; no certified CinemaDNG/NLE timing conformance, no synthetic missing frames")
+                                    }
+                                    File(folder, "sequence.json").writeText(manifest.toString(2))
+                                    report.put("dngSequenceOk", true); report.put("dngSequenceFrames", plan.size)
+                                    report.put("dngSequenceBytes", completed.sumOf { it.length() })
+                                } catch (e: Exception) {
+                                    completed.forEach { it.delete() }; File(folder, "sequence.json").delete()
+                                    throw e
+                                }
+                            } else {
+                                val sampleResult = savedResults[verified.frames.first().timestampNs]
+                                check(sampleResult != null) { "First-frame calibration metadata missing" }
+                                ClipDngSample.write(folder, verified, sampleChars, sampleResult, sampleOrientation)
+                                report.put("firstFrameDngOk", true)
+                                report.put("firstFrameDngBytes", File(folder, "first_frame.dng").length())
+                                report.put("firstFrameDngTimestampNs", verified.frames.first().timestampNs)
+                            }
+                        } catch (e: Exception) {
+                            report.put(if (sequenceDng) "dngSequenceOk" else "firstFrameDngOk", false)
+                            report.put(if (sequenceDng) "dngSequenceError" else "firstFrameDngError", e.message)
+                        }
+                        report.put(if (sequenceDng) "dngSequenceNs" else "firstFrameDngNs", SystemClock.elapsedRealtimeNanos() - dngBegin)
                     }
                 }
+                postStorageStatus("Download/CineCam-এ export হচ্ছে…")
                 val target = RawClipStore.export(app, folder, report)
                 message = "RAW test ${if (ok && written > 0 && (!verifySample || report.optBoolean("readbackOk"))) "সংরক্ষিত" else "অসম্পূর্ণ/যাচাই ব্যর্থ"}: $written frames • $target"
+                if (verifySample && written > 0 && report.optBoolean("readbackOk") &&
+                    !report.optBoolean(if (sequenceDng) "dngSequenceOk" else "firstFrameDngOk"))
+                    message += " • DNG export ব্যর্থ (report দেখুন)"
             } catch (e: Exception) {
                 report.put("exportError", e.message)
                 try { File(folder, "report.json").writeText(report.toString(2)) } catch (_: Exception) { }

@@ -58,6 +58,7 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
+    var allSavedFramesDng by remember { mutableStateOf(true) }
     var verifyRawSample by remember { mutableStateOf(true) }
     var internalRawStaging by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
     var preallocateRawTest by remember { mutableStateOf(false) }
@@ -214,7 +215,7 @@ fun CameraScreen() {
         AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW test") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                    Text("সর্বোচ্চ 8 RAW frames; প্রায় 200 MB। অন্তত 650 MiB free storage লাগবে। MP4/audio/compression নেই; 30fps নিশ্চিত নয়। Download/CineCam-এ export হবে।")
+                    Text("সর্বোচ্চ 8 RAW frames (~200 MB), DNG sequence-এ আরও প্রায় 200 MB। নিচের mode অনুযায়ী free-space guard প্রযোজ্য। MP4/audio/compression নেই; fixed FPS নয়। Download/CineCam-এ export হবে।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Paced mode", Modifier.weight(1f))
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
@@ -231,17 +232,23 @@ fun CameraScreen() {
                     }
                     Text("ON: capture শুরুর আগে space reserve; setup বেশি সময় নিতে পারে। OFF: আগের allocation। Flush বন্ধ নয়।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Saved RAW যাচাই + DNG sample", Modifier.weight(1f))
+                        Text("Saved RAW যাচাই + DNG export", Modifier.weight(1f))
                         Switch(checked = verifyRawSample, onCheckedChange = { verifyRawSample = it })
                     }
-                    Text("ON: saved file আবার পড়ে CRC/structure যাচাই; প্রথম saved frame থেকে first_frame.dng। অতিরিক্ত সময় ও প্রায় 25 MB লাগবে; RAW video playback নয়।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("সব saved frame-এর DNG sequence", Modifier.weight(1f))
+                        Switch(checked = allSavedFramesDng, onCheckedChange = { allSavedFramesDng = it }, enabled = verifyRawSample)
+                    }
+                    Text(if (verifyRawSample && allSavedFramesDng)
+                        "Sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
+                        else "যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
                     Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
                          else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
                 }
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample, allSavedFramesDng)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

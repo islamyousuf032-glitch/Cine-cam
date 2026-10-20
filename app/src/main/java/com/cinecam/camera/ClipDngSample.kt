@@ -10,10 +10,15 @@ internal object ClipDngSample {
     /** Uses the verified first SAVED payload, not a newly captured Image. Platform calibration path. */
     fun write(folder: File, verified: CcrawVerifier.Verified, chars: CameraCharacteristics,
               result: TotalCaptureResult, orientation: Int) {
-        val frame = verified.frames.first()
+        writeFrame(folder, verified, verified.frames.first(), chars, result, orientation, "first_frame.dng")
+    }
+
+    fun writeFrame(folder: File, verified: CcrawVerifier.Verified, frame: CcrawVerifier.Frame,
+                   chars: CameraCharacteristics, result: TotalCaptureResult, orientation: Int, name: String) {
+        require(name == "first_frame.dng" || name.matches(Regex("frame_[0-9]{6}\\.dng")))
         check(result.frameNumber == frame.sourceFrameNumber &&
             result.get(android.hardware.camera2.CaptureResult.SENSOR_TIMESTAMP) == frame.timestampNs) { "Saved frame metadata mismatch" }
-        val output = File(folder, "first_frame.dng")
+        val output = File(folder, name)
         try {
             DngCreator(chars, result).use { creator ->
                 creator.setOrientation(orientation)

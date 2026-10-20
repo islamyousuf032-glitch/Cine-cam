@@ -128,3 +128,7 @@ API29+ RAW test-এ Internal staging switch দিয়ে private filesDir বন
 ### Saved RAW readback + first-frame DNG
 
 RAW test dialog-এর নতুন sample switch saved `.ccraw` Java CRC32 দিয়ে streaming verify করে এবং প্রথম **saved** payload থেকে `first_frame.dng` বানায় (matching Camera2 metadata + platform DngCreator)। এটি নতুন live still নয়; output একই Download test folder-এ। Extra readback/DNG/export সময় লাগে; performance-only test-এ OFF করা যায়। Calibration/visual correctness ফোনের DNG viewer দিয়ে যাচাই বাকি; playable RAW video নয়।
+
+### Saved DNG sequence follow-up
+
+User confirmed first saved DNG renders correctly on F23। নতুন optional/default sequence mode verified saved payloads থেকে frame_000001.dng… এবং real timestamp sequence.json export করে, প্রত্যেক frame-এর নিজস্ব metadata দিয়ে। Capture limit এখনও8; missing frame synthesize নয়। Sequence mode1GiB free ও বেশি processing/export সময় লাগে; single-frame mode650MiB retained। CinemaDNG-style numbered stills, not certified NLE/timecode conformance or continuous video।

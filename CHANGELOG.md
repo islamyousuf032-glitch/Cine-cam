@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Saved DNG sequence] — 2026-10-20
+- User confirmed v72 first saved frame DNG opens and looks correct; screenshots show rendered scene/25MB DNG। New JSON/original file not supplied, so whole-file readback result independently confirmed নয়।
+- Optional/default all-saved-frame DNG sequence: frame_000001.dng… from verified payloads, each using its own retained matching Camera2 result/calibration, not duplicated first-frame metadata। Single first_frame.dng option retained।
+- sequence.json records BOOTTIME/epoch/timestamp/PTS/source frame numbers and file mapping; no fixed FPS, missing-frame synthesis, audio or certified CinemaDNG/NLE timing conformance claim। This is a numbered DNG still sequence/CinemaDNG-style export, not continuous capture/MP4।
+- Sequential SDK DngCreator streaming, <=8 metadata objects retained, no new full RAW byte arrays/native buffers। Native3-slot pool released before post-processing; SDK DngCreator memory remains platform-dependent।
+- Sequence mode free-space guard1GiB at source/export (source RAW+DNG + export duplication); single/off650MiB। Typical8-frame result ~200MB RAW+~200MB DNG, extra read/write/export time।
+- Preflight metadata mapping, sequence failure cleanup best-effort, no success manifest on failure; RAW/report still export। Progress/error/count/bytes/time reporting, timestamp naming/space-policy tests। Existing still/preview/EXIF/native format/fsync unchanged।
+
 ## [Unreleased — Saved RAW verification / DNG sample] — 2026-10-20
 - v71 F23 দুই staging path-এ matched8/8, written6/8, 2 poolExhausted; acquisition deferrals3/5 হলেও কোনো unmatched pair নেই। Internal path বেশি frame দেয়নি; different conditions-এ storage winner বলা যাবে না।
 - Optional/default Saved RAW যাচাই + DNG sample switch। Native stop-এর পরে saved CCRAW001 Java CRC32 দিয়ে re-read; strict geometry/header/payload/footer/count/timestamp/exact EOF validation, 64KiB verifier buffer। Native CRC code পুনর্ব্যবহার নয়।

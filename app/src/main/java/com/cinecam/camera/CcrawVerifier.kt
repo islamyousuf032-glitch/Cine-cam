@@ -9,7 +9,7 @@ import java.util.zip.CRC32
 /** Independent of the native CRC/writer: bounded 64 KiB readback, no full-frame buffer. */
 internal object CcrawVerifier {
     data class Frame(val timestampNs: Long, val sourceFrameNumber: Long, val payloadOffset: Long)
-    data class Verified(val width: Int, val height: Int, val frames: List<Frame>, val payloadBytes: Long)
+    data class Verified(val width: Int, val height: Int, val frames: List<Frame>, val payloadBytes: Long, val epochNs: Long)
     fun verify(file: File): Verified = RandomAccessFile(file, "r").use { input ->
         fun read(size: Int) = ByteArray(size).also { input.readFully(it) }
         fun le(bytes: ByteArray) = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -57,6 +57,6 @@ internal object CcrawVerifier {
             frames.add(Frame(timestamp, uint(f, 48), offset))
             total += frameBytes; previous = timestamp
         }
-        Verified(width, height, frames.toList(), total)
+        Verified(width, height, frames.toList(), total, epoch)
     }
 }

@@ -101,3 +101,15 @@ Expected report: `readbackRequested=true`, `readbackOk=true`, `readbackFrames`=n
 `readbackNs` ও `firstFrameDngNs` capture/wallUntilDrainNs-এর পরে, `exportDataCopyNs`-এ generated DNG-ও অন্তর্ভুক্ত। নতুন timings-কে আগের native writer benchmark-এর সঙ্গে যোগ করবেন না। Performance-only comparison-এ sample switch OFF রাখা যায়।
 
 Verifier native CRC implementation ব্যবহার করে না; Java standard CRC32 দিয়ে saved bytes re-read। CRC authenticity/scene/color calibration প্রমাণ নয়; DngCreator matching capture metadata ব্যবহার করলেও actual visual decoder test দরকার। Native3-slot cap unchanged, verifier64KiB scratch; DngCreator's own memory is SDK-dependent। No continuous RAW, MP4/audio/compression/FPS claim।
+
+## সব saved frame-এর DNG sequence পরীক্ষা
+
+অন্তত **1GiB free**, Paced ON, Internal staging ON, reserve OFF, **Saved RAW যাচাই + DNG export ON** এবং **সব saved frame-এর DNG sequence ON** রাখুন। Extra RAW re-read + সব DNG লেখা + export-এ অনেক বেশি সময় লাগতে পারে; finalizing অবস্থায় app foreground-এ রাখুন। OS operations-এর total timeout guarantee নেই।
+
+সফল export folder: capture.ccraw, metadata.json, report.json, **frame_000001.dng…frame_000008.dng**, **sequence.json**। এই mode-এ আলাদা first_frame.dng duplicate বানানো হয় না। 6টি saved frame হলে6টি DNG—drop হওয়া request বানিয়ে পূরণ করা নয়। প্রতি DNG নিজস্ব matching result/exposure/ISO/WB পায়।
+
+Report চাই: readbackOk=true, dngExportMode=all-saved-frames, dngSequenceOk=true, dngSequenceFrames=native.framesWritten; dngSequenceBytes/dngSequenceNs। প্রথম ও শেষ DNG খুলে দৃশ্য/রং/orientation যাচাই করুন; report + ছোট sequence.json পাঠান। বিশাল RAW/সব DNG upload প্রয়োজন নেই।
+
+sequence.json-এ real sensor timestamp/epoch-relative PTS আছে। Numbered DNGs NLE-তে imported হলে editor নিজের default fixed FPS বসাতে পারে—সেটি real capture cadence নয়। Formal CinemaDNG timecode/audio/frame-rate tag conformance বা NLE import certify করা হয়নি; এটি CinemaDNG-style still sequence।
+
+শুধু আগের sample চাইলে sequence OFF: first_frame.dng +650MiB guard। Verification/export OFF-এ আগের performance-only path। Sequence failure হলে created DNG cleanup best-effort, success manifest লেখা হয় না, raw/report রক্ষা করে export; error পাঠান। Native3-slot allocation capture-এর পরে free হয়; SDK memory implementation-dependent। Private export failure-এ uninstall/clear-data নয়।

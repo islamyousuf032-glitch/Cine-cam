@@ -17,14 +17,14 @@ import java.util.UUID
 internal object RawClipStore {
     data class PreparedClip(val folder: File, val stagingLocation: String,
                             val captureAvailableBytes: Long, val exportAvailableBytes: Long)
-    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean): PreparedClip {
+    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean): PreparedClip {
         val external = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Export storage unavailable")
         val useInternal = RawStoragePolicy.useInternal(internalStaging, Build.VERSION.SDK_INT)
         val root = if (useInternal) File(context.filesDir, "raw-clips") else external
         check(root.isDirectory || root.mkdirs()) { "Capture staging folder তৈরি হয়নি" }
         val captureFree = StatFs(root.absolutePath).availableBytes
         val exportFree = StatFs(external.absolutePath).availableBytes
-        RawStoragePolicy.checkFreeSpace(captureFree, exportFree)
+        RawStoragePolicy.checkFreeSpace(captureFree, exportFree, sequence)
         val location = if (useInternal) "app-private-internal" else "app-specific-external"
         val folder = File(root, "CineCam_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}")
         check(folder.mkdirs()) { "RAW clip folder তৈরি হয়নি" }
@@ -38,6 +38,7 @@ internal object RawClipStore {
             val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             val metadata = JSONObject().apply {
                 put("schema", "cinecam-calibration-1")
+                put("dngExportMode", if (sequence) "all-saved-frames" else "first-frame-or-off")
                 put("stagingLocation", location)
                 put("captureAvailableBytesAtPrepare", captureFree); put("exportAvailableBytesAtPrepare", exportFree)
                 put("captureMode", mode); put("poolSlots", 3); put("crcBackend", crcBackend)
