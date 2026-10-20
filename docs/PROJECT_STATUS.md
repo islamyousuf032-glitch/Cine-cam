@@ -142,3 +142,6 @@ CI `39427028753`/71 successful: ARM64/x86_64 native sanitizers, Android unit tes
 Evidence `docs/device-tests/F23-v71-summary.md`: both staging paths6written/2poolExhausted, matched8/8, deferrals3/5/no unmatched. No staging win/sustained FPS proof. Original RAW still not independently checked.
 
 New optional/default post-stop Java CRC32 streaming verifier (64KiB), exact saved-container checks, then first saved payload to Android DngCreator using retained exact first accepted result/calibration/orientation. Same native bytes/pool/fsync; separate verification/sample timing and error reporting, extra read + ~25MB DNG + export cost. SDK allocation not asserted bounded by verifier size. Device CRC success/visual DNG/calibration/endurance pending; native local suites passed, new Kotlin tests/Android CI pending.
+
+### v72 delivery confirmed
+CI `39435722437`/72 successful: ARM64/x86_64 native sanitizer suites, Android unit tests (saved verifier corruption/layout/EOF cases included), lint/debug/release এবং publish। Release `v0.1.72-alpha-4affb40`, verified uploaded APK14,757,020 bytes। Device readback CRC result, saved-first-frame DNG SDK/visual/calibration behavior pending; no sustained recording/FPS claim।
