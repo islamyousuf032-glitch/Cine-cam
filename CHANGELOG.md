@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Archive latency breakdown] — 2026-10-21
+- F23 v77-এর চারটি sidecar ও দুই screenshot পর্যালোচনা:8written/0drop,RAW readback/DNG8 সফল; পুরো199,757,664bytes→109,739,528bytes archive, byteExactSourceComparison সফল। Timestamp/PTS/source-frame/flat14-file mapping মিলেছে; evidence docs/device-tests/F23-v77। Original binaries সরাসরি পরীক্ষা হয়নি।
+- Archive aggregate8.451s-কে codec speed বলা যায় না; এই run-এ RAW write5.514s/fsync1.956s ও export38.470s-ও ধীর। Single test দিয়ে storage/root cause বা archive-এর কারণে capture ধীর—এমন সিদ্ধান্ত নয়।
+- Native C++ archive-এ পৃথক source-read/pack/CRC/write/fsync/close wall time, max write, block ও read/write syscall counters। Verification সময় আলাদা; clock measurement সামান্য overhead যোগ করে। Format/algorithm/buffers/capture path/fsync/full byte-compare অপরিবর্তিত।
+- সহজ বাংলা report-এ archive stage breakdown, RAW storage timings, paced অপেক্ষা, capture→drain, DNG ও export-copy সময়; overlap স্পষ্ট, যোগ করে ভুল FPS নয়। Locale-stable readable decimals; পুরোনো report-এ অনুপস্থিত stage invent নয়।
+- Native timing/accounting ও independent restore tests স্থানীয়ভাবে সফল; নতুন readable-report/legacy/error/locale unit tests যোগ। Android CI/device stage ফল বাকি।
+
 ## [Unreleased — ঐচ্ছিক byte-exact archive] — 2026-10-21
 - F23 v75-এর চারটি sidecar parse/cross-check: 8/8 written,0drop,readback+DNG সফল; timestamp/PTS/source-frame/export mapping মিলে গেছে। প্রথম-frame probe 24,969,600→13,999,256 bytes (~43.94% কম), pack49.533ms/unpack54.543ms। এটি পুরো clip ratio বা sustained FPS নয়; original binaries পাওয়া যায়নি। Evidence docs/device-tests/F23-v75।
 - Default OFF নতুন Lossless archive switch: saved RAW যাচাইয়ের পরে C++ দিয়ে পুরো `.ccraw`→`capture.ccraw.bp16` (experimental CCBP0001)। মূল RAW/DNG অক্ষত; extra file মানে মোট storage বাড়ে। Capture format/hot-path compression/EXIF/native pool অপরিবর্তিত।

@@ -42,3 +42,7 @@ python3 scripts/inspect_ccraw.py restored.ccraw
 প্রথম command existing output overwrite করে না; malformed/truncated/checksum failure-এ নিজের incomplete output সরিয়ে দেয়। দ্বিতীয় command restored CCRAW structure/frame checksums যাচাই করে। Original `.ccraw` থাকলে additionally SHA256 বা `cmp` দিয়ে মিলিয়ে নিন। Restore tool নিজে independent Python implementation; Android/native decoder-এর binding নয়। Original binary phone থেকে upload ছাড়া developer সরাসরি আপনার archive byte-compare করেছে—এমন দাবি নয়।
 
 Native ASan/UBSan tests + independent Python restore tests: real tiny CCRAW fixture, multi-block tail, সব0…16-bit widths, corruption/header/truncation/trailing EOF, source mismatch, exclusive no-overwrite। Android integration CI ও নতুন phone archive report আলাদাভাবে যাচাই করতে হবে।
+
+## Encode-phase latency counters
+
+নতুন report `losslessArchive`-এ `sourceReadNs`, `packNs`, `crcNs`, `writeNs`, `fsyncNs`, `closeNs`, `maxWriteNs`, `readCalls`, `writeCalls`, `blocks`। `timingScope=encode-phase-wall-time-no-verify`। Read/write syscall duration wall time; interrupted/failed attempts-ও count হয়, source EOF check/open/stat/unlink এতে নেই। Header/record/payload writes included। Blocks হলো সম্পূর্ণ লেখা records। `encodeWriteNs` aggregate-এর মধ্যে এই stage-গুলি ও loop/setup overhead; aggregate-এর সঙ্গে stage যোগ করবেন না। `verifyNs` আলাদা full-file read/decode/CRC/memcmp সময়; তার ভিতরের read/CRC উপরের encode counters-এ মেশানো নয়। No CPU-only/thermal/root-cause claim। Failure-এর counters অসম্পূর্ণ কাজের মাপ; success নয়।

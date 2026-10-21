@@ -1,8 +1,10 @@
 package com.cinecam.camera
 
 import org.json.JSONObject
+import java.util.Locale
 
 internal object RawReadableReport {
+    private fun ms(ns: Long) = String.format(Locale.ROOT, "%.2f", ns / 1_000_000.0)
     fun text(report: JSONObject): String = buildString {
         appendLine("CineCam — সহজ পরীক্ষার রিপোর্ট")
         appendLine("Capture: ${report.optString("exportSessionId", "unknown")}")
@@ -24,10 +26,24 @@ internal object RawReadableReport {
         report.optJSONObject("losslessArchive")?.let { archive ->
             appendLine("Lossless archive: ${if (archive.optBoolean("ok")) "সফল ও byte-exact যাচাই" else "ব্যর্থ"}")
             appendLine("Archive bytes: ${archive.optLong("archiveBytes")}; original bytes: ${archive.optLong("sourceBytes")}")
-            appendLine("Archive encode/write: ${archive.optLong("encodeWriteNs") / 1_000_000.0} ms; পুরো-file verify: ${archive.optLong("verifyNs") / 1_000_000.0} ms")
+            appendLine("Archive encode/write: ${ms(archive.optLong("encodeWriteNs"))} ms; পুরো-file verify: ${ms(archive.optLong("verifyNs"))} ms")
+            if (archive.has("packNs")) {
+                appendLine("Archive stage (ms): read ${ms(archive.optLong("sourceReadNs"))}; encode ${ms(archive.optLong("packNs"))}; CRC ${ms(archive.optLong("crcNs"))}")
+                appendLine("Archive storage (ms): write ${ms(archive.optLong("writeNs"))}; fsync ${ms(archive.optLong("fsyncNs"))}; close ${ms(archive.optLong("closeNs"))}; সর্বোচ্চ এক write ${ms(archive.optLong("maxWriteNs"))}")
+                appendLine("Archive blocks: ${archive.optLong("blocks")}; read/write syscall: ${archive.optLong("readCalls")}/${archive.optLong("writeCalls")}")
+                appendLine("এগুলো encode-phase wall time; পুরো-file verify আলাদা, CPU-only benchmark নয়।")
+            }
             if (archive.optString("error").isNotEmpty()) appendLine("Archive error: ${archive.optString("error")}")
             appendLine("মূল RAW/DNG রাখা হয়েছে; archive অতিরিক্ত file, playable video নয়।")
         }
+        appendLine("সময় (ms; একে অন্যের সঙ্গে সব যোগ করা যাবে না):")
+        if (report.has("wallUntilDrainNs")) appendLine("Capture শুরু→writer drain: ${ms(report.optLong("wallUntilDrainNs"))}; এর ভিতরে capture window ${ms(report.optLong("captureWindowNs"))}")
+        report.optJSONObject("native")?.optJSONObject("writerTimings")?.let { timing ->
+            appendLine("RAW storage: write ${ms(timing.optLong("writeSyscallNs"))}; fsync ${ms(timing.optLong("fsyncNs"))}; সর্বোচ্চ এক write ${ms(timing.optLong("maxWriteNs"))}")
+        }
+        if (report.has("pacedCapacityWaitNs")) appendLine("Paced buffer অপেক্ষা: ${ms(report.optLong("pacedCapacityWaitNs"))}; এটি capture window-এর অংশ, drop নয়।")
+        if (report.has("dngSequenceNs")) appendLine("DNG sequence তৈরি: ${ms(report.optLong("dngSequenceNs"))}")
+        if (report.has("exportDataCopyNs")) appendLine("Export data copy: ${ms(report.optLong("exportDataCopyNs"))}; ${report.optLong("exportDataBytes")} bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)")
         appendLine("RAW file bytes: ${report.optLong("fileBytes")}")
         appendLine("গন্তব্য: ${report.optString("exportFolder")}")
         appendLine("একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।")

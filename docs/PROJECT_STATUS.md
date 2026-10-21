@@ -185,3 +185,9 @@ CI `39605249901`/77 সম্পূর্ণ সফল: ARM64 ও x86_64 ASan/UB
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.77-alpha-2ae0920/CineCam-debug.apk
 
 পরবর্তী ধাপ: ফোনে archive switch ON + আগের successful8-frame settings +>=1.5GiB free, report.txt/report.json/metadata.json/sequence.json সংগ্রহ। Full archive size/byteExactSourceComparison/timings/flat14-files/unchanged DNG physical verification **pending**; CI পাস মানে device archive success বা sustained recording নয়। Original `.ccraw`/DNG retained; defaultOFF; no branch merge/close।
+
+## v77 device ফল → latency breakdown
+
+Evidence docs/device-tests/F23-v77: চারটি original sidecar parse/cross-check,14 flat files;8written/0drop/readback8/DNG8; actual archive199,757,664→109,739,528bytes, byteExactSourceComparisontrue। Screenshots archiveON এবং RAW/archive/DNG thumbnails দেখায়। Original binary এখানে নেই, independent device restore/post-export readback certify নয়।
+
+Archive aggregate8.451s,verify0.626s; RAW write5.514s/fsync1.956s/maxwrite1.779s; capacitywait2.219s,capture→drain8.191s;DNG7.347s,export38.470s/509.5MB। Root cause অনুমান নয়: archive encode-stage পৃথক native read/pack/CRC/write/fsync/close timings/calls/maxwrite যোগ হয়েছে। Readable report pipeline/storage সময় ও overlap দেখায়; same formats/codec/pool/fsync/defaultOFF/flat export/EXIF/original retention। Native/independent restore local suites pass; JSON-backed readable report Kotlin unit cases যোগ। Android CI/release ও নতুন device stage timings pending।

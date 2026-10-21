@@ -302,10 +302,18 @@ Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, job
     const auto output = jstringToStd(env, destination);
     if (env->ExceptionCheck()) return nullptr;
     const auto r = createBp16Archive(input.c_str(), output.c_str());
-    char json[768];
+    char json[2048];
     snprintf(json, sizeof(json), "{\"format\":\"CCBP0001\",\"ok\":%s,\"sourceBytes\":%llu,\"archiveBytes\":%llu,"
-        "\"encodeWriteNs\":%llu,\"verifyNs\":%llu,\"byteExactSourceComparison\":%s,\"compressedRecordingEnabled\":false,\"error\":\"%s\"}",
+        "\"encodeWriteNs\":%llu,\"verifyNs\":%llu,"
+        "\"sourceReadNs\":%llu,\"packNs\":%llu,\"crcNs\":%llu,\"writeNs\":%llu,"
+        "\"fsyncNs\":%llu,\"closeNs\":%llu,\"maxWriteNs\":%llu,"
+        "\"readCalls\":%llu,\"writeCalls\":%llu,\"blocks\":%llu,"
+        "\"timingScope\":\"encode-phase-wall-time-no-verify\",\"byteExactSourceComparison\":%s,\"compressedRecordingEnabled\":false,\"error\":\"%s\"}",
         r.ok ? "true" : "false", (unsigned long long)r.sourceBytes, (unsigned long long)r.archiveBytes,
-        (unsigned long long)r.encodeWriteNs, (unsigned long long)r.verifyNs, r.ok ? "true" : "false", r.error);
+        (unsigned long long)r.encodeWriteNs, (unsigned long long)r.verifyNs,
+        (unsigned long long)r.sourceReadNs, (unsigned long long)r.packNs, (unsigned long long)r.crcNs,
+        (unsigned long long)r.writeNs, (unsigned long long)r.fsyncNs, (unsigned long long)r.closeNs,
+        (unsigned long long)r.maxWriteNs, (unsigned long long)r.readCalls, (unsigned long long)r.writeCalls,
+        (unsigned long long)r.blocks, r.ok ? "true" : "false", r.error);
     return env->NewStringUTF(json);
 }

@@ -377,6 +377,13 @@ int main() {
         std::filesystem::remove(archive);
         const auto result = createBp16Archive(source, archive);
         assert(result.ok && result.sourceBytes == 320 && result.archiveBytes > 24);
+        assert(result.blocks == 1 && result.readCalls >= result.blocks);
+        assert(result.writeCalls >= 1 + 2 * result.blocks);
+        assert(result.sourceReadNs > 0 && result.packNs > 0 && result.crcNs > 0);
+        assert(result.writeNs >= result.maxWriteNs && result.maxWriteNs > 0);
+        assert(result.fsyncNs > 0 && result.closeNs > 0 && result.verifyNs > 0);
+        assert(result.encodeWriteNs >= result.sourceReadNs + result.packNs + result.crcNs +
+               result.writeNs + result.fsyncNs + result.closeNs);
         assert(verifyBp16Archive(archive, source));
         assert(!createBp16Archive(source, archive).ok); // no overwrite
         assert(!createBp16Archive(source, source).ok);
@@ -410,7 +417,11 @@ int main() {
           }
           const char tail[] = {31, 0, 7, 0, 1, 0}; fixture.write(tail, sizeof(tail)); }
         std::filesystem::remove("build/native-tests/all-bits.bp16");
-        assert(createBp16Archive("build/native-tests/all-bits.bin", "build/native-tests/all-bits.bp16").ok);
+        const auto allBits = createBp16Archive("build/native-tests/all-bits.bin", "build/native-tests/all-bits.bp16");
+        assert(allBits.ok && allBits.blocks == 18 && allBits.writeCalls >= 37);
+        assert(allBits.readCalls >= 18 && allBits.writeNs >= allBits.maxWriteNs);
+        const auto missing = createBp16Archive("build/native-tests/no-source", "build/native-tests/no-output.bp16");
+        assert(!missing.ok && missing.blocks == 0 && missing.writeCalls == 0 && missing.encodeWriteNs == 0);
 
         assert(!createBp16Archive("build/native-tests/no-source", "build/native-tests/no-output.bp16").ok);
         assert(!std::filesystem::exists("build/native-tests/no-output.bp16"));
