@@ -169,3 +169,6 @@ CI `39554063068`/74 successful: ARM64/x86_64 native sanitizers, Android unit tes
 User confirms flat layout/readable reports and unchanged visual DNG quality. Uploaded report/sequence JSONs checked:8written,0drop,readbackOk,DNGsequenceOk8; all manifest names match export mapping and timestamps. Evidence docs/device-tests/F23-v74. Original payload not directly inspected here.
 
 Next patch adds portable native lossless block bitpacking (actual0–16-bit value range, never sensor-white-level truncation), read-only first verified saved-frame encode/decode/memcmp probe, bounded~192KiB scratch and timing/byte counters. Existing CCRAW001/DNG/capture unchanged; NO compressed recording/archive output enabled. All16 bits supported, noisy16bit blocks can expand. Local sanitizers/container tests pass; Android CI/device codec result pending. Production format/version/decoder/compression choice needs later review, not claimed solved.
+
+### v75 delivery confirmed
+CI `39594661556`/75 successful: ARM64/x86_64 native sanitizers (codec0–16-bit/range/malformed/roundtrip cases), Android unit/lint/debug/release এবং publish। Verified `v0.1.75-alpha-b64b484` APK14,773,404 bytes। First saved-frame BP16 device ratio/encode/decode latency pending; compressed recording/output NOT enabled, same RAW/DNG/flat layout preserved।
