@@ -204,3 +204,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.78
 Evidence docs/device-tests/F23-v78: চার original sidecar cross-check,8written/0drop/readback/DNG8,14flat names/PTS/source-frame mapping মেলে। Actual archive199,757,664→120,139,272bytes, byteExactSourceComparisontrue। Original binary developer পায়নি। Archive pack0.485s/write3.334s/fsync6.774s/aggregate10.732s; export39.496s। Storage wall time dominant in this run, specific underlying cause unproven।
 
 Native encoder এখন record prefix-এর জন্য একই small packed buffer-এ8bytes reserve করে, সরাসরি পিছনে encode, prefix+payload এক writeAll request। Payload copy/large buffering নেই; verify/source/format/fsync/capture pool/EXIF/defaultOFF/flat layout unchanged। 3049blocks-এর usual6099→3050syscalls; retry semantics preserved, sync delay থাকবে। `blockWriteMode` রিপোর্টে। Local ASan/UBSan + native call-count + independent reference wire-byte/restore tests pass; Kotlin readable-mode tests updated। Android CI/release ও physical gain pending।
+
+### v79 delivery confirmed
+CI `39624318624`/79 সফল: ARM64/x86_64 ASan/UBSan native call-count/accounting, independent Python exact reference encode+restore/corruption tests; Android unit/readable-mode/lint/debug/unsigned-release এবং prerelease publication। Source `1f947a7e6df4fa643c9a39b41879ac958c16e23c`। Verified release `v0.1.79-alpha-1f947a7`, APK14,806,168bytes uploaded; SHA256SUMS.txt প্রকাশিত।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.79-alpha-1f947a7/CineCam-debug.apk
+
+পরের physical check: একই settings archiveON/defaultOFF,>=1.5GiB free; report/metadata/sequence চার sidecar। 3049block হলে typical3050writeCalls বনাম6099, full verification/DNG/flat14files বজায় কি না এবং storage timing দেখুন। Device latency improvement **pending**, fsync delay সমাধানের দাবি নয়। Source retained/format identical, no merge/close।
