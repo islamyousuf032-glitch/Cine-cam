@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Flat export / readable reports] — 2026-10-21
+- F23 v73 original JSONs verified:8/8 written,0drop,readbackOk8frames,DNGsequenceOk8files; timestamp/PTS maps agree। User confirms all8 DNGs visually correct। Evidence archived in docs/device-tests/F23-v73 (no original RAW binaries)।
+- User-visible RAW export এখন একটিই Download/CineCam folder; প্রতি capture-এ subfolder নয়। Unique capture prefix প্রতিটি companion/DNG/report filename-এ, old files overwrite নয়। Private temporary directories remain isolated for safe native writing।
+- sequence.json frame filenames updated to actual exported names; report exportFiles/exportSessionId/exportLayout mapping। Provider collision/rename detected হলে rollback/source retention, silently broken manifest নয়। API26–28 fixed app-external CineCam destination with unique basenames/no overwrite।
+- Human-readable Bengali report.txt এবং in-app readable summary/copy; original JSON copy retained for diagnostics। JSON file opener install করা প্রয়োজন নেই।
+- Existing exported folders/files not moved/deleted/migrated; same raw/DNG bytes, EXIF behavior, native pool/CRC/fsync/capture limits। No recording/FPS claim।
+- Naming uniqueness/path safety/manifest retry-reference tests; native local suites pass। New Android/device flat export validation pending।
+
 ## [Unreleased — Saved DNG sequence] — 2026-10-20
 - User confirmed v72 first saved frame DNG opens and looks correct; screenshots show rendered scene/25MB DNG। New JSON/original file not supplied, so whole-file readback result independently confirmed নয়।
 - Optional/default all-saved-frame DNG sequence: frame_000001.dng… from verified payloads, each using its own retained matching Camera2 result/calibration, not duplicated first-frame metadata। Single first_frame.dng option retained।

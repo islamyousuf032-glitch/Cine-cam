@@ -68,24 +68,65 @@ internal object RawClipStore {
         } catch (e: Exception) { folder.deleteRecursively(); throw e }
     }
 
-    // Called on the single storage worker after native stop/drain. No 200MB byte arrays.
+    // Unique staging directories stay private; user-visible export is a single flat directory.
     fun export(context: Context, folder: File, report: JSONObject): String {
-        report.put("exportFolder", if (Build.VERSION.SDK_INT >= 29) "Download/CineCam/${folder.name}" else folder.absolutePath)
-        File(folder, "report.json").writeText(report.toString(2))
-        if (Build.VERSION.SDK_INT < 29) return folder.absolutePath
-        val resolver = context.contentResolver
+        val session = folder.name
+        val legacyRoot = File(folder.parentFile, "CineCam")
+        val destination = if (Build.VERSION.SDK_INT >= 29) "Download/CineCam" else legacyRoot.absolutePath
+        val files = folder.listFiles()?.filter { it.isFile && it.name !in setOf("report.json", "report.txt") }
+            ?: error("Clip files পাওয়া যায়নি")
+        val mapping = JSONObject()
+        (files.map { it.name } + listOf("report.json", "report.txt")).forEach {
+            mapping.put(it, RawExportNames.name(session, it))
+        }
+        report.put("exportFolder", destination); report.put("exportSessionId", session)
+        report.put("exportLayout", "flat-unique-prefix"); report.put("exportFiles", mapping)
+        // Actual exported sequence references MUST match prefixed DNG basenames.
+        val sequence = File(folder, "sequence.json")
+        if (sequence.exists()) {
+            val manifest = JSONObject(sequence.readText())
+            val entries = manifest.getJSONArray("frames")
+            for (index in 0 until entries.length()) {
+                val entry = entries.getJSONObject(index)
+                val current = entry.getString("file")
+                entry.put("file", RawExportNames.sequenceReference(session, current, files.map { it.name }.toSet()))
+            }
+            manifest.put("exportSessionId", session)
+            sequence.writeText(manifest.toString(2))
+        }
+        fun writeReports() {
+            File(folder, "report.json").writeText(report.toString(2))
+            File(folder, "report.txt").writeText(RawReadableReport.text(report))
+        }
+        writeReports() // Retain a readable diagnostic even if export subsequently fails.
         val inserted = mutableListOf<android.net.Uri>()
+        val legacyCreated = mutableListOf<File>()
         try {
-            val files = folder.listFiles()?.filter { it.isFile && it.name != "report.json" } ?: error("Clip files পাওয়া যায়নি")
+            if (Build.VERSION.SDK_INT < 29) check(legacyRoot.isDirectory || legacyRoot.mkdirs()) { "Export folder তৈরি হয়নি" }
             fun copyPending(file: File) {
+                val outputName = mapping.getString(file.name)
+                if (Build.VERSION.SDK_INT < 29) {
+                    val output = File(legacyRoot, outputName)
+                    check(output.createNewFile()) { "Export destination already exists" }
+                    legacyCreated.add(output)
+                    file.inputStream().use { input -> output.outputStream().use { input.copyTo(it, 256 * 1024) } }
+                    return
+                }
+                val resolver = context.contentResolver
                 val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, file.name)
-                    put(MediaStore.Downloads.MIME_TYPE, when (file.extension) { "json" -> "application/json"; "dng" -> "image/x-adobe-dng"; else -> "application/octet-stream" })
-                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/CineCam/${folder.name}")
+                    put(MediaStore.Downloads.DISPLAY_NAME, outputName)
+                    put(MediaStore.Downloads.MIME_TYPE, when (file.extension) {
+                        "json" -> "application/json"; "txt" -> "text/plain"; "dng" -> "image/x-adobe-dng"; else -> "application/octet-stream"
+                    })
+                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/CineCam")
                     put(MediaStore.Downloads.IS_PENDING, 1)
                 }
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: error("Download entry তৈরি হয়নি")
                 inserted.add(uri)
+                // A provider must not silently rename a companion file or sequence references break.
+                resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    check(cursor.moveToFirst() && cursor.getString(0) == outputName) { "Export name collision; source retained" }
+                } ?: error("Export name যাচাই হয়নি")
                 resolver.openOutputStream(uri, "w")?.use { output -> file.inputStream().use { it.copyTo(output, 256 * 1024) } }
                     ?: error("Download output খোলা যায়নি")
             }
@@ -94,17 +135,18 @@ internal object RawClipStore {
             files.forEach { copyPending(it); dataBytes += it.length() }
             report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
             report.put("exportDataBytes", dataBytes)
-            // Write report last so exported and UI reports contain the same data-copy measurements.
-            val reportFile = File(folder, "report.json")
-            reportFile.writeText(report.toString(2))
-            copyPending(reportFile)
+            writeReports()
+            copyPending(File(folder, "report.txt")); copyPending(File(folder, "report.json"))
             inserted.forEach { uri ->
-                check(resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) == 1)
+                check(context.contentResolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null) == 1)
             }
-            folder.deleteRecursively() // Export succeeded; do not retain duplicate 200MB payload.
-            return "Download/CineCam/${folder.name}"
+            folder.deleteRecursively()
+            return destination
         } catch (e: Exception) {
-            inserted.forEach { uri -> try { resolver.delete(uri, null, null) } catch (_: Exception) {} }
+            inserted.forEach { uri -> try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) { } }
+            legacyCreated.forEach { it.delete() }
+            report.put("exportError", e.message)
+            try { writeReports() } catch (_: Exception) { }
             throw IllegalStateException("Export ব্যর্থ; temporary data রাখা আছে: ${folder.absolutePath}: ${e.message}", e)
         }
     }

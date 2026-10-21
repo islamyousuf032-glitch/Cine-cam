@@ -132,3 +132,7 @@ RAW test dialog-এর নতুন sample switch saved `.ccraw` Java CRC32 দ�
 ### Saved DNG sequence follow-up
 
 User confirmed first saved DNG renders correctly on F23। নতুন optional/default sequence mode verified saved payloads থেকে frame_000001.dng… এবং real timestamp sequence.json export করে, প্রত্যেক frame-এর নিজস্ব metadata দিয়ে। Capture limit এখনও8; missing frame synthesize নয়। Sequence mode1GiB free ও বেশি processing/export সময় লাগে; single-frame mode650MiB retained। CinemaDNG-style numbered stills, not certified NLE/timecode conformance or continuous video।
+
+### এক folder-এ export ও সহজ বাংলা report
+
+নতুন exports সরাসরি Download/CineCam-এ (API29+)—প্রতি test-এ subfolder নয়। Unique capture prefix companion filenames আলাদা রাখে; sequence.json actual exported filenames জানে। report.txt ও app-এর readable summary থেকে ফল পড়া যায়; JSON copy retained। আগের folders/files স্বয়ংক্রিয়ভাবে মুছে/সরিয়ে দেওয়া হয় না। Private staging directories নিরাপত্তার জন্য আগের মতো isolated থাকে।

@@ -1,0 +1,58 @@
+{
+  "schema": "cinecam-dng-sequence-1",
+  "frames": [
+    {
+      "file": "frame_000001.dng",
+      "timestampNs": 1003368456242305,
+      "ptsNs": 382470460,
+      "sourceFrameNumber": 1075
+    },
+    {
+      "file": "frame_000002.dng",
+      "timestampNs": 1003368822768868,
+      "ptsNs": 748997023,
+      "sourceFrameNumber": 1084
+    },
+    {
+      "file": "frame_000003.dng",
+      "timestampNs": 1003369255936628,
+      "ptsNs": 1182164783,
+      "sourceFrameNumber": 1092
+    },
+    {
+      "file": "frame_000004.dng",
+      "timestampNs": 1003369689104389,
+      "ptsNs": 1615332544,
+      "sourceFrameNumber": 1101
+    },
+    {
+      "file": "frame_000005.dng",
+      "timestampNs": 1003370288875118,
+      "ptsNs": 2215103273,
+      "sourceFrameNumber": 1112
+    },
+    {
+      "file": "frame_000006.dng",
+      "timestampNs": 1003370655401680,
+      "ptsNs": 2581629835,
+      "sourceFrameNumber": 1120
+    },
+    {
+      "file": "frame_000007.dng",
+      "timestampNs": 1003371088569441,
+      "ptsNs": 3014797596,
+      "sourceFrameNumber": 1129
+    },
+    {
+      "file": "frame_000008.dng",
+      "timestampNs": 1003371555057826,
+      "ptsNs": 3481285981,
+      "sourceFrameNumber": 1139
+    }
+  ],
+  "clock": "BOOTTIME",
+  "epochNs": 1003368073771845,
+  "fixedFps": null,
+  "audio": false,
+  "warning": "Numbered DNG still sequence; no certified CinemaDNG\/NLE timing conformance, no synthetic missing frames"
+}

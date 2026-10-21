@@ -1,0 +1,359 @@
+{
+  "frames": [
+    {
+      "timestampNs": 1003368456242305,
+      "sourceFrameNumber": 1075,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 22006771,
+      "pairingLatencyNs": 100697560,
+      "exposureNs": 20000000,
+      "iso": 408,
+      "neutralColorPoint": [
+        "173\/256",
+        "1\/1",
+        "35\/64"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003368822768868,
+      "sourceFrameNumber": 1084,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 45171562,
+      "pairingLatencyNs": 160442247,
+      "exposureNs": 20000000,
+      "iso": 402,
+      "neutralColorPoint": [
+        "693\/1024",
+        "1\/1",
+        "35\/64"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003369255936628,
+      "sourceFrameNumber": 1092,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 19209739,
+      "pairingLatencyNs": 101912299,
+      "exposureNs": 20000000,
+      "iso": 402,
+      "neutralColorPoint": [
+        "347\/512",
+        "1\/1",
+        "559\/1024"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003369689104389,
+      "sourceFrameNumber": 1101,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 135767813,
+      "pairingLatencyNs": 137743028,
+      "exposureNs": 20000000,
+      "iso": 402,
+      "neutralColorPoint": [
+        "87\/128",
+        "1\/1",
+        "35\/64"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003370288875118,
+      "sourceFrameNumber": 1112,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 23980781,
+      "pairingLatencyNs": 79446257,
+      "exposureNs": 20000000,
+      "iso": 396,
+      "neutralColorPoint": [
+        "695\/1024",
+        "1\/1",
+        "35\/64"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003370655401680,
+      "sourceFrameNumber": 1120,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 46796407,
+      "pairingLatencyNs": 78214382,
+      "exposureNs": 20000000,
+      "iso": 402,
+      "neutralColorPoint": [
+        "347\/512",
+        "1\/1",
+        "281\/512"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003371088569441,
+      "sourceFrameNumber": 1129,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 51732656,
+      "pairingLatencyNs": 114507298,
+      "exposureNs": 20000000,
+      "iso": 408,
+      "neutralColorPoint": [
+        "347\/512",
+        "1\/1",
+        "563\/1024"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    },
+    {
+      "timestampNs": 1003371555057826,
+      "sourceFrameNumber": 1139,
+      "accepted": true,
+      "rejectionReason": "",
+      "sourceRowStride": 8160,
+      "sourcePixelStride": 2,
+      "nativeIngestNs": 48924062,
+      "pairingLatencyNs": 128693288,
+      "exposureNs": 20000000,
+      "iso": 415,
+      "neutralColorPoint": [
+        "695\/1024",
+        "1\/1",
+        "281\/512"
+      ],
+      "dynamicBlackLevel": [
+        64,
+        64,
+        64,
+        64
+      ],
+      "dynamicWhiteLevel": 1023,
+      "cropRegion": [
+        0,
+        0,
+        4080,
+        3060
+      ]
+    }
+  ],
+  "schema": "cinecam-raw-test-2",
+  "reason": "paced request limit reached",
+  "appVersion": "v0.1.73-alpha-bb2de20-debug",
+  "pairingPolicy": "bounded-acquisition-no-eviction",
+  "imageAcquisitionDeferrals": 0,
+  "imageTimestamps": [
+    1003368456242305,
+    1003368822768868,
+    1003369255936628,
+    1003369689104389,
+    1003370288875118,
+    1003370655401680,
+    1003371088569441,
+    1003371555057826
+  ],
+  "resultTimestamps": [
+    1003368456242305,
+    1003368822768868,
+    1003369255936628,
+    1003369689104389,
+    1003370288875118,
+    1003370655401680,
+    1003371088569441,
+    1003371555057826
+  ],
+  "pendingImageTimestampsAtStop": [],
+  "pendingResultTimestampsAtStop": [],
+  "evictedResultTimestamps": [],
+  "stagingLocation": "app-private-internal",
+  "captureAvailableBytesAtPrepare": 6602772480,
+  "exportAvailableBytesAtPrepare": 6602772480,
+  "internalStagingRequested": true,
+  "preallocationRequested": false,
+  "captureMode": "paced",
+  "submittedRequests": 8,
+  "failedRequests": 0,
+  "pacedCapacityWaitNs": 0,
+  "requestedFrames": 8,
+  "imagesReceived": 8,
+  "resultsReceived": 8,
+  "matchedFrames": 8,
+  "acceptedFrames": 8,
+  "unmatchedImages": 0,
+  "pendingResultsAtStop": 0,
+  "matchedButRejected": 0,
+  "firstAcceptedSensorNs": 1003368456242305,
+  "lastAcceptedSensorNs": 1003371555057826,
+  "epochBoottimeNs": 1003368073771845,
+  "sensorSpanNs": 3098815521,
+  "captureWindowNs": 3675140936,
+  "warning": "Short diagnostic RAW burst only; not sustained FPS, playable video, audio sync or MotionCam compatibility",
+  "stopDrainNs": 556810312,
+  "nativeStopOk": true,
+  "native": {
+    "poolAvailable": 3,
+    "poolTotal": 3,
+    "poolPeakUsed": 1,
+    "poolPreTouchNs": 102168333,
+    "ringSize": 0,
+    "ringCapacity": 3,
+    "ringFill": 0,
+    "framesPushed": 8,
+    "framesDropped": 0,
+    "framesWritten": 8,
+    "writerStatus": 0,
+    "isRecording": false,
+    "dropReasons": {
+      "poolExhausted": 0,
+      "controlBusy": 0,
+      "invalidLayout": 0,
+      "timestampRejected": 0,
+      "queueRejected": 0,
+      "notRecording": 0,
+      "writerUnavailable": 0
+    },
+    "rowCopyNs": 248800782,
+    "maxRowCopyNs": 51383646,
+    "writerTimings": {
+      "crcBackend": "arm64-crc32",
+      "hardwareCrcStatus": "passed",
+      "payloadBytes": 199756800,
+      "crcNs": 166111352,
+      "writeSyscallNs": 761448960,
+      "fsyncNs": 540150572,
+      "appendNs": 927550157,
+      "maxAppendNs": 196461979,
+      "finalizeNs": 540491822,
+      "allocationNs": 0,
+      "reservedBytes": 0,
+      "allocationError": 0,
+      "truncateNs": 0,
+      "closeNs": 23073,
+      "renameNs": 251928,
+      "writeCalls": 18,
+      "maxWriteNs": 192994114
+    }
+  },
+  "nativeError": "",
+  "wallUntilDrainNs": 4416449165,
+  "fileBytes": 199757664,
+  "partialFileBytes": 0,
+  "dngExportMode": "all-saved-frames",
+  "readbackRequested": true,
+  "readbackOk": true,
+  "readbackFrames": 8,
+  "readbackPayloadBytes": 199756800,
+  "readbackBackend": "java.util.zip.CRC32 \/ 64KiB streaming",
+  "readbackNs": 1157606145,
+  "dngSequenceOk": true,
+  "dngSequenceFrames": 8,
+  "dngSequenceBytes": 199996288,
+  "dngSequenceNs": 17299312024,
+  "exportFolder": "Download\/CineCam\/CineCam_1792561349594_b5e39469",
+  "exportDataCopyNs": 9614897444,
+  "exportDataBytes": 399757559
+}

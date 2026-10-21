@@ -113,3 +113,13 @@ Report চাই: readbackOk=true, dngExportMode=all-saved-frames, dngSequenceOk
 sequence.json-এ real sensor timestamp/epoch-relative PTS আছে। Numbered DNGs NLE-তে imported হলে editor নিজের default fixed FPS বসাতে পারে—সেটি real capture cadence নয়। Formal CinemaDNG timecode/audio/frame-rate tag conformance বা NLE import certify করা হয়নি; এটি CinemaDNG-style still sequence।
 
 শুধু আগের sample চাইলে sequence OFF: first_frame.dng +650MiB guard। Verification/export OFF-এ আগের performance-only path। Sequence failure হলে created DNG cleanup best-effort, success manifest লেখা হয় না, raw/report রক্ষা করে export; error পাঠান। Native3-slot allocation capture-এর পরে free হয়; SDK memory implementation-dependent। Private export failure-এ uninstall/clear-data নয়।
+
+## Flat export / readable report regression
+
+আগের successful settings-এই একটি নতুন sequence test করুন (Paced ON, Internal ON, reserve OFF, verification+all-frames ON; >=1GiB free)। নতুন user-visible capture folder হবে না; files সরাসরি **Download/CineCam**। প্রতিটি filename-এ একই unique capture prefix, যেমন `CineCam_<timestamp>_<id>_frame_000001.dng`। Old folders stay; deleting/migration automatic নয়। Still DNG path DCIM/CineCam আগেই flat, সেটি unchanged।
+
+একটি8-frame result-এ13 files: RAW1 + DNG8 + metadata/sequence/report JSON3 + readable report.txt1। sequence.json `file` entries exported prefixed basenames-এর সঙ্গে মিলবে; relative base এখন Download/CineCam। User হাতে prefix rename করলে manifest নিজে বদলাবে না। New two captures must have different prefixes/no overwrite; আগের files খোলা যাচ্ছে কি না দেখুন।
+
+JSON খুলতে না পারলেও `<prefix>_report.txt` পড়তে পারবেন অথবা app-এর **শেষ RAW test report**-এ সহজ সারাংশ দেখবেন। **JSON কপি** ও **সহজ রিপোর্ট কপি** আলাদা। Error হলে একই summary-তে error থাকবে; export failure-এ private source retained, app data clear/uninstall নয়।
+
+Only new exports use flat layout; native temporary capture directories still unique/private (not user-facing output folders)। API26–28 uses one fixed app-external Movies/CineCam folder instead of MediaStore Downloads, same prefixed naming. No media file bytes/EXIF/capture scheduling changed।

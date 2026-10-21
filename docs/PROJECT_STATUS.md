@@ -154,3 +154,9 @@ Patch adds all-saved-frame numbered DNG export with exact per-frame Camera2 meta
 
 ### v73 delivery confirmed
 CI `39441155082`/73 successful: ARM64/x86_64 native sanitizer suites, Android unit tests (sequence name/PTS/gap/bounds and expanded space guards), lint/debug/release এবং publish। Verified release `v0.1.73-alpha-bb2de20`, APK14,757,020 bytes। Multi-frame DNG rendering/metadata/manifest device verification and NLE import pending; same8-frame capture limit, no sustained recording/FPS claim।
+
+## v73 device success → flat export and readable reports
+
+User provided report/sequence JSONs + screenshots, confirmed all8 DNGs visually correct. Parsed and cross-checked8/8 matched/written,0drop,readbackOk8,sequenceOk8, exact timestamp/PTS maps. Evidence docs/device-tests/F23-v73. No original binaries independently checked here; no NLE/sustained-FPS/calibration certification.
+
+User requests no per-capture folders and cannot open JSON. New exports flat under Download/CineCam using unique capture-prefix basenames; manifests updated to actual DNG names; report mapping + Bengali report.txt and in-app readable summary/JSON+text copy. Existing folders/files never migrated/deleted. Private temporary directories remain for safe capture. API26–28 fixed app-external CineCam destination. Native local suites pass; naming tests added; Android/device comparison pending.

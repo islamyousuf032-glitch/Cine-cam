@@ -35,6 +35,8 @@ import com.cinecam.camera.CameraController
 import com.cinecam.camera.RawSupportInfo
 import com.cinecam.camera.PreviewGeometry
 import com.cinecam.camera.ManualSettings
+import com.cinecam.camera.RawReadableReport
+import org.json.JSONObject
 import com.cinecam.camera.CaptureRules
 import kotlinx.coroutines.delay
 import android.util.Size
@@ -253,12 +255,20 @@ fun CameraScreen() {
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }
     if (showClipReport) {
+        val readableReport = remember(clipReport) {
+            try { RawReadableReport.text(JSONObject(clipReport)) } catch (_: Exception) { clipReport }
+        }
         AlertDialog(onDismissRequest = { showClipReport = false }, title = { Text("শেষ RAW test report") },
-            text = { Text(clipReport, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
+            text = { Text(readableReport, Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) },
             confirmButton = { TextButton(onClick = {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
                     .setPrimaryClip(ClipData.newPlainText("CineCam RAW test", clipReport))
-            }) { Text("কপি করুন") } },
+            }) { Text("JSON কপি") }
+                TextButton(onClick = {
+                    (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                        .setPrimaryClip(ClipData.newPlainText("CineCam সহজ রিপোর্ট", readableReport))
+                }) { Text("সহজ রিপোর্ট কপি") }
+            },
             dismissButton = { TextButton(onClick = { showClipReport = false }) { Text("বন্ধ") } })
     }
 
