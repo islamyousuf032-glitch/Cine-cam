@@ -7,7 +7,7 @@
 - Archive aggregate8.451s-কে codec speed বলা যায় না; এই run-এ RAW write5.514s/fsync1.956s ও export38.470s-ও ধীর। Single test দিয়ে storage/root cause বা archive-এর কারণে capture ধীর—এমন সিদ্ধান্ত নয়।
 - Native C++ archive-এ পৃথক source-read/pack/CRC/write/fsync/close wall time, max write, block ও read/write syscall counters। Verification সময় আলাদা; clock measurement সামান্য overhead যোগ করে। Format/algorithm/buffers/capture path/fsync/full byte-compare অপরিবর্তিত।
 - সহজ বাংলা report-এ archive stage breakdown, RAW storage timings, paced অপেক্ষা, capture→drain, DNG ও export-copy সময়; overlap স্পষ্ট, যোগ করে ভুল FPS নয়। Locale-stable readable decimals; পুরোনো report-এ অনুপস্থিত stage invent নয়।
-- Native timing/accounting ও independent restore tests স্থানীয়ভাবে সফল; নতুন readable-report/legacy/error/locale unit tests যোগ। Android CI/device stage ফল বাকি।
+- Native timing/accounting ও independent restore tests স্থানীয়ভাবে সফল; নতুন readable-report/legacy/error/locale unit tests যোগ। CI39620030332/78-এ native ARM/x86, Android unit/lint/debug/release/publication সফল। নতুন device stage ফল বাকি।
 
 ## [Unreleased — ঐচ্ছিক byte-exact archive] — 2026-10-21
 - F23 v75-এর চারটি sidecar parse/cross-check: 8/8 written,0drop,readback+DNG সফল; timestamp/PTS/source-frame/export mapping মিলে গেছে। প্রথম-frame probe 24,969,600→13,999,256 bytes (~43.94% কম), pack49.533ms/unpack54.543ms। এটি পুরো clip ratio বা sustained FPS নয়; original binaries পাওয়া যায়নি। Evidence docs/device-tests/F23-v75।

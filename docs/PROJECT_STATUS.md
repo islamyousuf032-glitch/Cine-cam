@@ -191,3 +191,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.77
 Evidence docs/device-tests/F23-v77: চারটি original sidecar parse/cross-check,14 flat files;8written/0drop/readback8/DNG8; actual archive199,757,664→109,739,528bytes, byteExactSourceComparisontrue। Screenshots archiveON এবং RAW/archive/DNG thumbnails দেখায়। Original binary এখানে নেই, independent device restore/post-export readback certify নয়।
 
 Archive aggregate8.451s,verify0.626s; RAW write5.514s/fsync1.956s/maxwrite1.779s; capacitywait2.219s,capture→drain8.191s;DNG7.347s,export38.470s/509.5MB। Root cause অনুমান নয়: archive encode-stage পৃথক native read/pack/CRC/write/fsync/close timings/calls/maxwrite যোগ হয়েছে। Readable report pipeline/storage সময় ও overlap দেখায়; same formats/codec/pool/fsync/defaultOFF/flat export/EXIF/original retention। Native/independent restore local suites pass; JSON-backed readable report Kotlin unit cases যোগ। Android CI/release ও নতুন device stage timings pending।
+
+### v78 delivery confirmed
+CI `39620030332`/78 সম্পূর্ণ সফল: ARM64/x86_64 ASan/UBSan native (timing/accounting included), independent Python restore, Android unit tests (নতুন JSON-backed readable/legacy/error/locale cases সহ), lint, debug/unsigned-release এবং publication। Source `063c966cb257be55004eec130681c8668873aae6`। Release `v0.1.78-alpha-063c966`, uploaded `CineCam-debug.apk`14,806,172bytes +SHA256SUMS.txt যাচাই হয়েছে।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.78-alpha-063c966/CineCam-debug.apk
+
+পরের physical test: একই successful settings, archiveON (defaultOFF),>=1.5GiB free, চার sidecar সংগ্রহ। নতুন sourceRead/pack/CRC/write/fsync/close/calls/maxWrite পর্যবেক্ষণ **pending**। এটি instrumentation release, speedup/causal diagnosis/compressed recording claim নয়; original RAW/DNG, full byte verification, flat layout ও3-buffer capture অপরিবর্তিত। Branch merge/close হয়নি।
