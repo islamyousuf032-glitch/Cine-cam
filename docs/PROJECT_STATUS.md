@@ -160,3 +160,6 @@ CI `39441155082`/73 successful: ARM64/x86_64 native sanitizer suites, Android un
 User provided report/sequence JSONs + screenshots, confirmed all8 DNGs visually correct. Parsed and cross-checked8/8 matched/written,0drop,readbackOk8,sequenceOk8, exact timestamp/PTS maps. Evidence docs/device-tests/F23-v73. No original binaries independently checked here; no NLE/sustained-FPS/calibration certification.
 
 User requests no per-capture folders and cannot open JSON. New exports flat under Download/CineCam using unique capture-prefix basenames; manifests updated to actual DNG names; report mapping + Bengali report.txt and in-app readable summary/JSON+text copy. Existing folders/files never migrated/deleted. Private temporary directories remain for safe capture. API26–28 fixed app-external CineCam destination. Native local suites pass; naming tests added; Android/device comparison pending.
+
+### v74 delivery confirmed
+CI `39554063068`/74 successful: ARM64/x86_64 native sanitizers, Android unit tests (flat naming/safety/manifest retry cases), lint/debug/release এবং publish। Verified `v0.1.74-alpha-092dbae` APK14,773,404 bytes। Physical MediaStore flat-directory/name/manifest/readable-report behavior pending; existing user folders/files untouched।
