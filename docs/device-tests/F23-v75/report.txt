@@ -1,0 +1,30 @@
+CineCam — সহজ পরীক্ষার রিপোর্ট
+Capture: CineCam_1792587434973_af67f156
+Mode: paced
+মেলা frame: 8 / 8
+লেখা frame: 8
+Native drop: 0
+Saved RAW যাচাই: সফল
+DNG mode: all-saved-frames
+DNG sequence: সফল; 8 frame
+Lossless codec byte-exact পরীক্ষা: সফল
+প্রথম saved frame: 24969600 bytes → পরীক্ষামূলক packed 13999256 bytes
+শুধু codec probe; RAW/DNG ফাইল compressed নয়, recording performance proof নয়।
+RAW file bytes: 199757664
+গন্তব্য: Download/CineCam
+একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।
+এটি সীমিত RAW/DNG পরীক্ষা; fixed FPS, MP4, audio বা continuous video নয়।
+ফাইলের তালিকা:
+CineCam_1792587434973_af67f156_capture.ccraw
+CineCam_1792587434973_af67f156_frame_000001.dng
+CineCam_1792587434973_af67f156_frame_000002.dng
+CineCam_1792587434973_af67f156_frame_000003.dng
+CineCam_1792587434973_af67f156_frame_000004.dng
+CineCam_1792587434973_af67f156_frame_000005.dng
+CineCam_1792587434973_af67f156_frame_000006.dng
+CineCam_1792587434973_af67f156_frame_000007.dng
+CineCam_1792587434973_af67f156_frame_000008.dng
+CineCam_1792587434973_af67f156_metadata.json
+CineCam_1792587434973_af67f156_report.json
+CineCam_1792587434973_af67f156_report.txt
+CineCam_1792587434973_af67f156_sequence.json

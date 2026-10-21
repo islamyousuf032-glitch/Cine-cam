@@ -46,6 +46,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var timeout: Runnable? = null
     private var clipActive = false
     private var clipPaced = true
+    private var clipArchive = false
     private var clipVerify = true
     private var clipSequence = true
     private val clipAcceptedResults = mutableMapOf<Long, TotalCaptureResult>()
@@ -280,7 +281,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -303,7 +304,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
                 val prepared = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
-                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging, verifyAndSample && allFramesDng)
+                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging, verifyAndSample && allFramesDng, verifyAndSample && losslessArchive)
                 clipPrepared = prepared; clipFolder = prepared.folder
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate)) {
@@ -312,6 +313,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
                 check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
                 internalStagingRequested = internalStaging
+                clipArchive = verifyAndSample && losslessArchive
                 clipVerify = verifyAndSample; clipSequence = verifyAndSample && allFramesDng; clipAcceptedResults.clear(); clipSampleOrientation = orientation
                 clipPreallocate = preallocate
                 clipPaced = paced
@@ -537,6 +539,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             if (resumePreview) repeatPreview()
         } catch (_: Exception) {}
         onClipState("finalizing"); onStatus("RAW writer drain ও Download export হচ্ছে…")
+        val archiveRequested = clipArchive
         val verifySample = clipVerify
         val sequenceDng = clipSequence
         val savedResults = clipAcceptedResults.toMap(); clipAcceptedResults.clear()
@@ -563,6 +566,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 engine.release() // Saved-file work no longer needs the 3 native buffers.
                 report.put("dngExportMode", if (!verifySample) "off" else if (sequenceDng) "all-saved-frames" else "first-frame")
                 report.put("readbackRequested", verifySample)
+                report.put("losslessArchiveRequested", archiveRequested)
+                if (archiveRequested) report.put("losslessArchiveError", "Archive তৈরি হয়নি: successful saved RAW যাচাই প্রয়োজন")
                 if (verifySample && ok) {
                     postStorageStatus("Saved RAW CRC/structure যাচাই হচ্ছে…")
                     val verifyBegin = SystemClock.elapsedRealtimeNanos()
@@ -586,6 +591,14 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                 verified.width.toLong() * verified.height * 2)))
                         } catch (e: Exception) {
                             report.put("losslessProbeError", e.message)
+                        }
+                        if (archiveRequested) {
+                            report.remove("losslessArchiveError")
+                            postStorageStatus("Lossless archive তৈরি ও পুরো file byte-compare হচ্ছে…")
+                            try {
+                                report.put("losslessArchive", JSONObject(engine.nativeCreateBp16Archive(
+                                    File(folder, "capture.ccraw").absolutePath, File(folder, "capture.ccraw.bp16").absolutePath)))
+                            } catch (e: Exception) { report.put("losslessArchiveError", e.message) }
                         }
                         val dngBegin = SystemClock.elapsedRealtimeNanos()
                         try {

@@ -131,3 +131,13 @@ Only new exports use flat layout; native temporary capture directories still uni
 সহজ report-এ lossless roundtrip সফল/ব্যর্থ ও source→packed bytes পড়ুন; বিস্তারিত JSON `losslessProbe`-এ roundtripOk/inputBytes/packedBytes/blocks/readNs/packNs/unpackNs। **compressedRecordingEnabled=false, savedCompressedFile=false** intentional। সব frame/all scenes-এর ratio নয়; sensor white1023 থেকেও precision assume করা হয়নি। Full16 values roundtrip tests আছে, compressible নয় এমন input header overhead-এ বড় হতে পারে।
 
 সময় capture window-এর পরে; probe64KiB blocks, মোট~192KiB scratch। Existing verifier CRC আলাদা, codec probe byte-exact roundtrip আলাদা। Compressed container format/decoder, production streaming codec choice ও actual sustained recording এখনও next work; এই পরীক্ষা speed/FPS guarantee নয়। Verification OFF হলে probe-ও skip। Probe failure report হলেও original RAW/DNG path অক্ষত থাকবে।
+
+## ঐচ্ছিক actual lossless archive পরীক্ষা
+
+আগের successful settings: Paced ON, Internal staging ON, reserve OFF, saved verification ON, সব saved-frame DNG ON। এবার **Lossless archive ON** করুন (ডিফল্ট OFF)। Staging ও export storage-এ অন্তত **1.5GiB free** রাখুন। Finalizing-এ archive encode+পুরো-file readback বাড়তি সময় নেবে; app foreground-এ রাখুন।
+
+সফল8-frame sequence-এ আগের13টির সঙ্গে অতিরিক্ত1টি `<prefix>_capture.ccraw.bp16`—মোট14 files, একই flat Download/CineCam; নতুন subfolder নয়। `.ccraw`/সব DNG থাকবেই। Archive play/open করে video দেখা যাবে না; restore-এ original `.ccraw` ফিরে পাওয়া যায়। Original রাখায় মোট occupied space বাড়ে, archive অনুপাতে net storage সাশ্রয়ের দাবি নয়।
+
+সহজ report-এ **Lossless archive: সফল ও byte-exact যাচাই**, original/archive bytes, encode/write ও verify সময় দেখুন। JSON `losslessArchive.ok=true`, `byteExactSourceComparison=true`, `format=CCBP0001`, `compressedRecordingEnabled=false` চাই। প্রথম-frame `losslessProbe` ফল থেকে আলাদা: archive পুরো container bytes-এর বাস্তব ফল। Failed/অসম্পূর্ণ archive public export হবে না; error report পাঠান, মূল RAW/DNG রক্ষিত থাকবে।
+
+আগের মতো একই prefix-এর report.txt/report.json/sequence.json/metadata.json দিন; বিরাট RAW/DNG/archive upload আবশ্যক নয়। PC থাকলে independent restore নির্দেশনা docs/BP16_ARCHIVE.md অনুসরণ করে original-এর সঙ্গে SHA256/byte compare করা যায়। OFF রেখে আরেকবার test করলে অতিরিক্ত archive হবে না এবং আগের650MiB/1GiB guard থাকবে। New device archive success এখনও যাচাই হয়নি; sustained30fps/compressed hot-path প্রমাণ নয়।

@@ -7,10 +7,10 @@ class RawExportNamesTest {
     private val first = "CineCam_1792561349594_b5e39469"
     private val second = "CineCam_1792561349595_b5e39469"
     @Test fun sharedDirectoryNamesAreUniqueAndHaveNoSubfolder() {
-        val originals = listOf("capture.ccraw", "metadata.json", "report.json", "report.txt", "sequence.json") +
+        val originals = listOf("capture.ccraw", "capture.ccraw.bp16", "metadata.json", "report.json", "report.txt", "sequence.json") +
             (1..8).map { "frame_%06d.dng".format(it) }
         val names = listOf(first, second).flatMap { id -> originals.map { RawExportNames.name(id, it) } }
-        assertEquals(26, names.toSet().size)
+        assertEquals(28, names.toSet().size)
         assertTrue(names.none { '/' in it || '\\' in it })
         assertEquals("${first}_frame_000001.dng", RawExportNames.name(first, "frame_000001.dng"))
     }

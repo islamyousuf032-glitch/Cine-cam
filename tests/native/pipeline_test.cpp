@@ -3,6 +3,7 @@
 #include "sync_timeline.h"
 #include "ccraw_writer.h"
 #include "raw16_codec.h"
+#include "bp16_archive.h"
 #include <cassert>
 #include <filesystem>
 #include <future>
@@ -368,6 +369,51 @@ int main() {
         assert(empty.open(folder("empty"), 4, 2, 100, true));
         assert(empty.finish());
         assert(std::filesystem::file_size(root + "/empty/capture.ccraw") == 96);
+    }
+
+    {
+        const char* source = "build/native-tests/ccraw/capture.ccraw";
+        const char* archive = "build/native-tests/roundtrip.ccraw.bp16";
+        std::filesystem::remove(archive);
+        const auto result = createBp16Archive(source, archive);
+        assert(result.ok && result.sourceBytes == 320 && result.archiveBytes > 24);
+        assert(verifyBp16Archive(archive, source));
+        assert(!createBp16Archive(source, archive).ok); // no overwrite
+        assert(!createBp16Archive(source, source).ok);
+        assert(verifyBp16Archive(archive, source));
+        std::filesystem::copy_file(archive, "build/native-tests/bad.bp16", std::filesystem::copy_options::overwrite_existing);
+        { std::fstream bad("build/native-tests/bad.bp16", std::ios::binary | std::ios::in | std::ios::out);
+          bad.seekp(40); char byte = 0xff; bad.write(&byte, 1); }
+        assert(!verifyBp16Archive("build/native-tests/bad.bp16", source));
+        std::filesystem::copy_file(archive, "build/native-tests/trailing.bp16", std::filesystem::copy_options::overwrite_existing);
+        { std::ofstream trailing("build/native-tests/trailing.bp16", std::ios::binary | std::ios::app); trailing.put(1); }
+        assert(!verifyBp16Archive("build/native-tests/trailing.bp16", source));
+        const char* multi = "build/native-tests/codec-probe.bin";
+        std::filesystem::remove("build/native-tests/multi.bp16");
+        assert(createBp16Archive(multi, "build/native-tests/multi.bp16").ok);
+        assert(verifyBp16Archive("build/native-tests/multi.bp16", multi));
+        assert(!verifyBp16Archive(archive, multi));
+        std::filesystem::resize_file("build/native-tests/trailing.bp16", 23);
+        assert(!verifyBp16Archive("build/native-tests/trailing.bp16", source));
+        std::filesystem::copy_file(archive, "build/native-tests/bad-header.bp16", std::filesystem::copy_options::overwrite_existing);
+        { std::fstream bad("build/native-tests/bad-header.bp16", std::ios::binary | std::ios::in | std::ios::out);
+          bad.put(0); }
+        assert(!verifyBp16Archive("build/native-tests/bad-header.bp16", source));
+        // Cross-language fixture spans every actual 0..16-bit width and a 5-bit tail.
+        { std::ofstream fixture("build/native-tests/all-bits.bin", std::ios::binary);
+          for (unsigned bits = 0; bits <= 16; ++bits) {
+              const unsigned mask = (1u << bits) - 1;
+              for (unsigned i = 0; i < 32768; ++i) {
+                  const unsigned value = i == 0 ? mask : ((i * 1103515245ULL + 12345) >> (i % 7)) & mask;
+                  fixture.put(static_cast<char>(value)); fixture.put(static_cast<char>(value >> 8));
+              }
+          }
+          const char tail[] = {31, 0, 7, 0, 1, 0}; fixture.write(tail, sizeof(tail)); }
+        std::filesystem::remove("build/native-tests/all-bits.bp16");
+        assert(createBp16Archive("build/native-tests/all-bits.bin", "build/native-tests/all-bits.bp16").ok);
+
+        assert(!createBp16Archive("build/native-tests/no-source", "build/native-tests/no-output.bp16").ok);
+        assert(!std::filesystem::exists("build/native-tests/no-output.bp16"));
     }
 
 }

@@ -26,9 +26,10 @@ for mode in "${modes[@]}"; do
   "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer "${flags[@]}" \
     -Iapp/src/main/cpp/include tests/native/pipeline_test.cpp \
-    app/src/main/cpp/src/{memory_pool,ring_buffer,cine_raw_engine,raw_writer,ccraw_writer,crc32_dispatch,raw16_codec,cinemadng_writer,sync_timeline}.cpp \
+    app/src/main/cpp/src/{memory_pool,ring_buffer,cine_raw_engine,raw_writer,ccraw_writer,crc32_dispatch,raw16_codec,bp16_archive,cinemadng_writer,sync_timeline}.cpp \
     "${crc_objects[@]}" -o build/native-tests/pipeline_test
   timeout 30s build/native-tests/pipeline_test
   printf 'Native queue, lifecycle, writer, sync and CRC tests passed (%s).\n' "$mode"
   python3 tests/native/test_ccraw_reader.py
+  python3 tests/native/test_bp16_archive.py
 done

@@ -60,6 +60,7 @@ fun CameraScreen() {
     var disposed by remember { mutableStateOf(false) }
     var clipState by remember { mutableStateOf("idle") }
     var clipReport by remember { mutableStateOf("") }
+    var losslessArchive by remember { mutableStateOf(false) }
     var allSavedFramesDng by remember { mutableStateOf(true) }
     var verifyRawSample by remember { mutableStateOf(true) }
     var internalRawStaging by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
@@ -244,6 +245,11 @@ fun CameraScreen() {
                     Text(if (verifyRawSample && allSavedFramesDng)
                         "Sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
                         else "যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Lossless archive (পরীক্ষামূলক)", Modifier.weight(1f))
+                        Switch(checked = losslessArchive, onCheckedChange = { losslessArchive = it }, enabled = verifyRawSample)
+                    }
+                    Text(if (losslessArchive && verifyRawSample) "Archive ON: অন্তত 1.5 GiB free লাগবে। অতিরিক্ত .ccraw.bp16 + পুরো-file readback। মূল RAW/DNG রাখা হবে—মোট storage বাড়বে; compressed recording নয়।" else "Archive OFF: আগের output ও space guard।")
                     Text("Saved যাচাই ON হলে প্রথম frame-এ lossless codec roundtrip probe হবে। বর্তমান RAW/DNG file size বা format বদলাবে না।")
                     Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
                          else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
@@ -251,7 +257,7 @@ fun CameraScreen() {
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample, allSavedFramesDng)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample, allSavedFramesDng, losslessArchive)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

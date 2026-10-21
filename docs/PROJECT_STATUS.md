@@ -172,3 +172,9 @@ Next patch adds portable native lossless block bitpacking (actual0–16-bit valu
 
 ### v75 delivery confirmed
 CI `39594661556`/75 successful: ARM64/x86_64 native sanitizers (codec0–16-bit/range/malformed/roundtrip cases), Android unit/lint/debug/release এবং publish। Verified `v0.1.75-alpha-b64b484` APK14,773,404 bytes। First saved-frame BP16 device ratio/encode/decode latency pending; compressed recording/output NOT enabled, same RAW/DNG/flat layout preserved।
+
+## v75 device ফল → ঐচ্ছিক actual archive
+
+চারটি uploaded sidecar docs/device-tests/F23-v75-এ সংরক্ষিত;8/8written,0drop,readback/DNG সফল। সব manifest নাম/timestamp/PTS/sourceFrameNumber cross-check সফল। Native first-frame lossless probe24,969,600→13,999,256bytes (~43.94% কম), encode49.533129ms/decode54.542812ms; savedCompressedFile=false intentional v75। Original RAW/DNG binary developer পরীক্ষা করেনি; sustained FPS/whole-clip ratio নয়।
+
+নতুন কাজ: default OFF optional post-capture `.ccraw.bp16` CCBP0001 archive, bounded native encoding, full-file decode/CRC/memcmp verification, independent Python restore, অতিরিক্ত1.5GiB guard। Original CCRAW001/DNG/EXIF/flat export/native pool অক্ষত; compressed recording নয় এবং original রাখায় মোট space সাশ্রয় নয়। শুধু সফল byte-exact archive public export হবে। Details docs/BP16_ARCHIVE.md। Local selected+forced CRC ASan/UBSan/native+Python tests সফল; নতুন Kotlin space/name tests যোগ হয়েছে। Android CI/release ও physical archive test এখনও বাকি।

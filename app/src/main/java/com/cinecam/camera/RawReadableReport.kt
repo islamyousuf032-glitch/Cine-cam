@@ -20,6 +20,14 @@ internal object RawReadableReport {
             appendLine("শুধু codec probe; RAW/DNG ফাইল compressed নয়, recording performance proof নয়।")
         }
         if (report.has("losslessProbeError")) appendLine("Codec probe error: ${report.optString("losslessProbeError")}")
+        if (!report.optBoolean("losslessArchiveRequested")) appendLine("Lossless archive: OFF")
+        report.optJSONObject("losslessArchive")?.let { archive ->
+            appendLine("Lossless archive: ${if (archive.optBoolean("ok")) "সফল ও byte-exact যাচাই" else "ব্যর্থ"}")
+            appendLine("Archive bytes: ${archive.optLong("archiveBytes")}; original bytes: ${archive.optLong("sourceBytes")}")
+            appendLine("Archive encode/write: ${archive.optLong("encodeWriteNs") / 1_000_000.0} ms; পুরো-file verify: ${archive.optLong("verifyNs") / 1_000_000.0} ms")
+            if (archive.optString("error").isNotEmpty()) appendLine("Archive error: ${archive.optString("error")}")
+            appendLine("মূল RAW/DNG রাখা হয়েছে; archive অতিরিক্ত file, playable video নয়।")
+        }
         appendLine("RAW file bytes: ${report.optLong("fileBytes")}")
         appendLine("গন্তব্য: ${report.optString("exportFolder")}")
         appendLine("একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।")
@@ -29,7 +37,7 @@ internal object RawReadableReport {
             appendLine("ফাইলের তালিকা:")
             files.keys().asSequence().sorted().forEach { appendLine("${files.getString(it)}") }
         }
-        for (key in listOf("nativeError", "readbackError", "dngSequenceError", "firstFrameDngError", "exportError"))
+        for (key in listOf("nativeError", "readbackError", "dngSequenceError", "firstFrameDngError", "losslessArchiveError", "exportError"))
             if (report.optString(key).isNotEmpty()) appendLine("$key: ${report.optString(key)}")
     }
 }

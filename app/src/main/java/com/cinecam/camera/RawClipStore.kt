@@ -17,14 +17,14 @@ import java.util.UUID
 internal object RawClipStore {
     data class PreparedClip(val folder: File, val stagingLocation: String,
                             val captureAvailableBytes: Long, val exportAvailableBytes: Long)
-    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean): PreparedClip {
+    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean, archive: Boolean): PreparedClip {
         val external = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Export storage unavailable")
         val useInternal = RawStoragePolicy.useInternal(internalStaging, Build.VERSION.SDK_INT)
         val root = if (useInternal) File(context.filesDir, "raw-clips") else external
         check(root.isDirectory || root.mkdirs()) { "Capture staging folder তৈরি হয়নি" }
         val captureFree = StatFs(root.absolutePath).availableBytes
         val exportFree = StatFs(external.absolutePath).availableBytes
-        RawStoragePolicy.checkFreeSpace(captureFree, exportFree, sequence)
+        RawStoragePolicy.checkFreeSpace(captureFree, exportFree, sequence, archive)
         val location = if (useInternal) "app-private-internal" else "app-specific-external"
         val folder = File(root, "CineCam_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}")
         check(folder.mkdirs()) { "RAW clip folder তৈরি হয়নি" }
@@ -38,6 +38,7 @@ internal object RawClipStore {
             val active = chars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE)
             val metadata = JSONObject().apply {
                 put("schema", "cinecam-calibration-1")
+                put("losslessArchiveRequested", archive)
                 put("dngExportMode", if (sequence) "all-saved-frames" else "first-frame-or-off")
                 put("stagingLocation", location)
                 put("captureAvailableBytesAtPrepare", captureFree); put("exportAvailableBytesAtPrepare", exportFree)
@@ -61,7 +62,7 @@ internal object RawClipStore {
                 put("forwardMatrix2", matrix(chars.get(CameraCharacteristics.SENSOR_FORWARD_MATRIX2)))
                 put("referenceIlluminant1", chars.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT1))
                 put("referenceIlluminant2", chars.get(CameraCharacteristics.SENSOR_REFERENCE_ILLUMINANT2))
-                put("warning", "Experimental bounded RAW burst; no audio, compression, fixed FPS or MotionCam compatibility")
+                put("warning", "Experimental bounded RAW burst; optional post-capture archive only, no compressed recording, audio, fixed FPS or MotionCam compatibility")
             }
             File(folder, "metadata.json").writeText(metadata.toString(2))
             return PreparedClip(folder, location, captureFree, exportFree)
@@ -73,7 +74,9 @@ internal object RawClipStore {
         val session = folder.name
         val legacyRoot = File(folder.parentFile, "CineCam")
         val destination = if (Build.VERSION.SDK_INT >= 29) "Download/CineCam" else legacyRoot.absolutePath
-        val files = folder.listFiles()?.filter { it.isFile && it.name !in setOf("report.json", "report.txt") }
+        val files = folder.listFiles()?.filter { it.isFile && it.name !in setOf("report.json", "report.txt") &&
+            (it.name != "capture.ccraw.bp16" || (report.optJSONObject("losslessArchive")?.optBoolean("ok") == true &&
+                report.optJSONObject("losslessArchive")?.optBoolean("byteExactSourceComparison") == true)) }
             ?: error("Clip files পাওয়া যায়নি")
         val mapping = JSONObject()
         (files.map { it.name } + listOf("report.json", "report.txt")).forEach {

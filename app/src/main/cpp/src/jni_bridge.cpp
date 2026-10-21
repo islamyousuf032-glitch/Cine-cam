@@ -5,6 +5,7 @@
 #include "cine_raw_engine.h"
 #include "cine_types.h"
 #include "raw16_codec.h"
+#include "bp16_archive.h"
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -291,5 +292,18 @@ Java_com_cinecam_engine_NativeRawEngine_nativeProbeRaw16Codec(
         probe.ok ? "true" : "false", (unsigned long long)probe.inputBytes, (unsigned long long)probe.packedBytes,
         (unsigned long long)probe.blocks, (unsigned long long)probe.readNs, (unsigned long long)probe.packNs,
         (unsigned long long)probe.unpackNs, probe.error);
+    return env->NewStringUTF(json);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, jobject, jstring source, jstring destination) {
+    const auto input = jstringToStd(env, source), output = jstringToStd(env, destination);
+    if (env->ExceptionCheck()) return nullptr;
+    const auto r = createBp16Archive(input.c_str(), output.c_str());
+    char json[768];
+    snprintf(json, sizeof(json), "{\"format\":\"CCBP0001\",\"ok\":%s,\"sourceBytes\":%llu,\"archiveBytes\":%llu,"
+        "\"encodeWriteNs\":%llu,\"verifyNs\":%llu,\"byteExactSourceComparison\":%s,\"compressedRecordingEnabled\":false,\"error\":\"%s\"}",
+        r.ok ? "true" : "false", (unsigned long long)r.sourceBytes, (unsigned long long)r.archiveBytes,
+        (unsigned long long)r.encodeWriteNs, (unsigned long long)r.verifyNs, r.ok ? "true" : "false", r.error);
     return env->NewStringUTF(json);
 }

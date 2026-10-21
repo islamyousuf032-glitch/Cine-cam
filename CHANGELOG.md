@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — ঐচ্ছিক byte-exact archive] — 2026-10-21
+- F23 v75-এর চারটি sidecar parse/cross-check: 8/8 written,0drop,readback+DNG সফল; timestamp/PTS/source-frame/export mapping মিলে গেছে। প্রথম-frame probe 24,969,600→13,999,256 bytes (~43.94% কম), pack49.533ms/unpack54.543ms। এটি পুরো clip ratio বা sustained FPS নয়; original binaries পাওয়া যায়নি। Evidence docs/device-tests/F23-v75।
+- Default OFF নতুন Lossless archive switch: saved RAW যাচাইয়ের পরে C++ দিয়ে পুরো `.ccraw`→`capture.ccraw.bp16` (experimental CCBP0001)। মূল RAW/DNG অক্ষত; extra file মানে মোট storage বাড়ে। Capture format/hot-path compression/EXIF/native pool অপরিবর্তিত।
+- Bounded block processing, header ও decoded-block CRC, exclusive create/no overwrite, fsync/close, পুরো archive decode+original-এর সঙ্গে byte-exact comparison। সফল verified archive-ই flat public export-এ যাবে; failure রিপোর্ট হলেও মূল RAW/DNG export চলতে পারে।
+- Archive চাওয়া হলে conservative1.5GiB free-space guard; বাড়তি encode/readback/copy সময় ও disk cost UI/report-এ স্পষ্ট। JSON ও সহজ বাংলা report-এ actual archive size/timings/verification/error।
+- Independent Python restore tool `scripts/restore_bp16.py`, format/safety/restore নির্দেশনা `docs/BP16_ARCHIVE.md`। Native sanitizers ও independent restore-এ সব0…16-bit widths, tail/multiblock, corruption/truncation/trailing/no-overwrite পরীক্ষাগুলো স্থানীয়ভাবে সফল। Android CI এবং নতুন device archive test বাকি।
+
 ## [Unreleased — Lossless RAW16 codec feasibility] — 2026-10-21
 - F23 v74 flat export validated by uploaded JSONs + user:8/8 written,0drop,readbackOk,8 DNGs correct; manifest names match prefixed exportFiles, no new capture folder。 Original RAW binaries not supplied。
 - New experimental C++ BP16 block codec: actual RAW16 values determine0–16 bits per block; no white-level-based truncation, gamma, quantization or precision inference। Full16-bit inputs losslessly supported; incompressible data may expand by header overhead。

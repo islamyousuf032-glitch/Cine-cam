@@ -11,6 +11,13 @@ class RawStoragePolicyTest {
         assertTrue(RawStoragePolicy.useInternal(true, 34))
         assertFalse(RawStoragePolicy.useInternal(false, 34))
     }
+    @Test fun archiveHasExtraDuplicateSpaceGuard() {
+        val min = RawStoragePolicy.minFreeBytes(true, true)
+        assertEquals(1536L * 1024 * 1024, min)
+        RawStoragePolicy.checkFreeSpace(min, min, true, true)
+        try { RawStoragePolicy.checkFreeSpace(min - 1, min, true, true); fail("archive guard") }
+        catch (_: IllegalStateException) { }
+    }
     @Test fun sequenceReservesSpaceForSourceDngAndExportDuplicate() {
         val min = RawStoragePolicy.SEQUENCE_MIN_FREE_BYTES
         assertEquals(1024L * 1024 * 1024, RawStoragePolicy.minFreeBytes(true))
