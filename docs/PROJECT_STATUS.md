@@ -178,3 +178,10 @@ CI `39594661556`/75 successful: ARM64/x86_64 native sanitizers (codec0–16-bit/
 চারটি uploaded sidecar docs/device-tests/F23-v75-এ সংরক্ষিত;8/8written,0drop,readback/DNG সফল। সব manifest নাম/timestamp/PTS/sourceFrameNumber cross-check সফল। Native first-frame lossless probe24,969,600→13,999,256bytes (~43.94% কম), encode49.533129ms/decode54.542812ms; savedCompressedFile=false intentional v75। Original RAW/DNG binary developer পরীক্ষা করেনি; sustained FPS/whole-clip ratio নয়।
 
 নতুন কাজ: default OFF optional post-capture `.ccraw.bp16` CCBP0001 archive, bounded native encoding, full-file decode/CRC/memcmp verification, independent Python restore, অতিরিক্ত1.5GiB guard। Original CCRAW001/DNG/EXIF/flat export/native pool অক্ষত; compressed recording নয় এবং original রাখায় মোট space সাশ্রয় নয়। শুধু সফল byte-exact archive public export হবে। Details docs/BP16_ARCHIVE.md। Local selected+forced CRC ASan/UBSan/native+Python tests সফল; নতুন Kotlin space/name tests যোগ হয়েছে। Android CI/release ও physical archive test এখনও বাকি।
+
+### v77 delivery confirmed
+CI `39605249901`/77 সম্পূর্ণ সফল: ARM64 ও x86_64 ASan/UBSan/native+independent Python restore suites, Android unit tests/lint/debug/unsigned-release build এবং prerelease publication। Source `2ae09208e50a421a2ea56fc6c6963a298849d0b1` (archive feature `0f76f25`)। `v0.1.77-alpha-2ae0920`-এর `CineCam-debug.apk` asset uploaded,14,806,172bytes; SHA256SUMS.txt প্রকাশিত। Intermediate run76 বাতিল,77-ই install/test target।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.77-alpha-2ae0920/CineCam-debug.apk
+
+পরবর্তী ধাপ: ফোনে archive switch ON + আগের successful8-frame settings +>=1.5GiB free, report.txt/report.json/metadata.json/sequence.json সংগ্রহ। Full archive size/byteExactSourceComparison/timings/flat14-files/unchanged DNG physical verification **pending**; CI পাস মানে device archive success বা sustained recording নয়। Original `.ccraw`/DNG retained; defaultOFF; no branch merge/close।

@@ -7,7 +7,7 @@
 - Default OFF নতুন Lossless archive switch: saved RAW যাচাইয়ের পরে C++ দিয়ে পুরো `.ccraw`→`capture.ccraw.bp16` (experimental CCBP0001)। মূল RAW/DNG অক্ষত; extra file মানে মোট storage বাড়ে। Capture format/hot-path compression/EXIF/native pool অপরিবর্তিত।
 - Bounded block processing, header ও decoded-block CRC, exclusive create/no overwrite, fsync/close, পুরো archive decode+original-এর সঙ্গে byte-exact comparison। সফল verified archive-ই flat public export-এ যাবে; failure রিপোর্ট হলেও মূল RAW/DNG export চলতে পারে।
 - Archive চাওয়া হলে conservative1.5GiB free-space guard; বাড়তি encode/readback/copy সময় ও disk cost UI/report-এ স্পষ্ট। JSON ও সহজ বাংলা report-এ actual archive size/timings/verification/error।
-- Independent Python restore tool `scripts/restore_bp16.py`, format/safety/restore নির্দেশনা `docs/BP16_ARCHIVE.md`। Native sanitizers ও independent restore-এ সব0…16-bit widths, tail/multiblock, corruption/truncation/trailing/no-overwrite পরীক্ষাগুলো স্থানীয়ভাবে সফল। Android CI এবং নতুন device archive test বাকি।
+- Independent Python restore tool `scripts/restore_bp16.py`, format/safety/restore নির্দেশনা `docs/BP16_ARCHIVE.md`। Native sanitizers ও independent restore-এ সব0…16-bit widths, tail/multiblock, corruption/truncation/trailing/no-overwrite পরীক্ষাগুলো স্থানীয়ভাবে সফল। Android CI run39605249901/77-এ native ARM/x86 + unit/lint/APK build/publication সফল। নতুন device archive test বাকি।
 
 ## [Unreleased — Lossless RAW16 codec feasibility] — 2026-10-21
 - F23 v74 flat export validated by uploaded JSONs + user:8/8 written,0drop,readbackOk,8 DNGs correct; manifest names match prefixed exportFiles, no new capture folder。 Original RAW binaries not supplied。
