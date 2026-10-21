@@ -145,3 +145,7 @@ Only new exports use flat layout; native temporary capture directories still uni
 ## Archive latency breakdown পরীক্ষা
 
 v77-এ actual archive সফল; এখন একই settings-এ আরেকবার test (archive ON, Paced/Internal/verification/all-DNG ON, reserve OFF,>=1.5GiB free)। একই prefix-এর চারটি ছোট sidecar পাঠান। নতুন readable report-এ archive **read/encode/CRC/write/fsync/close**, max-write, syscall ও block count পাওয়া যাবে। Capture→drain/RAW storage/Paced buffer অপেক্ষা/DNG/export data copy-ও দেখা যাবে। Stage wall time দিয়ে delay কোন অংশে ঘটছে বোঝা যাবে; এটি CPU-only benchmark বা speed improvement নয়। Format/output count/defaultOFF/source retention অপরিবর্তিত; নতুন subfolder নয়। Background load/temperature/storage state বদলাতে পারে, single-run থেকে causality সিদ্ধান্ত নয়।
+
+## Coalesced archive writes পরীক্ষা
+
+আগের settings অপরিবর্তিত রাখুন: Paced/Internal/verification/all-DNG/archive ON, reserve OFF,>=1.5GiB free। নতুন report-এ `blockWriteMode=coalesced-record-v1`, `ok`/`byteExactSourceComparison=true`, same14flatfiles চাই। F23-এর199,757,664byte RAW-এ3049blocks; full writes হলে3050writeCalls (আগে6099), partial/EINTR হলে বেশি হতে পারে। Pack/write/fsync/verify/export সময় আলাদা তুলনা করুন। Scene বদলালে archive ratio বদলাবে; fsync/background/thermal variability থেকে এক run-এ speedup নিশ্চিত নয়। চার ছোট sidecar পাঠান; huge binary প্রয়োজন নেই। মূল RAW/DNG/EXIF/verification/flush অক্ষত।

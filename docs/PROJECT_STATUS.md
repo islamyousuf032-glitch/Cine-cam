@@ -198,3 +198,9 @@ CI `39620030332`/78 সম্পূর্ণ সফল: ARM64/x86_64 ASan/UBSan 
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.78-alpha-063c966/CineCam-debug.apk
 
 পরের physical test: একই successful settings, archiveON (defaultOFF),>=1.5GiB free, চার sidecar সংগ্রহ। নতুন sourceRead/pack/CRC/write/fsync/close/calls/maxWrite পর্যবেক্ষণ **pending**। এটি instrumentation release, speedup/causal diagnosis/compressed recording claim নয়; original RAW/DNG, full byte verification, flat layout ও3-buffer capture অপরিবর্তিত। Branch merge/close হয়নি।
+
+## v78 device ফল → bounded record write coalescing
+
+Evidence docs/device-tests/F23-v78: চার original sidecar cross-check,8written/0drop/readback/DNG8,14flat names/PTS/source-frame mapping মেলে। Actual archive199,757,664→120,139,272bytes, byteExactSourceComparisontrue। Original binary developer পায়নি। Archive pack0.485s/write3.334s/fsync6.774s/aggregate10.732s; export39.496s। Storage wall time dominant in this run, specific underlying cause unproven।
+
+Native encoder এখন record prefix-এর জন্য একই small packed buffer-এ8bytes reserve করে, সরাসরি পিছনে encode, prefix+payload এক writeAll request। Payload copy/large buffering নেই; verify/source/format/fsync/capture pool/EXIF/defaultOFF/flat layout unchanged। 3049blocks-এর usual6099→3050syscalls; retry semantics preserved, sync delay থাকবে। `blockWriteMode` রিপোর্টে। Local ASan/UBSan + native call-count + independent reference wire-byte/restore tests pass; Kotlin readable-mode tests updated। Android CI/release ও physical gain pending।

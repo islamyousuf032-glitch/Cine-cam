@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Archive record write coalescing] — 2026-10-21
+- F23 v78 চার sidecar cross-check:8written/0drop/readback/DNG সফল;199,757,664→120,139,272bytes archive, byte-exact compare সফল;14 flat names/timestamp/PTS/source-frame mapping মেলে। Evidence docs/device-tests/F23-v78; original binaries পাওয়া যায়নি।
+- Archive pack0.485s,write3.334s,fsync6.774s;10.732s aggregate-এর প্রায়94.19% write+sync। RAW write7.816s/export39.496s-ও ধীর; filesystem/root cause বা sustained FPS সিদ্ধান্ত নয়।
+- Native archive record prefix+BP16 payload একই bounded buffer-এ সরাসরি encode করে এক writeAll request; আলাদা8byte write বাদ, payload memcpy/full-frame buffer নেই। Format/algorithm/source retention/CRC/fsync/close/full memcmp অপরিবর্তিত।
+- স্বাভাবিক full-write-এ3049records-এর6099→3050write syscalls; short-write/EINTR retry বজায়। `blockWriteMode=coalesced-record-v1` JSON/readable report-এ। এটি fsync বাদ দেওয়া বা নিশ্চিত speedup নয়; physical latency যাচাই বাকি।
+- Native fixtures-এ actual write-call reduction/accounting, independent Python reference encoder দিয়ে exact archive wire bytes (সব0…16-bit/tail) এবং restore/corruption/no-overwrite tests স্থানীয়ভাবে সফল। Android CI ও নতুন device ফল বাকি।
+
 ## [Unreleased — Archive latency breakdown] — 2026-10-21
 - F23 v77-এর চারটি sidecar ও দুই screenshot পর্যালোচনা:8written/0drop,RAW readback/DNG8 সফল; পুরো199,757,664bytes→109,739,528bytes archive, byteExactSourceComparison সফল। Timestamp/PTS/source-frame/flat14-file mapping মিলেছে; evidence docs/device-tests/F23-v77। Original binaries সরাসরি পরীক্ষা হয়নি।
 - Archive aggregate8.451s-কে codec speed বলা যায় না; এই run-এ RAW write5.514s/fsync1.956s ও export38.470s-ও ধীর। Single test দিয়ে storage/root cause বা archive-এর কারণে capture ধীর—এমন সিদ্ধান্ত নয়।

@@ -27,6 +27,8 @@ internal object RawReadableReport {
             appendLine("Lossless archive: ${if (archive.optBoolean("ok")) "সফল ও byte-exact যাচাই" else "ব্যর্থ"}")
             appendLine("Archive bytes: ${archive.optLong("archiveBytes")}; original bytes: ${archive.optLong("sourceBytes")}")
             appendLine("Archive encode/write: ${ms(archive.optLong("encodeWriteNs"))} ms; পুরো-file verify: ${ms(archive.optLong("verifyNs"))} ms")
+            if (archive.optString("blockWriteMode") == "coalesced-record-v1")
+                appendLine("Archive write: record header+payload একসঙ্গে; short write/EINTR হলে retry, fsync বজায়।")
             if (archive.has("packNs")) {
                 appendLine("Archive stage (ms): read ${ms(archive.optLong("sourceReadNs"))}; encode ${ms(archive.optLong("packNs"))}; CRC ${ms(archive.optLong("crcNs"))}")
                 appendLine("Archive storage (ms): write ${ms(archive.optLong("writeNs"))}; fsync ${ms(archive.optLong("fsyncNs"))}; close ${ms(archive.optLong("closeNs"))}; সর্বোচ্চ এক write ${ms(archive.optLong("maxWriteNs"))}")

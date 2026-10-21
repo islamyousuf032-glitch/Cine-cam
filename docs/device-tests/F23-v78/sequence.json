@@ -1,0 +1,59 @@
+{
+  "schema": "cinecam-dng-sequence-1",
+  "frames": [
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000001.dng",
+      "timestampNs": 1037474277006564,
+      "ptsNs": 362212012,
+      "sourceFrameNumber": 432
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000002.dng",
+      "timestampNs": 1037474610941564,
+      "ptsNs": 696147012,
+      "sourceFrameNumber": 440
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000003.dng",
+      "timestampNs": 1037474944876564,
+      "ptsNs": 1030082012,
+      "sourceFrameNumber": 448
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000004.dng",
+      "timestampNs": 1037475737972189,
+      "ptsNs": 1823177637,
+      "sourceFrameNumber": 457
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000005.dng",
+      "timestampNs": 1037476113649064,
+      "ptsNs": 2198854512,
+      "sourceFrameNumber": 465
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000006.dng",
+      "timestampNs": 1037476489325939,
+      "ptsNs": 2574531387,
+      "sourceFrameNumber": 473
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000007.dng",
+      "timestampNs": 1037477157195939,
+      "ptsNs": 3242401387,
+      "sourceFrameNumber": 489
+    },
+    {
+      "file": "CineCam_1792595455466_c9899162_frame_000008.dng",
+      "timestampNs": 1037479244289689,
+      "ptsNs": 5329495137,
+      "sourceFrameNumber": 539
+    }
+  ],
+  "clock": "BOOTTIME",
+  "epochNs": 1037473914794552,
+  "fixedFps": null,
+  "audio": false,
+  "warning": "Numbered DNG still sequence; no certified CinemaDNG\/NLE timing conformance, no synthetic missing frames",
+  "exportSessionId": "CineCam_1792595455466_c9899162"
+}

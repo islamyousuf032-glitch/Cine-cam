@@ -308,7 +308,7 @@ Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, job
         "\"sourceReadNs\":%llu,\"packNs\":%llu,\"crcNs\":%llu,\"writeNs\":%llu,"
         "\"fsyncNs\":%llu,\"closeNs\":%llu,\"maxWriteNs\":%llu,"
         "\"readCalls\":%llu,\"writeCalls\":%llu,\"blocks\":%llu,"
-        "\"timingScope\":\"encode-phase-wall-time-no-verify\",\"byteExactSourceComparison\":%s,\"compressedRecordingEnabled\":false,\"error\":\"%s\"}",
+        "\"blockWriteMode\":\"coalesced-record-v1\",\"timingScope\":\"encode-phase-wall-time-no-verify\",\"byteExactSourceComparison\":%s,\"compressedRecordingEnabled\":false,\"error\":\"%s\"}",
         r.ok ? "true" : "false", (unsigned long long)r.sourceBytes, (unsigned long long)r.archiveBytes,
         (unsigned long long)r.encodeWriteNs, (unsigned long long)r.verifyNs,
         (unsigned long long)r.sourceReadNs, (unsigned long long)r.packNs, (unsigned long long)r.crcNs,

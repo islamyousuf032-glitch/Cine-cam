@@ -95,7 +95,9 @@ Bp16ArchiveResult createBp16Archive(const char* source, const char* destination)
     if (!writeAll(out.n, header.data(), header.size(), result)) { result.error = "Archive header write failed"; return fail(); }
     result.archiveBytes = header.size();
     std::array<uint8_t, kRaw16BlockBytes> raw{};
-    std::array<uint8_t, kRaw16BlockBytes + kRaw16BlockHeader> packed{};
+    // Reserve the record prefix in the SAME buffer; no payload memcpy or larger batch.
+    constexpr size_t recordHeaderBytes = 8;
+    std::array<uint8_t, recordHeaderBytes + kRaw16BlockBytes + kRaw16BlockHeader> record{};
     for (uint64_t remaining = result.sourceBytes; remaining;) {
         const size_t count = static_cast<size_t>(std::min<uint64_t>(remaining, raw.size()));
         size_t encoded = 0;
@@ -103,18 +105,17 @@ Bp16ArchiveResult createBp16Archive(const char* source, const char* destination)
             result.error = "Archive source read failed"; return fail();
         }
         const auto packBegin = pipelineNowNs();
-        const bool packedOk = packRaw16Block(raw.data(), count, packed.data(), packed.size(), encoded);
+        const bool packedOk = packRaw16Block(raw.data(), count, record.data() + recordHeaderBytes, record.size() - recordHeaderBytes, encoded);
         result.packNs += pipelineNowNs() - packBegin;
         if (!packedOk) { result.error = "Archive encode failed"; return fail(); }
-        std::array<uint8_t, 8> record{};
         put32(record.data(), static_cast<uint32_t>(encoded));
         const auto crcBegin = pipelineNowNs();
         put32(record.data() + 4, ccrawCrc32(raw.data(), count));
         result.crcNs += pipelineNowNs() - crcBegin;
-        if (!writeAll(out.n, record.data(), record.size(), result) || !writeAll(out.n, packed.data(), encoded, result)) {
+        if (!writeAll(out.n, record.data(), recordHeaderBytes + encoded, result)) {
             result.error = "Archive block write failed"; return fail();
         }
-        result.archiveBytes += record.size() + encoded; remaining -= count; ++result.blocks;
+        result.archiveBytes += recordHeaderBytes + encoded; remaining -= count; ++result.blocks;
     }
     int status;
     const auto syncBegin = pipelineNowNs();

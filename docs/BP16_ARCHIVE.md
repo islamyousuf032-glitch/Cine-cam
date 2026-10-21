@@ -46,3 +46,7 @@ Native ASan/UBSan tests + independent Python restore tests: real tiny CCRAW fixt
 ## Encode-phase latency counters
 
 নতুন report `losslessArchive`-এ `sourceReadNs`, `packNs`, `crcNs`, `writeNs`, `fsyncNs`, `closeNs`, `maxWriteNs`, `readCalls`, `writeCalls`, `blocks`। `timingScope=encode-phase-wall-time-no-verify`। Read/write syscall duration wall time; interrupted/failed attempts-ও count হয়, source EOF check/open/stat/unlink এতে নেই। Header/record/payload writes included। Blocks হলো সম্পূর্ণ লেখা records। `encodeWriteNs` aggregate-এর মধ্যে এই stage-গুলি ও loop/setup overhead; aggregate-এর সঙ্গে stage যোগ করবেন না। `verifyNs` আলাদা full-file read/decode/CRC/memcmp সময়; তার ভিতরের read/CRC উপরের encode counters-এ মেশানো নয়। No CPU-only/thermal/root-cause claim। Failure-এর counters অসম্পূর্ণ কাজের মাপ; success নয়।
+
+## Coalesced record writes (format অপরিবর্তিত)
+
+`blockWriteMode=coalesced-record-v1`: packed buffer-এর সামনে8byte record header, তার পিছনে codec সরাসরি payload লেখে। Buffer সর্বোচ্চ65552bytes (আগের65544+আলাদা8byte record), extra payload memcpy নেই। এক writeAll call পুরো record জমা দেয়; actual syscall partial/EINTR হলে existing loop retry করে। Header24bytes আলাদা write। B blocks-এর স্বাভাবিক writeCalls=B+1, আগের2B+1 নয়; actual counters-ই authoritative। fsync/close/full byte comparison বজায়; huge storage flush stalls বা export cost সমাধান হয়েছে—এমন দাবি নয়। Independent reference encoder test exact same CCBP0001 bytes যাচাই করে।

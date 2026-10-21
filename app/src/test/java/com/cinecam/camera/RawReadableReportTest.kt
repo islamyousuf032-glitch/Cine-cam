@@ -8,7 +8,7 @@ import java.util.Locale
 class RawReadableReportTest {
     @Test fun archiveStagesAreReadableAndDistinctFromWholeVerify() {
         val report = JSONObject().put("losslessArchiveRequested", true).put("losslessArchive", JSONObject()
-            .put("ok", true).put("encodeWriteNs", 8_451_179_841L).put("verifyNs", 625_611_562L)
+            .put("ok", true).put("blockWriteMode", "coalesced-record-v1").put("encodeWriteNs", 8_451_179_841L).put("verifyNs", 625_611_562L)
             .put("sourceReadNs", 10_000_000L).put("packNs", 400_000_000L).put("crcNs", 70_000_000L)
             .put("writeNs", 6_000_000_000L).put("fsyncNs", 1_900_000_000L).put("closeNs", 100_000L)
             .put("maxWriteNs", 1_500_000_000L).put("blocks", 3049).put("readCalls", 3049).put("writeCalls", 6099))
@@ -18,12 +18,14 @@ class RawReadableReportTest {
         assertTrue(text.contains("encode 400.00; CRC 70.00"))
         assertTrue(text.contains("fsync 1900.00"))
         assertTrue(text.contains("3049/6099"))
+        assertTrue(text.contains("record header+payload একসঙ্গে"))
         assertFalse(text.contains("Lossless archive: OFF"))
     }
     @Test fun oldReportsDoNotInventMissingArchiveStages() {
         val text = RawReadableReport.text(JSONObject().put("losslessArchiveRequested", true)
             .put("losslessArchive", JSONObject().put("ok", true).put("encodeWriteNs", 10)))
         assertFalse(text.contains("Archive stage"))
+        assertFalse(text.contains("record header+payload একসঙ্গে"))
         assertTrue(RawReadableReport.text(JSONObject()).contains("Lossless archive: OFF"))
     }
     @Test fun errorsAndStorageDelayAreVisibleWithoutMislabelingCaptureTime() {
