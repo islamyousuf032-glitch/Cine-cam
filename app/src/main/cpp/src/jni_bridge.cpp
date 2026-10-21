@@ -297,7 +297,9 @@ Java_com_cinecam_engine_NativeRawEngine_nativeProbeRaw16Codec(
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, jobject, jstring source, jstring destination) {
-    const auto input = jstringToStd(env, source), output = jstringToStd(env, destination);
+    const auto input = jstringToStd(env, source);
+    if (env->ExceptionCheck()) return nullptr;
+    const auto output = jstringToStd(env, destination);
     if (env->ExceptionCheck()) return nullptr;
     const auto r = createBp16Archive(input.c_str(), output.c_str());
     char json[768];

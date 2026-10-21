@@ -218,7 +218,7 @@ fun CameraScreen() {
         AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW test") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                    Text("সর্বোচ্চ 8 RAW frames (~200 MB), DNG sequence-এ আরও প্রায় 200 MB। নিচের mode অনুযায়ী free-space guard প্রযোজ্য। MP4/audio/compression নেই; fixed FPS নয়। Download/CineCam-এ export হবে।")
+                    Text("সর্বোচ্চ 8 RAW frames (~200 MB), DNG sequence-এ আরও প্রায় 200 MB। নিচের mode অনুযায়ী free-space guard প্রযোজ্য। MP4/audio বা compressed recording নেই; fixed FPS নয়। Download/CineCam-এ export হবে।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Paced mode", Modifier.weight(1f))
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
@@ -243,8 +243,8 @@ fun CameraScreen() {
                         Switch(checked = allSavedFramesDng, onCheckedChange = { allSavedFramesDng = it }, enabled = verifyRawSample)
                     }
                     Text(if (verifyRawSample && allSavedFramesDng)
-                        "Sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
-                        else "যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
+                        "Archive OFF-এ sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
+                        else "Archive OFF + যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Lossless archive (পরীক্ষামূলক)", Modifier.weight(1f))
                         Switch(checked = losslessArchive, onCheckedChange = { losslessArchive = it }, enabled = verifyRawSample)
