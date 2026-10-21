@@ -4,6 +4,7 @@
 #include <android/hardware_buffer.h>
 #include "cine_raw_engine.h"
 #include "cine_types.h"
+#include "raw16_codec.h"
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -274,4 +275,21 @@ Java_com_cinecam_engine_NativeRawEngine_nativePushRawPlane(
 extern "C" JNIEXPORT jint JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeRawClipCapacity(JNIEnv*, jobject) {
     return GetGlobalEngine()->ingestionCapacity();
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeProbeRaw16Codec(
+        JNIEnv* env, jobject, jstring path, jlong offset, jlong bytes) {
+    const auto file = jstringToStd(env, path);
+    if (env->ExceptionCheck()) return nullptr;
+    const auto probe = probeRaw16File(file.c_str(), offset, bytes);
+    char json[1024];
+    snprintf(json, sizeof(json),
+        "{\"codec\":\"experimental-bp16-block\",\"roundtripOk\":%s,\"inputBytes\":%llu,"
+        "\"packedBytes\":%llu,\"blocks\":%llu,\"readNs\":%llu,\"packNs\":%llu,\"unpackNs\":%llu,"
+        "\"compressedRecordingEnabled\":false,\"savedCompressedFile\":false,\"error\":\"%s\"}",
+        probe.ok ? "true" : "false", (unsigned long long)probe.inputBytes, (unsigned long long)probe.packedBytes,
+        (unsigned long long)probe.blocks, (unsigned long long)probe.readNs, (unsigned long long)probe.packNs,
+        (unsigned long long)probe.unpackNs, probe.error);
+    return env->NewStringUTF(json);
 }

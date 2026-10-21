@@ -123,3 +123,11 @@ sequence.json-এ real sensor timestamp/epoch-relative PTS আছে। Numbered
 JSON খুলতে না পারলেও `<prefix>_report.txt` পড়তে পারবেন অথবা app-এর **শেষ RAW test report**-এ সহজ সারাংশ দেখবেন। **JSON কপি** ও **সহজ রিপোর্ট কপি** আলাদা। Error হলে একই summary-তে error থাকবে; export failure-এ private source retained, app data clear/uninstall নয়।
 
 Only new exports use flat layout; native temporary capture directories still unique/private (not user-facing output folders)। API26–28 uses one fixed app-external Movies/CineCam folder instead of MediaStore Downloads, same prefixed naming. No media file bytes/EXIF/capture scheduling changed।
+
+## Lossless codec feasibility probe
+
+আগের successful settings-এই test করুন (Paced ON, Internal ON, reserve OFF, verification ON; sequence চাইলে1GiB free)। Saved readback সফল হলে প্রথম saved payload C++ BP16 codec-এ encode→decode→memcmp হবে। No compressed files তৈরি হয়; `.ccraw`/DNG sizes একই থাকবে। Native read-only open; source overwritten/deleted নয়।
+
+সহজ report-এ lossless roundtrip সফল/ব্যর্থ ও source→packed bytes পড়ুন; বিস্তারিত JSON `losslessProbe`-এ roundtripOk/inputBytes/packedBytes/blocks/readNs/packNs/unpackNs। **compressedRecordingEnabled=false, savedCompressedFile=false** intentional। সব frame/all scenes-এর ratio নয়; sensor white1023 থেকেও precision assume করা হয়নি। Full16 values roundtrip tests আছে, compressible নয় এমন input header overhead-এ বড় হতে পারে।
+
+সময় capture window-এর পরে; probe64KiB blocks, মোট~192KiB scratch। Existing verifier CRC আলাদা, codec probe byte-exact roundtrip আলাদা। Compressed container format/decoder, production streaming codec choice ও actual sustained recording এখনও next work; এই পরীক্ষা speed/FPS guarantee নয়। Verification OFF হলে probe-ও skip। Probe failure report হলেও original RAW/DNG path অক্ষত থাকবে।

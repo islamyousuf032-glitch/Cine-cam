@@ -14,6 +14,12 @@ internal object RawReadableReport {
         appendLine("DNG mode: ${report.optString("dngExportMode")}")
         if (report.has("dngSequenceOk")) appendLine("DNG sequence: ${if (report.optBoolean("dngSequenceOk")) "সফল" else "ব্যর্থ"}; ${report.optInt("dngSequenceFrames")} frame")
         if (report.has("firstFrameDngOk")) appendLine("প্রথম frame DNG: ${if (report.optBoolean("firstFrameDngOk")) "সফল" else "ব্যর্থ"}")
+        report.optJSONObject("losslessProbe")?.let { probe ->
+            appendLine("Lossless codec byte-exact পরীক্ষা: ${if (probe.optBoolean("roundtripOk")) "সফল" else "ব্যর্থ"}")
+            appendLine("প্রথম saved frame: ${probe.optLong("inputBytes")} bytes → পরীক্ষামূলক packed ${probe.optLong("packedBytes")} bytes")
+            appendLine("শুধু codec probe; RAW/DNG ফাইল compressed নয়, recording performance proof নয়।")
+        }
+        if (report.has("losslessProbeError")) appendLine("Codec probe error: ${report.optString("losslessProbeError")}")
         appendLine("RAW file bytes: ${report.optLong("fileBytes")}")
         appendLine("গন্তব্য: ${report.optString("exportFolder")}")
         appendLine("একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।")

@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Lossless RAW16 codec feasibility] — 2026-10-21
+- F23 v74 flat export validated by uploaded JSONs + user:8/8 written,0drop,readbackOk,8 DNGs correct; manifest names match prefixed exportFiles, no new capture folder。 Original RAW binaries not supplied。
+- New experimental C++ BP16 block codec: actual RAW16 values determine0–16 bits per block; no white-level-based truncation, gamma, quantization or precision inference। Full16-bit inputs losslessly supported; incompressible data may expand by header overhead。
+- Read-only first verified saved-frame probe: bounded64KiB raw+packed+decoded buffers (~192KiB total), byte-for-byte roundtrip, input/packed bytes and read/encode/decode times in report। No output compressed file, no capture-format change or compressed recording enabled。
+- Native tests cover all bit widths, unaligned pointers, small/large/tail blocks, invalid caps/headers/tails/truncation and source-range validation; ASan/UBSan + existing container reader tests passed locally।
+- Probe runs after native stop/readback, before DNG; optional via existing saved-verification switch。 Extra time/read I/O; codec results are one-frame feasibility only, not sustained throughput proof。 Existing RAW/DNG/flat filenames/EXIF/fsync/pool3 unchanged。
+
 ## [Unreleased — Flat export / readable reports] — 2026-10-21
 - F23 v73 original JSONs verified:8/8 written,0drop,readbackOk8frames,DNGsequenceOk8files; timestamp/PTS maps agree। User confirms all8 DNGs visually correct। Evidence archived in docs/device-tests/F23-v73 (no original RAW binaries)।
 - User-visible RAW export এখন একটিই Download/CineCam folder; প্রতি capture-এ subfolder নয়। Unique capture prefix প্রতিটি companion/DNG/report filename-এ, old files overwrite নয়। Private temporary directories remain isolated for safe native writing।

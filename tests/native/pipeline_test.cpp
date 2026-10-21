@@ -2,6 +2,7 @@
 #include "raw_layout.h"
 #include "sync_timeline.h"
 #include "ccraw_writer.h"
+#include "raw16_codec.h"
 #include <cassert>
 #include <filesystem>
 #include <future>
@@ -47,6 +48,49 @@ uint32_t referenceCrc(const uint8_t* data, size_t size) {
 }
 
 int main() {
+    {
+        std::vector<uint8_t> raw(kRaw16BlockBytes + 16), encoded(kRaw16BlockBytes + kRaw16BlockHeader), decoded(kRaw16BlockBytes);
+        uint32_t seed = 71;
+        for (unsigned bits = 0; bits <= 16; ++bits) {
+            const uint32_t mask = bits ? (1U << bits) - 1 : 0;
+            for (size_t offset = 0; offset < 4; ++offset) {
+                for (size_t size : {2U, 6U, 14U, 128U, 65536U}) {
+                    for (size_t n = 0; n < size; n += 2) {
+                        seed = seed * 1664525U + 1013904223U;
+                        const uint32_t value = (seed >> 8) & mask;
+                        raw[offset + n] = value; raw[offset + n + 1] = value >> 8;
+                    }
+                    size_t packed = 0, restored = 0;
+                    assert(packRaw16Block(raw.data() + offset, size, encoded.data(), encoded.size(), packed));
+                    assert(unpackRaw16Block(encoded.data(), packed, decoded.data(), decoded.size(), restored));
+                    assert(restored == size && std::memcmp(raw.data() + offset, decoded.data(), size) == 0);
+                    assert(!unpackRaw16Block(encoded.data(), packed - 1, decoded.data(), decoded.size(), restored));
+                }
+            }
+        }
+        size_t written = 99;
+        assert(!packRaw16Block(raw.data(), 1, encoded.data(), encoded.size(), written) && written == 0);
+        assert(!packRaw16Block(raw.data(), 65538, encoded.data(), encoded.size(), written));
+        assert(!packRaw16Block(raw.data(), 2, encoded.data(), 7, written));
+        raw[0] = 1; raw[1] = 0;
+        assert(packRaw16Block(raw.data(), 2, encoded.data(), encoded.size(), written));
+        const auto size = written;
+        encoded[size - 1] |= 0x80;
+        assert(!unpackRaw16Block(encoded.data(), size, decoded.data(), decoded.size(), written));
+        encoded[4] = 17;
+        assert(!unpackRaw16Block(encoded.data(), size, decoded.data(), decoded.size(), written));
+        const std::string source = "build/native-tests/codec-probe.bin";
+        { std::ofstream out(source, std::ios::binary); out.write(reinterpret_cast<const char*>(raw.data()), raw.size()); }
+        const auto before = std::filesystem::file_size(source);
+        const auto probe = probeRaw16File(source.c_str(), 2, 65536);
+        assert(probe.ok && probe.inputBytes == 65536 && probe.blocks == 1 && probe.packNs > 0 && probe.unpackNs > 0);
+        assert(std::filesystem::file_size(source) == before);
+        assert(!probeRaw16File(source.c_str(), -1, 2).ok);
+        assert(!probeRaw16File(source.c_str(), 0, 1).ok);
+        assert(!probeRaw16File(source.c_str(), before, 2).ok);
+        assert(!probeRaw16File("build/native-tests/missing-codec-file", 0, 2).ok);
+    }
+
     std::printf("CRC backend: %s; hardware self-test: %s\n", ccrawCrcBackend(), ccrawHardwareCrcStatus());
 #ifdef CINECAM_FORCE_PORTABLE_CRC
     assert(std::strcmp(ccrawCrcBackend(), "slicing-by-8-forced") == 0);

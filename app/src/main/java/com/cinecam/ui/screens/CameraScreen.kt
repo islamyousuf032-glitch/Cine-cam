@@ -244,6 +244,7 @@ fun CameraScreen() {
                     Text(if (verifyRawSample && allSavedFramesDng)
                         "Sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
                         else "যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
+                    Text("Saved যাচাই ON হলে প্রথম frame-এ lossless codec roundtrip probe হবে। বর্তমান RAW/DNG file size বা format বদলাবে না।")
                     Text(if (pacedRawTest) "Paced: একবারে একটি request; buffer ফাঁকা হলে পরের frame। ধীর/variable FPS, কম drop-এর পরীক্ষা।"
                          else "Burst: আগের মতো দ্রুত 8 requests। একই 3-buffer pool-এ throughput/drop তুলনা।")
                 }

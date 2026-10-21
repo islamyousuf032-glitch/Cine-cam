@@ -578,6 +578,15 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     }
                     report.put("readbackNs", SystemClock.elapsedRealtimeNanos() - verifyBegin)
                     if (verified != null && verified.frames.isNotEmpty()) {
+                        // Read-only codec feasibility check on the first verified saved payload.
+                        postStorageStatus("Lossless RAW16 codec roundtrip পরীক্ষা হচ্ছে…")
+                        try {
+                            report.put("losslessProbe", JSONObject(engine.nativeProbeRaw16Codec(
+                                File(folder, "capture.ccraw").absolutePath, verified.frames.first().payloadOffset,
+                                verified.width.toLong() * verified.height * 2)))
+                        } catch (e: Exception) {
+                            report.put("losslessProbeError", e.message)
+                        }
                         val dngBegin = SystemClock.elapsedRealtimeNanos()
                         try {
                             check(sampleChars != null) { "Capture calibration metadata missing" }

@@ -33,6 +33,7 @@ add_library(cinecam_raw SHARED
         src/ring_buffer.cpp
         src/ccraw_writer.cpp
         src/crc32_dispatch.cpp
+        src/raw16_codec.cpp
         src/raw_writer.cpp
         src/cinemadng_writer.cpp
         src/memory_pool.cpp
