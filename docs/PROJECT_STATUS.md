@@ -274,3 +274,7 @@ CI `39778598396`/84 full success: ARM/x86 sanitizer (DNG+CCRAW preview, export, 
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.84-alpha-1d7a4a2/CineCam-debug.apk
 
 Device check (পুরোনো capture দিয়েই): ছবি section→capture→grid thumbnail; DNG reader ব্যর্থ হলেও verified `.ccraw` frame fallback কাজ করবে; failure হলে এখন কারণ লেখা থাকবে (frame-এর নামসহ জানালে DNG tag অনুযায়ী ঠিক করা যাবে)। Lossless archive section-এ size/ratio/share; ফাইল section-এ সব companion। New capture দরকার নেই।
+
+## v85 — four sections, colour and freeze fixes — 2026-10-22
+
+Device feedback: requested exactly four sections (ছবি / clips / lossless archive / report); previews were green instead of red; pressing "ছবিগুলো দেখুন" froze the UI. Root causes: CCRAW fallback hardcoded RGGB while metadata says cfa=1 (GRBG), so red/green samples swapped; and the photo grid decoded up to eight 25MB payloads concurrently with a full-frame allocation each. Fixes: CFA mapping + metadata/report calibration (neutral, black/white, ColorMatrix1); max two concurrent decoders, 320px lazy thumbnails, row-sampled pread instead of whole-payload load, 24MiB cache; four explicit tabs with per-file rows; tiled DNG support. Native sanitizer suites updated and passing; Android CI/device verification pending.

@@ -45,3 +45,18 @@ Host ASan/UBSan tests synthetic LE/BE uncompressed DNG, RGGB/GRBG channel mappin
 - কোনো ফাইল write/migrate/delete নেই; RAW/DNG/EXIF/archive অপরিবর্তিত।
 
 নতুন native test: synthetic CCRAW header/frame/footer, two-frame index bound, header/frame CRC corruption, truncation, invalid fd; DNG synthetic tests আগের মতোই। Android build/device যাচাই বাকি।
+
+## v85 — বিভাগ আলাদা, রঙ ও ফ্রিজ ঠিক, tiled DNG
+
+**রঙের মূল কারণ:** CCRAW fallback-এ CFA origin হার্ডকোড RGGB ছিল। এই sensor-এর metadata `cfa=1` (GRBG), তাই লাল ও সবুজ নমুনা জায়গা বদলিয়ে যাচ্ছিল—লাল বস্তু সবুজ দেখাচ্ছিল। এখন metadata `cfa` অনুযায়ী RGGB/GRBG/GBRG/BGGR নাম্বারিং ব্যবহার হয়; report-এর প্রতি-frame `neutralColorPoint`, `dynamicBlackLevel`, `dynamicWhiteLevel` এবং metadata-র `colorTransform1` (Camera→XYZ) দিয়ে white balance ও color matrix প্রয়োগ হয়। কোনো calibration না থাকলেই কেবল percentile fallback।
+
+**ফ্রিজের কারণ:** এক capture-এর সব thumbnail একসাথে render হতে গিয়ে একাধিক ২৫MB payload একসাথে পড়া/আলোকিত হচ্ছিল। এখন:
+
+- একসাথে সর্বোচ্চ 2টি preview decode (semaphore), 24MiB cache।
+- `ccraw_preview.cpp` সম্পূর্ণ payload আর একসাথে পড়ে না; কেবল দরকারি 2-row cell block `pread` করে। thumbnail-এ কম নমুনা।
+- তালিকা lazy; শুধু পর্দায় থাকা DNG-এর thumbnail লোড হয়, আগে ৮টি একসাথে নয়।
+- thumbnail সর্বোচ্চ 320px, viewer 1280px; কাজ শেষ হলে cache।
+
+**Tiled DNG:** DngCreator বা অন্য writer strip-এর বদলে tile (322–325) ব্যবহার করলে সেটিও পড়া হয়; tile offset/count ফাইলের ভিতরে ও মাপে বাঁধা। LinearizationTable/JPEG-CFA এখনো প্রত্যাখ্যাত, কিন্তু CCRAW fallback থাকায় preview পাওয়া যায়।
+
+**বিভাগ:** Manage clips-এ এখন চারটি আলাদা tab—ছবি (প্রতিটি DNG আলাদা), Clips (শুধু `.ccraw`), Lossless archive (শুধু `.ccraw.bp16`), Report (report/metadata/sequence sidecar)। আগের মতো কোনো file move/rename/delete নেই।

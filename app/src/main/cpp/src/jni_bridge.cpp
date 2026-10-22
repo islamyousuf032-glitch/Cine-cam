@@ -10,6 +10,8 @@
 #include "dng_preview.h"
 #include "ccraw_preview.h"
 #include <vector>
+#include <array>
+#include <algorithm>
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -340,9 +342,31 @@ Java_com_cinecam_engine_NativeRawEngine_nativeRenderDng(JNIEnv* env, jobject, ji
 
 extern "C" JNIEXPORT jintArray JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeRenderCcrawFrame(JNIEnv* env, jobject, jint fd,
-        jint frameIndex, jint maxDimension, jint orientation) {
+        jint frameIndex, jint maxDimension, jint orientation, jint cfa,
+        jdouble neutralR, jdouble neutralG, jdouble neutralB, jdouble white,
+        jdoubleArray black, jdoubleArray matrix) {
+    CcrawCalibration calibration;
+    calibration.cfa = static_cast<int>(cfa);
+    calibration.neutral[0] = neutralR;
+    calibration.neutral[1] = neutralG;
+    calibration.neutral[2] = neutralB;
+    calibration.white = white;
+    std::array<double, 4> blackValues{};
+    std::array<double, 9> matrixValues{};
+    bool hasBlack = false, hasMatrix = false;
+    if (black != nullptr && env->GetArrayLength(black) == 4) {
+        env->GetDoubleArrayRegion(black, 0, 4, blackValues.data());
+        hasBlack = env->ExceptionCheck() == JNI_FALSE;
+    }
+    if (matrix != nullptr && env->GetArrayLength(matrix) == 9) {
+        env->GetDoubleArrayRegion(matrix, 0, 9, matrixValues.data());
+        hasMatrix = env->ExceptionCheck() == JNI_FALSE;
+    }
+    if (hasBlack) std::copy(blackValues.begin(), blackValues.end(), calibration.black);
+    calibration.valid = neutralR > 0 && neutralG > 0 && neutralB > 0 && white > 0 && hasBlack;
+    calibration.cameraToXyz = hasMatrix ? matrixValues.data() : nullptr;
     const auto result = renderCcrawFrame(static_cast<int>(fd), static_cast<int>(frameIndex),
-        static_cast<int>(maxDimension), static_cast<int>(orientation));
+        static_cast<int>(maxDimension), static_cast<int>(orientation), calibration);
     const auto& preview = result.image;
     std::vector<jint> out;
     out.reserve(4 + preview.argb.size());

@@ -6,11 +6,22 @@ import org.json.JSONObject
 
 /** Untrusted saved reports are an index, NOT independent payload verification. */
 internal data class ClipFile(val original: String, val exported: String)
+internal data class FrameCalibration(
+    val neutralR: Double, val neutralG: Double, val neutralB: Double,
+    val black: DoubleArray, val white: Double
+)
+/** Calibration copied from the capture's own metadata/report sidecars; optional. */
+internal data class ClipMetadata(
+    val cfa: Int = 0, val sensorOrientation: Int? = null,
+    val whiteLevel: Double = 0.0, val colorMatrix: DoubleArray? = null
+)
 internal data class SavedClip(
     val id: String, val epochMs: Long, val written: Long, val requested: Int,
     val reason: String, val rawBytes: Long, val archiveBytes: Long?, val drops: Long,
     val readback: Boolean?, val dng: Boolean?, val archive: Boolean?,
-    val files: List<ClipFile>, val readable: String, val sensorOrientation: Int? = null
+    val files: List<ClipFile>, val readable: String, val sensorOrientation: Int? = null,
+    val metadata: ClipMetadata? = null, val framesCalibration: List<FrameCalibration> = emptyList(),
+    val report: org.json.JSONObject? = null
 )
 internal object ClipCatalog {
     const val MAX_REPORT_BYTES = 65536
@@ -18,6 +29,60 @@ internal object ClipCatalog {
     const val MAX_REPORTS = 100
     private val reportPattern = Regex("(CineCam_([0-9]+)_[a-f0-9]{8})_report\\.json")
     fun isReport(name: String) = reportPattern.matches(name)
+
+    /** Parses "11/16", "0.6" or numeric JSON values; null if not finite. */
+    fun fraction(value: Any?): Double? = when (value) {
+        is Number -> value.toDouble().takeIf { it.isFinite() }
+        is String -> {
+            val parts = value.trim().split('/')
+            val number = parts[0].toDoubleOrNull()
+            val denominator = if (parts.size == 2) parts[1].toDoubleOrNull() else 1.0
+            if (number == null || denominator == null || denominator == 0.0) null else (number / denominator).takeIf { it.isFinite() }
+        }
+        else -> null
+    }
+
+    private fun numbers(array: org.json.JSONArray?, count: Int): DoubleArray? {
+        if (array == null || array.length() != count) return null
+        val out = DoubleArray(count)
+        for (i in 0 until count) out[i] = fraction(array.opt(i)) ?: return null
+        return out
+    }
+
+    fun parseMetadata(text: String): ClipMetadata? = try {
+        val json = JSONObject(text)
+        val cfa = json.optInt("cfa", 0).coerceIn(0, 3)
+        val orientation = json.optInt("sensorOrientation", 0).takeIf { it in 90..270 && it % 90 == 0 }
+        val white = fraction(json.opt("whiteLevel"))?.takeIf { it > 0 } ?: 0.0
+        val matrixRows = json.optJSONArray("colorTransform1")
+        val matrix = if (matrixRows != null && matrixRows.length() == 3) {
+            val values = DoubleArray(9)
+            var valid = true
+            for (row in 0 until 3) {
+                val cells = numbers(matrixRows.optJSONArray(row), 3)
+                if (cells == null) { valid = false; break }
+                System.arraycopy(cells, 0, values, row * 3, 3)
+            }
+            values.takeIf { valid }
+        } else null
+        ClipMetadata(cfa, orientation, white, matrix)
+    } catch (_: Exception) { null }
+
+    private fun frameCalibration(report: JSONObject): List<FrameCalibration> {
+        val frames = report.optJSONArray("frames") ?: return emptyList()
+        val out = mutableListOf<FrameCalibration>()
+        for (i in 0 until frames.length()) {
+            val frame = frames.optJSONObject(i) ?: continue
+            if (!frame.optBoolean("accepted", true)) continue
+            val neutral = numbers(frame.optJSONArray("neutralColorPoint"), 3)
+            if (neutral == null || neutral.any { it <= 0 }) continue
+            val black = numbers(frame.optJSONArray("dynamicBlackLevel"), 4) ?: doubleArrayOf(0.0, 0.0, 0.0, 0.0)
+            val white = fraction(frame.opt("dynamicWhiteLevel"))?.takeIf { it > black.max() }
+                ?: black.max() + 65535.0
+            out.add(FrameCalibration(neutral[0], neutral[1], neutral[2], black, white))
+        }
+        return out
+    }
     fun parse(name: String, text: String): SavedClip {
         require(text.toByteArray(Charsets.UTF_8).size <= MAX_REPORT_BYTES) { "Report খুব বড়" }
         val match = requireNotNull(reportPattern.matchEntire(name)) { "Capture filename সঠিক নয়" }
@@ -47,6 +112,7 @@ internal object ClipCatalog {
         require(archiveBytes == null || archiveBytes >= 0)
         return SavedClip(id, epoch, written, requested, report.optString("reason"), rawBytes,
             archiveBytes, drops, flag(report, "readbackOk"), flag(report, "dngSequenceOk") ?: flag(report, "firstFrameDngOk"),
-            archive?.let { flag(it, "ok") }, files, RawReadableReport.text(report))
+            archive?.let { flag(it, "ok") }, files, RawReadableReport.text(report), null, null,
+            frameCalibration(report), report)
     }
 }

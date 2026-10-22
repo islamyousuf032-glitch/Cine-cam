@@ -18,7 +18,7 @@ internal object ClipFolderReader {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE)
-        fun optionalOrientation(document: FolderDocument?): Int? {
+        fun optionalText(document: FolderDocument?): String? {
             if (document == null) return null
             if (document.bytes != null && document.bytes > ClipCatalog.MAX_REPORT_BYTES) return null
             return try {
@@ -33,8 +33,7 @@ internal object ClipFolderReader {
                     }
                     bytes.toString("UTF-8")
                 } ?: return null
-                org.json.JSONObject(text).optInt("sensorOrientation", 0)
-                    .takeIf { it in 90..270 && it % 90 == 0 }
+                text
             } catch (_: Exception) { null }
         }
         val docs = mutableMapOf<String, FolderDocument>()
@@ -77,7 +76,9 @@ internal object ClipFolderReader {
                     bytes.toString("UTF-8")
                 } ?: throw IOException("Report খোলা যায়নি")
                 val clip = ClipCatalog.parse(name, text)
-                clips.add(clip.copy(sensorOrientation = optionalOrientation(docs[clip.id + "_metadata.json"])))
+                val metadata = optionalText(docs[clip.id + "_metadata.json"])?.let(ClipCatalog::parseMetadata)
+                clips.add(clip.copy(sensorOrientation = metadata?.sensorOrientation ?: clip.sensorOrientation,
+                    metadata = metadata))
             } catch (e: org.json.JSONException) {
                 notices.add("$name: report JSON সঠিক নয়")
             } catch (e: IllegalArgumentException) {

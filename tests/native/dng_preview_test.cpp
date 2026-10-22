@@ -92,6 +92,51 @@ std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_
     return w.bytes;
 }
 
+// Minimal tiled 16x16 CFA DNG with 8x8 tiles; exercises DngCreator-style storage.
+std::vector<uint8_t> buildTiled() {
+    constexpr size_t kEntries = 11;
+    const size_t dataOff = 8 + 2 + 12 * kEntries + 4;
+    const size_t tileBytes = 8 * 8 * 2;
+    Writer w;
+    w.little = true;
+    w.bytes.assign(dataOff + 4 * tileBytes, 0);
+    w.bytes[0] = 'I';
+    w.bytes[1] = 'I';
+    w.u16(2, 42);
+    w.u32(4, 8);
+    w.u16(8, kEntries);
+    size_t p = 10;
+    w.entryTag(p, 256, 4, 1, 16); p += 12;
+    w.entryTag(p, 257, 4, 1, 16); p += 12;
+    w.entryTag(p, 258, 3, 1, 16); p += 12;
+    w.entryTag(p, 259, 3, 1, 1); p += 12;
+    w.entryTag(p, 262, 3, 1, 32803); p += 12;
+    w.entryTag(p, 274, 3, 1, 1); p += 12;
+    w.entryTag(p, 322, 4, 1, 8); p += 12;
+    w.entryTag(p, 323, 4, 1, 8); p += 12;
+    // Tile offsets/counts are stored inline arrays elsewhere only if <=4 bytes; use one
+    // LONG per tile by pointing at a small table after the data block.
+    const size_t table = dataOff + 4 * tileBytes;
+    w.entryTag(p, 324, 4, 4, static_cast<uint32_t>(table)); p += 12;
+    w.entryTag(p, 325, 4, 4, static_cast<uint32_t>(table + 16)); p += 12;
+    w.entryTag(p, 33422, 1, 4, 0x02010100); p += 12;
+    w.u32(p, 0);
+    w.bytes.resize(table + 32);
+    for (int tile = 0; tile < 4; ++tile) {
+        w.u32(table + tile * 4, static_cast<uint32_t>(dataOff + tile * tileBytes));
+        w.u32(table + 16 + tile * 4, static_cast<uint32_t>(tileBytes));
+        for (int y = 0; y < 8; ++y) {
+            for (int x = 0; x < 8; ++x) {
+                const int gx = (tile % 2) * 8 + x, gy = (tile / 2) * 8 + y;
+                const int channel = (gy % 2 == 0 && gx % 2 == 0) ? 0 : ((gy % 2 == 1 && gx % 2 == 1) ? 2 : 1);
+                const uint16_t value = channel == 0 ? 900 : (channel == 1 ? 400 : 100);
+                w.u16(dataOff + tile * tileBytes + (y * 8 + x) * 2, value);
+            }
+        }
+    }
+    return w.bytes;
+}
+
 uint8_t encode(double v) {
     const double g = v <= 0.0031308 ? 12.92 * v : 1.055 * std::pow(v, 1.0 / 2.4) - 0.055;
     return static_cast<uint8_t>(std::lround(std::min(1.0, std::max(0.0, g)) * 255.0));
@@ -136,6 +181,16 @@ int main() {
         }
     }
 
+    {
+        const auto tiled = buildTiled();
+        const auto preview = renderDngPreview(tiled.data(), tiled.size(), 16);
+        assert(preview.ok);
+        assert(preview.width == 8 && preview.height == 8);
+        for (uint32_t pixel : preview.argb) {
+            const int r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+            assert(r > g && g > b);
+        }
+    }
     {
         char path[] = "build/native-tests/preview-fixture.XXXXXX";
         const int fd = mkstemp(path);

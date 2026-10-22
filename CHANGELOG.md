@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — চারটি বিভাগ, সঠিক রঙ, ফ্রিজসমূহ সমাধান] — 2026-10-22
+- Manage clips চারটি আলাদা section: **ছবি** (প্রতিটি DNG), **Clips** (শুধু `.ccraw`), **Lossless archive** (শুধু `.ccraw.bp16`), **Report** (report/metadata/sequence)।
+- লাল বস্তু সবুজ দেখানোর কারণ ধরা পড়েছে: CCRAW fallback-এ CFA origin হার্ডকোড RGGB ছিল, কিন্তু এই sensor GRBG (`cfa=1`)। এখন capture-এর metadata/report calibration (CFA, neutral, black/white, color matrix) ব্যবহার হয়।
+- "ছবিগুলো দেখুন" চাপে ফ্রিজ ঠিক: unbounded একসাথে-decoder বন্ধ, সর্বোচ্চ2 concurrent, thumbnail 320px, lazy load, full 25MB payload-এর বদলে sampled row read, 24MiB cache।
+- tiled (TileOffsets/TileByteCounts) DNG পড়ার সমর্থন; unsupported হলে CCRAW fallback এবং পরিষ্কার error।
+- RAW/DNG/EXIF/archive/export আচরণ অপরিবর্তিত; playback/MP4 এখনো নেই। Host sanitizer tests pass; Android CI/device pending।
+
 ## [Unreleased — তিন section ও নির্ভরযোগ্য ছবি preview] — 2026-10-22
 - v83 device feedback: বাস্তব DNG-এ thumbnail সব "Preview নেই" ছিল। এখন DNG reader ব্যর্থ হলে একই capture-এর verified `.ccraw` frame থেকে native preview—vendor DNG tag-এর উপর নির্ভরতা কম।
 - Library তিনটি আলাদা section: **ছবি** (capture→ছবির grid→viewer), **Lossless archive** (আকার, কত% ছোট, রিপোর্টের যাচাই ফল, শেয়ার), **ফাইল ও রিপোর্ট** (সব companion, সহজ রিপোর্ট)।

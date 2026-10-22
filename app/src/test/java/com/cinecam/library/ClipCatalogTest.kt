@@ -28,6 +28,24 @@ class ClipCatalogTest {
         assertEquals(true, clip.dng)
         assertEquals(true, clip.archive)
         assertTrue(clip.readable.contains("Capture: $id"))
+        assertEquals(8, clip.framesCalibration.size)
+        val first = clip.framesCalibration.first()
+        assertEquals(439.0 / 512.0, first.neutralR, 1e-9)
+        assertEquals(1.0, first.neutralG, 1e-9)
+        assertEquals(523.0 / 1024.0, first.neutralB, 1e-9)
+        assertEquals(64.0, first.black[0], 0.0)
+        assertEquals(1023.0, first.white, 0.0)
+    }
+    @Test fun captureCalibrationMetadataIsOptionalAndBounded() {
+        val metadata = ClipCatalog.parseMetadata("""{"cfa":1,"sensorOrientation":90,"whiteLevel":1023,
+            "colorTransform1":[["1/1","0/1","0/1"],["0/1","1/1","0/1"],["0/1","0/1","1/1"]]}""")
+        requireNotNull(metadata)
+        assertEquals(1, metadata.cfa)
+        assertEquals(90, metadata.sensorOrientation)
+        assertEquals(1023.0, metadata.whiteLevel, 0.0)
+        assertEquals(1.0, metadata.colorMatrix!![4], 0.0)
+        assertNull(ClipCatalog.parseMetadata("not json"))
+        assertEquals(0, ClipCatalog.parseMetadata("{}")!!.cfa)
     }
     @Test fun userStopIsNotTreatedAsCompletedEightFrames() {
         val json = report().put("reason", "user stop")

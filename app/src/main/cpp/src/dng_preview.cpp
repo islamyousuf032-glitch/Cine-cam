@@ -36,6 +36,10 @@ constexpr uint16_t kTagSamplesPerPixel = 277;
 constexpr uint16_t kTagRowsPerStrip = 278;
 constexpr uint16_t kTagStripByteCounts = 279;
 constexpr uint16_t kTagPlanarConfig = 284;
+constexpr uint16_t kTagTileWidth = 322;
+constexpr uint16_t kTagTileLength = 323;
+constexpr uint16_t kTagTileOffsets = 324;
+constexpr uint16_t kTagTileByteCounts = 325;
 constexpr uint16_t kTagSubIfds = 330;
 constexpr uint16_t kTagCfaRepeatDim = 33421;
 constexpr uint16_t kTagCfaPattern = 33422;
@@ -177,6 +181,9 @@ struct RawInfo {
     uint32_t rowsPerStrip = 0;
     std::vector<uint64_t> stripOffsets;
     std::vector<uint64_t> stripCounts;
+    bool tiled = false;
+    uint32_t tileWidth = 0, tileLength = 0;
+    std::vector<uint64_t> tileOffsets, tileCounts;
     std::array<uint8_t, 4> cfa{{0, 1, 1, 2}};
     int blackCount = 0;
     std::array<double, 4> black{{0, 0, 0, 0}};
@@ -205,21 +212,41 @@ bool readRawInfo(const Reader& r, const Ifd& ifd, RawInfo& info) {
     info.compression = static_cast<uint16_t>(v);
     if (!singleNumber(r, ifd, kTagPhotometric, v)) return false;
     info.photometric = static_cast<uint16_t>(v);
-    if (!singleNumber(r, ifd, kTagSamplesPerPixel, v)) return false;
-    info.samples = static_cast<uint16_t>(v);
+    info.samples = singleNumber(r, ifd, kTagSamplesPerPixel, v) ? static_cast<uint16_t>(v) : 1;
     if (singleNumber(r, ifd, kTagPlanarConfig, v)) info.planar = static_cast<uint16_t>(v);
     if (singleNumber(r, ifd, kTagOrientation, v) && v >= 1 && v <= 8) info.orientation = static_cast<uint16_t>(v);
     if (singleNumber(r, ifd, kTagRowsPerStrip, v) && v > 0 && v <= info.height) info.rowsPerStrip = static_cast<uint32_t>(v);
     const Entry* offsets = ifd.find(kTagStripOffsets);
     const Entry* counts = ifd.find(kTagStripByteCounts);
-    if (offsets == nullptr || counts == nullptr) return false;
     std::vector<double> offs, cnts;
-    if (!entryNumbers(r, *offsets, offs, 512) || !entryNumbers(r, *counts, cnts, 512)) return false;
-    if (offs.empty() || offs.size() != cnts.size()) return false;
-    for (size_t i = 0; i < offs.size(); ++i) {
-        if (offs[i] < 0 || cnts[i] < 0) return false;
-        info.stripOffsets.push_back(static_cast<uint64_t>(offs[i]));
-        info.stripCounts.push_back(static_cast<uint64_t>(cnts[i]));
+    if (offsets != nullptr && counts != nullptr) {
+        if (!entryNumbers(r, *offsets, offs, 512) || !entryNumbers(r, *counts, cnts, 512)) return false;
+        if (offs.empty() || offs.size() != cnts.size()) return false;
+        for (size_t i = 0; i < offs.size(); ++i) {
+            if (offs[i] < 0 || cnts[i] < 0) return false;
+            info.stripOffsets.push_back(static_cast<uint64_t>(offs[i]));
+            info.stripCounts.push_back(static_cast<uint64_t>(cnts[i]));
+        }
+    } else {
+        // DngCreator and other writers may use tiled RAW storage instead of strips.
+        const Entry* tileOffsets = ifd.find(kTagTileOffsets);
+        const Entry* tileCounts = ifd.find(kTagTileByteCounts);
+        if (tileOffsets == nullptr || tileCounts == nullptr) return false;
+        if (!singleNumber(r, ifd, kTagTileWidth, v) || v < 1 || v > 16384) return false;
+        info.tileWidth = static_cast<uint32_t>(v);
+        if (!singleNumber(r, ifd, kTagTileLength, v) || v < 1 || v > 16384) return false;
+        info.tileLength = static_cast<uint32_t>(v);
+        std::vector<double> toffs, tcnts;
+        if (!entryNumbers(r, *tileOffsets, toffs, 512) || !entryNumbers(r, *tileCounts, tcnts, 512)) return false;
+        const uint64_t tiles = ((static_cast<uint64_t>(info.width) + info.tileWidth - 1) / info.tileWidth) *
+                               ((static_cast<uint64_t>(info.height) + info.tileLength - 1) / info.tileLength);
+        if (toffs.size() != tiles || tcnts.size() != tiles) return false;
+        for (size_t i = 0; i < toffs.size(); ++i) {
+            if (toffs[i] < 0 || tcnts[i] < 0) return false;
+            info.tileOffsets.push_back(static_cast<uint64_t>(toffs[i]));
+            info.tileCounts.push_back(static_cast<uint64_t>(tcnts[i]));
+        }
+        info.tiled = true;
     }
     if (ifd.find(kTagLinearization) != nullptr) return false;
     if (numberList(r, ifd, kTagCfaRepeatDim, cnts, 2) && cnts.size() == 2 &&
@@ -411,11 +438,11 @@ DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension) 
     const size_t rowBytes = static_cast<size_t>(info.width) * 2;
     const uint64_t needed = static_cast<uint64_t>(rowBytes) * info.height;
     uint64_t declared = 0;
-    for (uint64_t c : info.stripCounts) declared += c;
+    for (uint64_t c : info.tiled ? info.tileCounts : info.stripCounts) declared += c;
     if (declared < needed) return fail("DNG RAW data অসম্পূর্ণ");
     std::vector<uint16_t> raw(static_cast<size_t>(info.width) * info.height);
     size_t row = 0;
-    for (size_t i = 0; i < info.stripOffsets.size() && row < info.height; ++i) {
+    if (!info.tiled) for (size_t i = 0; i < info.stripOffsets.size() && row < info.height; ++i) {
         const uint64_t offset = info.stripOffsets[i];
         const uint64_t count = info.stripCounts[i];
         if (!reader.has(static_cast<size_t>(offset), count)) return fail("DNG RAW data ফাইলের বাইরে");
@@ -438,7 +465,30 @@ DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension) 
         }
         row += rows;
     }
-    if (row < info.height) return fail("DNG RAW data অসম্পূর্ণ");
+    if (info.tiled) {
+        const uint32_t across = (info.width + info.tileWidth - 1) / info.tileWidth;
+        const uint32_t down = (info.height + info.tileLength - 1) / info.tileLength;
+        for (uint32_t ty = 0; ty < down; ++ty) {
+            for (uint32_t tx = 0; tx < across; ++tx) {
+                const size_t index = static_cast<size_t>(ty) * across + tx;
+                const uint64_t offset = info.tileOffsets[index];
+                const uint64_t count = info.tileCounts[index];
+                const uint32_t tw = std::min(info.tileWidth, info.width - tx * info.tileWidth);
+                const uint32_t th = std::min(info.tileLength, info.height - ty * info.tileLength);
+                const uint64_t bytes = static_cast<uint64_t>(tw) * th * 2;
+                if (!reader.has(static_cast<size_t>(offset), count) || count < bytes) return fail("DNG tile data অসম্পূর্ণ");
+                for (uint32_t y = 0; y < th; ++y) {
+                    const uint8_t* src = reader.data + offset + static_cast<uint64_t>(y) * tw * 2;
+                    uint16_t* dst = raw.data() + static_cast<size_t>(ty * info.tileLength + y) * info.width + tx * info.tileWidth;
+                    for (uint32_t x = 0; x < tw; ++x) {
+                        dst[x] = reader.little ? static_cast<uint16_t>(src[x * 2] | (src[x * 2 + 1] << 8))
+                                               : static_cast<uint16_t>((src[x * 2] << 8) | src[x * 2 + 1]);
+                    }
+                }
+            }
+        }
+    }
+    if (row < info.height && !info.tiled) return fail("DNG RAW data অসম্পূর্ণ");
 
     int64_t cropX = 0, cropY = 0, cropW = info.width, cropH = info.height;
     if (info.crop && info.cropW > 1 && info.cropH > 1) {
