@@ -51,6 +51,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="com.cinecam.library.ClipLibraryActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CineCam" />
+
         <!-- For future: Gallery / Playback activity -->
         <!-- <activity android:name=".ui.gallery.GalleryActivity" /> -->
 

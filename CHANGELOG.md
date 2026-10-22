@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Manage clips / capture details] — 2026-10-22
+- Storage-counter-only iteration-এর বদলে প্রথম usable capture manager: camera থেকে আলাদা Manage clips screen, user-selected flat folder-এর পুরোনো saved captures, timestamp/frame/drop/RAW/archive sizes, present/missing companion files।
+- Details-এ automatic/user-stop reason, saved report-এর RAW/DNG/archive ফল, actual file sizes, readable report/copy; mapped files external open/share। File delete/move/rename/new capture folder নেই; original capture/export/EXIF/native pipeline untouched।
+- SAF persisted read access; broad storage permission নয়। Camera/finalizing সময় entry disabled; lifecycle camera pause/back preserves existing behavior। Folder permission/cancel/revoke/empty/invalid report errors visible; background bounded scan/refresh।
+- Untrusted report prefix/schema/flat layout/all mappings validated; unsafe/cross-capture refs reject, duplicate/missing files never silently opened।5000entries/100reports/64KiB report limits, no RAW pixel decode/native buffer allocation।
+- In-app video playback/render/MP4 এখনো নেই; saved-report success independent payload verification নয়। Existing clips দিয়েই এই feature পরীক্ষা করা যাবে, নতুন diagnostic capture প্রয়োজন নেই। Details docs/MANAGE_CLIPS.md।
+- Catalog unit tests real v81 fixture/optional flags/user-stop/path safety/schema/UTF8 bounds/mapping/counters; local existing native suites pass। Android CI এবং physical SAF/navigation/share validation pending।
+
 ## [Unreleased — Native export + একই build-এ diagnostics] — 2026-10-22
 - Full8-frame v79 device evidence সফল; পরের measured cost প্রায়516MB export/23.69s। এখন একসঙ্গে native fast path, safe fallback, per-file diagnostics ও progress; শুধু ছোট counters-এর জন্য বারবার APK/test নয়।
 - Java copyTo-এর বদলে C++ sendfile→provider descriptor; unsupported হলে exact offset থেকে bounded256KiB fallback। Partial/EINTR handling, exact sizes, no full-frame Java buffer। Kernel path physical zero-copy বা guaranteed speedup নয়।

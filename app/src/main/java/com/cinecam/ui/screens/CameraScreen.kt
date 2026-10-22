@@ -198,6 +198,9 @@ fun CameraScreen() {
                     })
                 }
             }
+            TextButton(onClick = {
+                context.startActivity(Intent(context, com.cinecam.library.ClipLibraryActivity::class.java))
+            }, enabled = clipState == "idle" && !capturing) { Text("Manage clips • saved captures") }
             TextButton(onClick = { showClipReport = true }, enabled = clipReport.isNotEmpty()) { Text("শেষ RAW test report") }
             if (showControls && camera != null) {
                 ManualStillControls(camera, manual, !capturing) { manual = it }

@@ -1,4 +1,8 @@
-# কাজের ধারাবাহিকতা — 2026-10-19
+# কাজের ধারাবাহিকতা — 2026-10-22
+
+## বর্তমান অগ্রাধিকার
+
+Manage clips + capture details প্রথম usable implementation; এরপর DNG sequence review, তারপর বাস্তব recording/render workflow। Storage micro-optimization একা পরবর্তী milestone নয়। ইতিহাস নিচে আছে; সর্বশেষ delivery/status শেষে দেখুন।
 
 ## সেশন ও workflow
 
@@ -237,3 +241,7 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.81
 ## v81 native export device validation — 2026-10-22
 
 Evidence docs/device-tests/F23-v81: চার sidecar cross-check;automatic8/written8/drop0/readback+DNG8/archivebyteExacttrue/14flat names। Actualarchive199,757,664→114,400,776bytes(42.7302%ছোট)।12data files514,158,710bytes সবkernelcopy/zero buffered/oktrue;providerFD fast path confirmed। Export38.44373s,copy sum17.01217s,explicitfsync sum20.41330s। v79-এর23.69003s-এর তুলনায় এই run বেশি;speedup দাবি নয়,fsync নতুন ও conditions uncontrolled। Original payload binaries নেই,post-export byte-readback নয়। নতুন APK/একই test আবার চাওয়া হয়নি; পরের candidate duplicate I/O review, durability/source retention না কমিয়ে। Code/merge/close unchanged।
+
+## Manage clips + details implementation — 2026-10-22
+
+ব্যবহারকারী approved user-facing workflow milestone। Read-only SAF folder browser/activity, persisted read grant, bounded background report index, captures list/details/missing files/actual sizes/saved-report flags/reportcopy/external open-share। Same flat folder/no mutations; old captures accessible without recapture। Unsafe cross-prefix/path refs reject, duplicate document names not resolved arbitrarily;64KiB/100reports/5000entries limits। Camera/finalizing entry disabled; own activity allows camera lifecycle pause/back। docs/MANAGE_CLIPS.md describes limits and one-session device check। No fake playback/render/buttons; no new pixel processing. Existing native sanitizer/reference/restore/export suites local pass; new pure Kotlin catalog tests use real v81 fixture. Android unit/lint/build/release and SAF provider/navigation/device checks pending।
