@@ -303,3 +303,7 @@ CI `39798806890`/94 সম্পূর্ণ সফল (ARM/x86 sanitizer + DNG 
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.94-alpha-a450b5b/CineCam-debug.apk
 
 পরের device check: পুরোনো capture খুলে রঙ আগের চেয়ে কম লাল কি না এবং viewer-এ **চালান** চেপে burst playback/loop দেখা। রঙ এখনো বেশি লাল হলে কোন capture/frame ও আলো কেমন ছিল জানালে ম্যাট্রিক্স আরও টিউন করা যাবে।
+
+## v95 — MP4 render from saved burst — 2026-10-22
+
+User confirmed colours and burst playback now correct (3.0 fps shown from real timestamps). Next milestone implemented: silent H.264 MP4 render from the saved burst's native preview frames via MediaCodec/MediaMuxer, real sensor-timestamp PTS, NV12/I420 capability selection, MediaStore flat Download/CineCam naming (API29+) or app-specific legacy folder, pending/publication and failure cleanup, in-app progress and share. Sources untouched. JVM unit tests cover YUV conversion and scaling/timestamp rules; Android encoder/playback verification pending.

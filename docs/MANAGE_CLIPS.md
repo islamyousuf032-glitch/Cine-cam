@@ -4,6 +4,7 @@
 
 ক্যামেরার **Manage clips • saved captures** বোতাম খুলুন (capture/finalizing-এর সময় disabled)। **CineCam folder বাছুন** → Android folder picker-এ সরাসরি `Download/CineCam` নির্বাচন করে access দিন। Download root বা প্রতি capture-এর নতুন folder বানাতে হবে না। প্রথমবার folder বাছা লাগবে; persisted read access পরেরবার মনে থাকবে। App reinstall/access revoke হলে আবার বাছতে হবে। API26–28-এ আগের fixed app-external Movies/CineCam folder picker থেকে accessible হলে বাছুন; সব provider/app-specific folder Android-এ accessible হবে এমন নিশ্চয়তা নয়।
 
+- MP4: Clips কার্ড বা ছবি-details থেকে silent H.264 render; docs/VIDEO_RENDER.md।
 - Sections: **ছবি** (প্রতিটি DNG আলাদা; thumbnail/viewer/আগের-পরের), **Clips** (শুধু `.ccraw`, frame preview/share), **Lossless archive** (শুধু `.ccraw.bp16`, আকার/ratio/share), **Report** (report/metadata/sequence sidecar, যাচাইয়ের ফল)।
 - Capture list: thumbnail (প্রথম DNG-এর native preview), timestamp/unique ID, written/target frames, drop, RAW/archive size, companion files found/expected।
 - Details/viewer: বড় cover preview; প্রতিটি DNG **অ্যাপে দেখুন** (full-screen, আগের/পরের frame); RAW/archive এখনো photo হিসেবে খোলা হয় না। Preview render details docs/DNG_PREVIEW.md।

@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,8 +36,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.cinecam.render.Mp4Renderer
+import com.cinecam.render.RenderOutput
 import com.cinecam.ui.theme.CineCamTheme
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,6 +82,10 @@ class ClipLibraryActivity : ComponentActivity() {
         var loading by remember { mutableStateOf(false) }
         var error by remember { mutableStateOf<String?>(null) }
         var actionError by remember { mutableStateOf<String?>(null) }
+        var rendering by remember { mutableStateOf(false) }
+        var renderStatus by remember { mutableStateOf<String?>(null) }
+        var renderedVideo by remember { mutableStateOf<RenderOutput?>(null) }
+        val scope = rememberCoroutineScope()
         val lifecycleOwner = LocalLifecycleOwner.current
         DisposableEffect(lifecycleOwner) {
             var first = true
@@ -119,6 +129,29 @@ class ClipLibraryActivity : ComponentActivity() {
         BackHandler(enabled = detail != null || viewer != null) {
             if (viewer != null) viewer = null else detail = null
         }
+        fun renderVideo(clip: SavedClip, targets: List<Pair<String, PreviewTarget>>) {
+            if (rendering || targets.isEmpty()) return
+            rendering = true
+            renderedVideo = null
+            renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে…"
+            scope.launch {
+                try {
+                    val output = Mp4Renderer.render(context.applicationContext, clip.id,
+                        targets.map { it.second }, timestampsFor(clip, targets.size)) { done, total ->
+                        withContext(Dispatchers.Main) { renderStatus = "ভিডিও রেন্ডার $done/$total…" }
+                    }
+                    renderedVideo = output
+                    renderStatus = "ভিডিও তৈরি: ${output.width}×${output.height}, ${output.frames} frame, " +
+                        "${output.fps} fps, ${size(output.bytes)} • শব্দ নেই, preview-grade রঙ"
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    renderStatus = "ভিডিও রেন্ডার ব্যর্থ: ${e.message ?: "অজানা কারণ"}"
+                } finally {
+                    rendering = false
+                }
+            }
+        }
         val openExternal: (String, Boolean, FolderDocument) -> Unit = { mime, share, document ->
             try {
                 val intent = if (share) Intent(Intent.ACTION_SEND).apply {
@@ -128,6 +161,13 @@ class ClipLibraryActivity : ComponentActivity() {
                 intent.clipData = ClipData.newRawUri("CineCam file", document.uri)
                 startActivity(Intent.createChooser(intent, if (share) "File শেয়ার করুন" else "অন্য অ্যাপে খুলুন"))
             } catch (_: Exception) { actionError = "File খোলার app বা access পাওয়া যায়নি। Folder refresh করে দেখুন।" }
+        }
+        fun shareVideo(video: RenderOutput) {
+            val media = video.uri ?: run {
+                actionError = "এই Android সংস্করণে video app-specific folder-এ আছে: ${video.path}"
+                return
+            }
+            openExternal("video/mp4", true, FolderDocument(video.path.substringAfterLast('/'), media, video.bytes))
         }
 
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -157,6 +197,18 @@ class ClipLibraryActivity : ComponentActivity() {
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             actionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             items(folder?.notices ?: emptyList()) { Text(it, color = MaterialTheme.colorScheme.error) }
+            renderStatus?.let { status ->
+                item {
+                    Text(status, color = if (status.contains("ব্যর্থ")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
+                    renderedVideo?.let { video ->
+                        Row {
+                            if (video.uri != null) TextButton(onClick = { shareVideo(video) }) { Text("ভিডিও শেয়ার") }
+                            Text("${video.width}×${video.height} • ${video.frames} frame • ${video.fps} fps",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
             if (folder != null && clips.isEmpty()) {
                 item { Text("এই folder-এ সমর্থিত capture report পাওয়া যায়নি। সরাসরি flat CineCam folder বাছুন।") }
             }
@@ -202,6 +254,9 @@ class ClipLibraryActivity : ComponentActivity() {
                                     viewer = ViewerRequest(selectedPhotos.map { it.file.exported to it.target },
                                         entry.frameIndex, entry.clip.frameTimestamps)
                                 }) { Text("বড় করে দেখুন (${entry.frameIndex + 1}/${selectedPhotos.size})") }
+                                TextButton(enabled = !rendering, onClick = {
+                                    renderVideo(entry.clip, selectedPhotos.map { it.file.exported to it.target })
+                                }) { Text(if (rendering) "রেন্ডার…" else "MP4 তৈরি করুন (${selectedPhotos.size})") }
                             }
                         }
                         item { Text("মূল DNG/RAW/EXIF বদলানো হয় না; preview আনুমানিক রঙের।") }
@@ -230,6 +285,10 @@ class ClipLibraryActivity : ComponentActivity() {
                                         viewer = ViewerRequest(ccrawTargets(entry, document.uri, count), 0,
                                             entry.frameTimestamps)
                                     }) { Text("frame preview") }
+                                    TextButton(onClick = {
+                                        val count = (entry.written.takeIf { it > 0 } ?: 1L).coerceAtMost(64L).toInt()
+                                        renderVideo(entry, ccrawTargets(entry, document.uri, count))
+                                    }, enabled = !rendering) { Text(if (rendering) "রেন্ডার…" else "MP4") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
                                     TextButton(onClick = { detail = entry.id; tab = Tab.REPORT.name }) { Text("রিপোর্ট") }
                                 }
@@ -258,6 +317,10 @@ class ClipLibraryActivity : ComponentActivity() {
                                 }
                                 Text("রিপোর্টে archive যাচাই: ${result(entry.archive)}")
                                 Row {
+                                    TextButton(onClick = {
+                                        val count = (entry.written.takeIf { it > 0 } ?: 1L).coerceAtMost(64L).toInt()
+                                        renderVideo(entry, ccrawTargets(entry, document.uri, count))
+                                    }, enabled = !rendering) { Text(if (rendering) "রেন্ডার…" else "MP4") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
                                     TextButton(onClick = { detail = entry.id; tab = Tab.REPORT.name }) { Text("রিপোর্ট") }
                                 }
@@ -333,6 +396,18 @@ class ClipLibraryActivity : ComponentActivity() {
 
     private fun ccrawTargets(clip: SavedClip, uri: Uri, count: Int): List<Pair<String, PreviewTarget>> =
         (0 until count).map { index -> "Frame ${index + 1}/$count" to target(clip, index, null, uri) }
+
+    /** Real burst spacing; only extrapolates when a report lacks per-frame timestamps. */
+    private fun timestampsFor(clip: SavedClip, count: Int): List<Long> {
+        val known = clip.frameTimestamps
+        if (known.size >= count) return known.take(count)
+        val out = known.toMutableList()
+        val step = if (known.size >= 2) ((known.last() - known.first()) / (known.size - 1)).coerceAtLeast(33_333_333L)
+        else 333_333_333L
+        var last = out.lastOrNull() ?: 1_000_000_000L
+        while (out.size < count) { last += step; out.add(last) }
+        return out
+    }
 
     private fun copyReport(clip: SavedClip) {
         (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)

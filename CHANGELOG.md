@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — RAW burst থেকে MP4 রেন্ডার] — 2026-10-22
+- Manage clips-এর Clips ও ছবি section থেকে **MP4 তৈরি**: MediaCodec H.264 + MediaMuxer, native preview frame থেকে; শব্দ নেই।
+- আসল sensor timestamp→PTS (প্রথম frame=0, ন্যূনতম 33.333ms ব্যবধান, duplicate PTS নয়); report-এ timestamp না থাকলে তবেই অনুমান। burst গড় fps দেখানো হয়।
+- API29+ flat naming `Download/CineCam/CineCam_<capture>_render_<epoch>.mp4` MediaStore IS_PENDING→publish; API26–28 app-specific Movies/CineCam। capture/DNG/archive/EXIF অপরিবর্তিত; ব্যর্থ হলে অর্ধেক ফাইল/row cleanup।
+- Encoder capability থেকে NV12/I420 conversion; unsupported হলে পরিষ্কার error। ফাইল মাপ preview resolution, bitrate limit 2–12Mbps।
+- Pure-Kotlin YUV ও timestamp/scaling unit tests; details docs/VIDEO_RENDER.md। Android encoder/playback physical verification pending।
+
 ## [Unreleased — সঠিক রঙ (D50) ও burst sequence playback] — 2026-10-22
 - "ছবি লাল বেশি" সমস্যার মূল কারণ: DNG-র ColorMatrix1/ForwardMatrix1 হলো **XYZ D50**, কিন্তু preview সেগুলোকে D65 sRGB ম্যাট্রিক্স দিয়ে গুণ করছিল—তাই মাঝারি রঙ লাল/ম্যাগেন্টা হয়ে যেত। এখন Bradford-adapted D50→sRGB ম্যাট্রিক্স, এবং থাকলে **ForwardMatrix1** (white-balanced camera→XYZ D50) সরাসরি ব্যবহার হয়; না থাকলে ColorMatrix1 invert করা হয়। CCRAW fallback-ও একই পথ ও D50 ম্যাট্রিক্স ব্যবহার করে।
 - CCRAW ক্যালিব্রেশনে metadata-র `forwardMatrix1` অগ্রাধিকার পায়, তারপর Camera2 `colorTransform1` (XYZ→camera, invert করে)। vivo/স্যামসাং-ভেদে DNG tag ভিন্ন হলেও fallback স্বাভাবিক রঙ দেয়।
