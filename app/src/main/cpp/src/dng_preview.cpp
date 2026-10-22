@@ -530,8 +530,11 @@ DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension) 
     for (int i = 0; i < 3; ++i) white[i] = info.whiteCount == 3 ? info.white[i] : info.white[0];
     std::array<double, 3> gain{{1, 1, 1}};
     if (info.neutral) {
-        const double green = 1.0 / info.asShotNeutral[1];
-        gain = {{green / (1.0 / info.asShotNeutral[0]), 1.0, green / (1.0 / info.asShotNeutral[2])}};
+        // AsShotNeutral is the camera-space value of a neutral object; divide each
+        // channel by it (green normalised to 1). The previous reciprocal made
+        // neutral scenes green (WB gains inverted).
+        gain = {{info.asShotNeutral[1] / info.asShotNeutral[0], 1.0,
+                 info.asShotNeutral[1] / info.asShotNeutral[2]}};
     }
     std::array<double, 9> transform{{1, 0, 0, 0, 1, 0, 0, 0, 1}};
     if (info.colorMatrix) {

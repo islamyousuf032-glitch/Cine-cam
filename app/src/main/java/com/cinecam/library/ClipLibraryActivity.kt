@@ -115,7 +115,7 @@ class ClipLibraryActivity : ComponentActivity() {
         BackHandler(enabled = detail != null || viewer != null) {
             if (viewer != null) viewer = null else detail = null
         }
-        val openExternal: (String, Boolean, FolderDocument) -> Unit = open@{ mime, share, document ->
+        val openExternal: (String, Boolean, FolderDocument) -> Unit = { mime, share, document ->
             try {
                 val intent = if (share) Intent(Intent.ACTION_SEND).apply {
                     type = mime; putExtra(Intent.EXTRA_STREAM, document.uri)

@@ -65,6 +65,14 @@ jobs:
           ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug assembleRelease \
             "-PversionName=$VERSION" "-PversionCode=$GITHUB_RUN_NUMBER" \
             --stacktrace 2>&1 | tee build.log
+      - name: Surface build errors in annotations
+        if: failure()
+        run: |
+          set +e
+          test -f build.log || exit 0
+          grep -nE "^e: |error:|FAILED|Execution failed|Caused by" build.log | head -25 | while IFS= read -r line; do
+            echo "::error title=Gradle::${line//$'\n'/ }"
+          done
       - name: Upload diagnostics
         if: always()
         uses: actions/upload-artifact@v4

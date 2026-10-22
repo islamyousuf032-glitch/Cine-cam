@@ -43,7 +43,8 @@ struct Writer {
 std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_t red, uint16_t green,
                            uint16_t blue, uint16_t black, uint16_t white, const uint8_t pattern[4],
                            uint16_t compression = 1, uint16_t photometric = 32803,
-                           uint32_t widthOverride = 0, bool truncate = false) {
+                           uint32_t widthOverride = 0, bool truncate = false,
+                           uint32_t neutralR = 1, uint32_t neutralG = 1, uint32_t neutralB = 1) {
     constexpr size_t kEntries = 15;
     const size_t cfaOff = 8 + 2 + 12 * kEntries + 4 + 24 + 8;
     Writer w;
@@ -76,9 +77,10 @@ std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_
     w.entryTag(p, 50717, 3, 1, white); p += 12;
     w.entryTag(p, 50728, 5, 3, static_cast<uint32_t>(neutralOff)); p += 12;
     w.u32(p, 0);
+    const uint32_t neutrals[3] = {neutralR, neutralG, neutralB};
     for (int i = 0; i < 3; ++i) {
-        w.u32(neutralOff + i * 8, 1);
-        w.u32(neutralOff + i * 8 + 4, 1);
+        w.u32(neutralOff + i * 8, neutrals[i]);
+        w.u32(neutralOff + i * 8 + 4, neutralG);
     }
     for (int i = 0; i < 4; ++i) w.u16(blackOff + i * 2, black);
     for (uint32_t y = 0; y < height; ++y) {
@@ -169,6 +171,16 @@ int main() {
         for (size_t i = 0; i < preview.argb.size(); ++i) expectPixel(preview, i, linR, linG, linB);
     }
 
+    {
+        // White balance: raw levels proportional to AsShotNeutral must render neutral.
+        const auto file = build(true, 16, 16, 500, 1000, 250, 0, 65535, rggb, 1, 32803, 0, false, 2, 4, 1);
+        const auto preview = renderDngPreview(file.data(), file.size(), 16);
+        assert(preview.ok);
+        for (uint32_t pixel : preview.argb) {
+            const int r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+            assert(std::abs(r - g) <= 1 && std::abs(b - g) <= 1);
+        }
+    }
     {
         // Both CFA green sites and the 2x2 cell average must stay channel-correct.
         const uint8_t grbg[4] = {1, 0, 2, 1};
