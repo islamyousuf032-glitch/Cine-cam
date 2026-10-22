@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — অ্যাপের ভিতরে DNG preview] — 2026-10-22
+- Manage clips-এ cover thumbnail, details-এ বড় preview, প্রতিটি DNG-এর **অ্যাপে দেখুন** এবং full-screen আগের/পরের frame viewer; পুরোনো saved capture দিয়েই কাজ করে।
+- নতুন native `dng_preview.cpp`: bounded TIFF/DNG parse, mmap/pread source, uncompressed 16-bit CFA only, strip/crop/size validation, 2×2 CFA block average, black/white, AsShotNeutral, optional ColorMatrix1, sRGB LUT। Full-frame Java buffer নেই; descriptor caller-owned/read-only।
+- 24MiB preview cache; thumbnail220, details900, viewer1600 max dimension; EXIF orientation rotate। Missing/unsupported/truncated DNG-এ পরিষ্কার Bangla error, crash/vendor assumption নয়।
+- RAW/archive/DNG/EXIF/export/flat folder unchanged; RAW-archive এখনো viewer photo নয়। Real video playback/MP4 এখনো নেই।
+- Host ASan/UBSan synthetic LE/BE DNG, CFA mapping, expected pixel values, FD/mmap path, corrupt/unsupported rejection tests; existing native/archive/export/reader suites pass locally। Device DNG parse/quality এবং Android CI pending; details docs/DNG_PREVIEW.md।
+
 ## [Unreleased — Manage clips / capture details] — 2026-10-22
 - Storage-counter-only iteration-এর বদলে প্রথম usable capture manager: camera থেকে আলাদা Manage clips screen, user-selected flat folder-এর পুরোনো saved captures, timestamp/frame/drop/RAW/archive sizes, present/missing companion files।
 - Details-এ automatic/user-stop reason, saved report-এর RAW/DNG/archive ফল, actual file sizes, readable report/copy; mapped files external open/share। File delete/move/rename/new capture folder নেই; original capture/export/EXIF/native pipeline untouched।

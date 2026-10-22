@@ -7,6 +7,10 @@ mkdir -p build/native-tests
   -Iapp/src/main/cpp/include tests/native/core_test.cpp \
   app/src/main/cpp/src/memory_pool.cpp -o build/native-tests/core_test
 build/native-tests/core_test
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+  -fno-omit-frame-pointer -Iapp/src/main/cpp/include tests/native/dng_preview_test.cpp \
+  app/src/main/cpp/src/dng_preview.cpp -o build/native-tests/dng_preview_test
+build/native-tests/dng_preview_test
 printf 'Native core tests passed.\n'
 crc_flags=()
 crc_objects=()

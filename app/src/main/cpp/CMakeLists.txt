@@ -36,6 +36,7 @@ add_library(cinecam_raw SHARED
         src/raw16_codec.cpp
         src/bp16_archive.cpp
         src/export_copy.cpp
+        src/dng_preview.cpp
         src/raw_writer.cpp
         src/cinemadng_writer.cpp
         src/memory_pool.cpp

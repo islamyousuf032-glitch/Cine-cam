@@ -2,7 +2,7 @@
 
 ## বর্তমান অগ্রাধিকার
 
-Manage clips + capture details প্রথম usable implementation; এরপর DNG sequence review, তারপর বাস্তব recording/render workflow। Storage micro-optimization একা পরবর্তী milestone নয়। ইতিহাস নিচে আছে; সর্বশেষ delivery/status শেষে দেখুন।
+Manage clips + capture details সম্পূর্ণ; এখন একই screen-এ native DNG thumbnail/preview/viewer। এরপর DNG sequence review-এর playback/scrub, তারপর বাস্তব recording/render workflow। Storage micro-optimization একা পরবর্তী milestone নয়। ইতিহাস নিচে আছে; সর্বশেষ delivery/status শেষে দেখুন।
 
 ## সেশন ও workflow
 
@@ -252,3 +252,7 @@ CI `39750130983`/82 full success: ARM64/x86 sanitizers/native/export-copy/archiv
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.82-alpha-b30bcad/CineCam-debug.apk
 
 পরের device check (নতুন capture লাগবে না): Download/CineCam folder একবার বাছুন → পুরোনো v81 capture তালিকায় দেখা → details→DNG external-open→report copy/share→back→reopen→refresh। SAF persisted grant/duplicate/missing/revoke behavior pending। In-app playback/render/MP4 এখনো নেই; next milestone DNG-sequence review foundation।
+
+## In-app DNG preview — 2026-10-22
+
+User feedback: saved DNG ফাইল list-এ ছিল কিন্তু অ্যাপে ছবি দেখা যাচ্ছিল না; external DNG viewer-ও অনেক ডিভাইসে নেই। Added bounded native TIFF/DNG preview renderer + cover thumbnail/details cover/DNG viewer (prev-next, 1/8 counter), auto-refresh library on resume. Old captures directly testable, no recapture। Uncompressed 16-bit CFA only; unsupported gets clear message। No RAW write/export change। Local ASan/UBSan synthetic LE+BE exact-pixel/CFA/FD/corrupt tests pass, archive/export/reader suites pass; Android build/device parse-quality pending। details docs/DNG_PREVIEW.md।

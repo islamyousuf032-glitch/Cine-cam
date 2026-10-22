@@ -7,6 +7,8 @@
 #include "raw16_codec.h"
 #include "bp16_archive.h"
 #include "export_copy.h"
+#include "dng_preview.h"
+#include <vector>
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -317,6 +319,22 @@ Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, job
         (unsigned long long)r.maxWriteNs, (unsigned long long)r.readCalls, (unsigned long long)r.writeCalls,
         (unsigned long long)r.blocks, r.ok ? "true" : "false", r.error);
     return env->NewStringUTF(json);
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeRenderDng(JNIEnv* env, jobject, jint fd, jint maxDimension) {
+    const auto preview = renderDngPreview(static_cast<int>(fd), static_cast<int>(maxDimension));
+    std::vector<jint> out;
+    out.reserve(4 + preview.argb.size());
+    out.push_back(static_cast<jint>(preview.width));
+    out.push_back(static_cast<jint>(preview.height));
+    out.push_back(static_cast<jint>(preview.orientation));
+    out.push_back(preview.ok ? 0 : 1);
+    for (uint32_t pixel : preview.argb) out.push_back(static_cast<jint>(pixel));
+    jintArray result = env->NewIntArray(static_cast<jsize>(out.size()));
+    if (result == nullptr) return nullptr;
+    env->SetIntArrayRegion(result, 0, static_cast<jsize>(out.size()), reinterpret_cast<const jint*>(out.data()));
+    return result;
 }
 
 extern "C" JNIEXPORT jstring JNICALL

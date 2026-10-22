@@ -4,7 +4,8 @@
 
 ক্যামেরার **Manage clips • saved captures** বোতাম খুলুন (capture/finalizing-এর সময় disabled)। **CineCam folder বাছুন** → Android folder picker-এ সরাসরি `Download/CineCam` নির্বাচন করে access দিন। Download root বা প্রতি capture-এর নতুন folder বানাতে হবে না। প্রথমবার folder বাছা লাগবে; persisted read access পরেরবার মনে থাকবে। App reinstall/access revoke হলে আবার বাছতে হবে। API26–28-এ আগের fixed app-external Movies/CineCam folder picker থেকে accessible হলে বাছুন; সব provider/app-specific folder Android-এ accessible হবে এমন নিশ্চয়তা নয়।
 
-- Capture list: timestamp/unique ID, written/target frames, drop, RAW/archive size, companion files found/expected।
+- Capture list: thumbnail (প্রথম DNG-এর native preview), timestamp/unique ID, written/target frames, drop, RAW/archive size, companion files found/expected।
+- Details/viewer: বড় cover preview; প্রতিটি DNG **অ্যাপে দেখুন** (full-screen, আগের/পরের frame); RAW/archive এখনো photo হিসেবে খোলা হয় না। Preview render details docs/DNG_PREVIEW.md।
 - Details: reason (user stop বনাম automatic), saved report-এর readback/DNG/archive ফল, actual available file sizes, missing/ambiguous file markers, পূর্ণ readable report/copy।
 - প্রতিটি mapped available file **অন্য অ্যাপে খুলুন** বা **শেয়ার** করা যায়; compatible external viewer প্রয়োজন। URI read grant দিয়ে original file পাঠানো হয়, পুনরায় export/copy নয়। RAW/archive সাধারণ video নয়।
 - Refresh folder পুনরায় পড়ে; folder বদলানো যায়। Back details→list→camera। SAF cancel করলে আগের selection অক্ষত। Camera permission না থাকলেও browser বোতাম পাওয়া যাবে।
