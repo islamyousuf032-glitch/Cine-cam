@@ -70,8 +70,8 @@ jobs:
         run: |
           set +e
           test -f build.log || exit 0
-          grep -nE "^e: |error:|FAILED|Execution failed|Caused by" build.log | head -25 | while IFS= read -r line; do
-            echo "::error title=Gradle::${line//$'\n'/ }"
+          tail -20 build.log | while IFS= read -r line; do
+            echo "::error title=Gradle::${line}"
           done
       - name: Upload diagnostics
         if: always()
