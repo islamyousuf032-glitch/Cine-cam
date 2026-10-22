@@ -267,3 +267,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.83
 ## v84 — three sections + reliable preview — 2026-10-22
 
 Device feedback v83: সব thumbnail "Preview নেই"—real DngCreator layout strict reader-এ মেলেনি, কারণও দেখা যাচ্ছিল না। Added verified-CCRAW-frame fallback (same payload, own format), native error surfacing, orientation hint from optional metadata, and three explicit sections: ছবি (grid+viewer), Lossless archive (size/ratio/saved verification/share), ফাইল ও রিপোর্ট। Read-only behavior unchanged। New CCRAW preview sanitizer tests (index bound, header/frame CRC, truncation, invalid fd); existing DNG/export/archive suites pass locally। Android CI/device pending।
+
+### v84 delivery confirmed — three sections + CCRAW fallback
+CI `39778598396`/84 full success: ARM/x86 sanitizer (DNG+CCRAW preview, export, archive, reference/restore), Android unit/lint/debug/unsigned-release/publication। Source `1d7a4a28399cb7a2f64180a591972725b9a9026e`। Verified `v0.1.84-alpha-1d7a4a2` APK15,002,883bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.84-alpha-1d7a4a2/CineCam-debug.apk
+
+Device check (পুরোনো capture দিয়েই): ছবি section→capture→grid thumbnail; DNG reader ব্যর্থ হলেও verified `.ccraw` frame fallback কাজ করবে; failure হলে এখন কারণ লেখা থাকবে (frame-এর নামসহ জানালে DNG tag অনুযায়ী ঠিক করা যাবে)। Lossless archive section-এ size/ratio/share; ফাইল section-এ সব companion। New capture দরকার নেই।
