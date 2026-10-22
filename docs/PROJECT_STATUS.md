@@ -282,7 +282,7 @@ Device feedback: requested exactly four sections (ছবি / clips / lossless a
 ### v93 delivery — চারটি বিভাগ, রঙ ও ফ্রিজ সমাধান
 Source `2aca9a5a9018c18bc92da74765538c2dc9f26d78`। CI `39793532969`-এর ARM/x86 sanitizer, Android unit/lint/debug/release এবং publish ধাপ সফল; verified `v0.1.93-alpha-2aca9a5` APK15,035,647bytes + SHA256SUMS.txt।
 
-APK: https://github.com/islamyousuf32-glitch/Cine-cam/releases/download/v0.1.93-alpha-2aca9a5/CineCam-debug.apk
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.93-alpha-2aca9a5/CineCam-debug.apk
 
 **ব্যবহারকারীর রিপোর্ট ও কারণ**
 - চারটি আলাদা section দরকার ছিল; আগের build-এ তিনটি ছিল এবং archive-এ `.ccraw`ও মিশে ছিল। এখন: ছবি (প্রতিটি DNG), Clips (শুধু `.ccraw`), Lossless archive (শুধু `.ccraw.bp16`), Report (report/metadata/sequence)।
