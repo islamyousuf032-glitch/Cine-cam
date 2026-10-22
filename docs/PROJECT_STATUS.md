@@ -245,3 +245,10 @@ Evidence docs/device-tests/F23-v81: চার sidecar cross-check;automatic8/wri
 ## Manage clips + details implementation — 2026-10-22
 
 ব্যবহারকারী approved user-facing workflow milestone। Read-only SAF folder browser/activity, persisted read grant, bounded background report index, captures list/details/missing files/actual sizes/saved-report flags/reportcopy/external open-share। Same flat folder/no mutations; old captures accessible without recapture। Unsafe cross-prefix/path refs reject, duplicate document names not resolved arbitrarily;64KiB/100reports/5000entries limits। Camera/finalizing entry disabled; own activity allows camera lifecycle pause/back। docs/MANAGE_CLIPS.md describes limits and one-session device check। No fake playback/render/buttons; no new pixel processing. Existing native sanitizer/reference/restore/export suites local pass; new pure Kotlin catalog tests use real v81 fixture. Android unit/lint/build/release and SAF provider/navigation/device checks pending।
+
+### v82 delivery confirmed — Manage clips
+CI `39750130983`/82 full success: ARM64/x86 sanitizers/native/export-copy/archive reference/restore suites, Android catalog unit tests, lint, debug+unsigned release, publication। Source `b30bcada9b4bf280b76c17e0b9cc33b01e8935cd`। Verified `v0.1.82-alpha-b30bcad` APK14,855,423bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.82-alpha-b30bcad/CineCam-debug.apk
+
+পরের device check (নতুন capture লাগবে না): Download/CineCam folder একবার বাছুন → পুরোনো v81 capture তালিকায় দেখা → details→DNG external-open→report copy/share→back→reopen→refresh। SAF persisted grant/duplicate/missing/revoke behavior pending। In-app playback/render/MP4 এখনো নেই; next milestone DNG-sequence review foundation।
