@@ -2,7 +2,7 @@
 
 ## বর্তমান অগ্রাধিকার
 
-Manage clips + capture details সম্পূর্ণ; এখন একই screen-এ native DNG thumbnail/preview/viewer। এরপর DNG sequence review-এর playback/scrub, তারপর বাস্তব recording/render workflow। Storage micro-optimization একা পরবর্তী milestone নয়। ইতিহাস নিচে আছে; সর্বশেষ delivery/status শেষে দেখুন।
+Manage clips তিন section-এ (ছবি / lossless archive / ফাইল ও রিপোর্ট); DNG preview-এর পাশাপাশি verified CCRAW frame fallback। এরপর DNG sequence review-এর playback/scrub, তারপর বাস্তব recording/render workflow। Storage micro-optimization একা পরবর্তী milestone নয়। ইতিহাস নিচে আছে; সর্বশেষ delivery/status শেষে দেখুন।
 
 ## সেশন ও workflow
 
@@ -263,3 +263,7 @@ CI `39773936706`/83 full success: ARM64/x86 sanitizer/native/export/archive/refe
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.83-alpha-70c3ed9/CineCam-debug.apk
 
 পুরোনো capture দিয়েই device check: Manage clips→cover thumbnail দেখা→details→কোনো DNG-এ **অ্যাপে দেখুন**→আগের/পরের frame→back। কোনো DNG-তে thumbnail/preview না এলে সেটি real DNG-এর tag/layout ভেদ—report-এ কোন frame-এ সমস্যা লিখে জানাতে হবে; APK/source অক্ষত। New capture বা পুরোনো diagnostic পুনরাবৃত্তি দরকার নেই।
+
+## v84 — three sections + reliable preview — 2026-10-22
+
+Device feedback v83: সব thumbnail "Preview নেই"—real DngCreator layout strict reader-এ মেলেনি, কারণও দেখা যাচ্ছিল না। Added verified-CCRAW-frame fallback (same payload, own format), native error surfacing, orientation hint from optional metadata, and three explicit sections: ছবি (grid+viewer), Lossless archive (size/ratio/saved verification/share), ফাইল ও রিপোর্ট। Read-only behavior unchanged। New CCRAW preview sanitizer tests (index bound, header/frame CRC, truncation, invalid fd); existing DNG/export/archive suites pass locally। Android CI/device pending।

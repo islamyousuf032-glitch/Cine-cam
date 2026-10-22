@@ -33,3 +33,15 @@ Manage clips ফাইল দেখাতে পারলেও RAW ছবি �
 ## Automated / pending
 
 Host ASan/UBSan tests synthetic LE/BE uncompressed DNG, RGGB/GRBG channel mapping, exact expected sRGB values, orientation, mmap FD path, JPEG/RGB/bad-pattern/truncated/oversize reject। Existing native archive/export suites অপরিবর্তিত। Android CI unit/lint/build যাচাই করবে; actual device DNG structure/timing এবং thumbnail quality এখনো যাচাই বাকি—একই পুরোনো capture দিয়েই দেখা যাবে।
+
+## v84 update — বাস্তব DNG-তে preview না আসার সমাধান
+
+প্রথম v83 device test-এ সব thumbnail "Preview নেই" দেখিয়েছিল: বাস্তব `DngCreator` output-এর কোনো tag/layout আমাদের strict DNG reader-এ মেলেনি, কিন্তু UI সেই কারণটি দেখাত না। এখন:
+
+- **দ্বিতীয় পথ:** একই capture-এর verified `capture.ccraw` container থেকে একই frame index-এর RAW payload পড়ে preview আঁকা হয়। CCRAW আমাদের নিজস্ব versioned format—64-byte header, `FRM1` frame header, payload bytes ও CRC header—তাই DNG-এর vendor tag-এর উপর নির্ভরতা নেই। DNG bytes ও CCRAW payload একই sensor data।
+- DNG path আগে চেষ্টা হয় (সঠিক CFA/matrix/orientation); ব্যর্থ হলে CCRAW fallback; orientation hint `metadata.json`-এর `sensorOrientation` (বাধ্যতামূলক নয়, malformed হলে 무시)।
+- CCRAW fallback-এ auto black/white point (per-channel percentile) ও grey-world white balance; frame header CRC যাচাই, payload CRC preview-এর জন্য ইচ্ছাকৃতভাবে গণনা করা হয় না (read-only, খরচ কমানোর জন্য)। Frame index bound ও 64-frame limit; truncated/bad header reject।
+- UI-তে failure reason (native error) ছোট করে দেখানো হয়, যাতে পরেরবার কারণ বোঝা যায়। Thumbnail/details/viewer তিন জায়গাতেই একই fallback।
+- কোনো ফাইল write/migrate/delete নেই; RAW/DNG/EXIF/archive অপরিবর্তিত।
+
+নতুন native test: synthetic CCRAW header/frame/footer, two-frame index bound, header/frame CRC corruption, truncation, invalid fd; DNG synthetic tests আগের মতোই। Android build/device যাচাই বাকি।

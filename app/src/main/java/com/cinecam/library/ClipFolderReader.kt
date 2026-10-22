@@ -18,6 +18,25 @@ internal object ClipFolderReader {
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         val columns = arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME,
             DocumentsContract.Document.COLUMN_MIME_TYPE, DocumentsContract.Document.COLUMN_SIZE)
+        fun optionalOrientation(document: FolderDocument?): Int? {
+            if (document == null) return null
+            if (document.bytes != null && document.bytes > ClipCatalog.MAX_REPORT_BYTES) return null
+            return try {
+                val text = resolver.openInputStream(document.uri)?.use { input ->
+                    val bytes = ByteArrayOutputStream()
+                    val buffer = ByteArray(4096)
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        if (bytes.size() + n > ClipCatalog.MAX_REPORT_BYTES) return null
+                        bytes.write(buffer, 0, n)
+                    }
+                    bytes.toString("UTF-8")
+                } ?: return null
+                org.json.JSONObject(text).optInt("sensorOrientation", 0)
+                    .takeIf { it in 90..270 && it % 90 == 0 }
+            } catch (_: Exception) { null }
+        }
         val docs = mutableMapOf<String, FolderDocument>()
         val duplicates = mutableSetOf<String>()
         val notices = mutableListOf<String>()
@@ -57,7 +76,8 @@ internal object ClipFolderReader {
                     }
                     bytes.toString("UTF-8")
                 } ?: throw IOException("Report খোলা যায়নি")
-                clips.add(ClipCatalog.parse(name, text))
+                val clip = ClipCatalog.parse(name, text)
+                clips.add(clip.copy(sensorOrientation = optionalOrientation(docs[clip.id + "_metadata.json"])))
             } catch (e: org.json.JSONException) {
                 notices.add("$name: report JSON সঠিক নয়")
             } catch (e: IllegalArgumentException) {
@@ -72,4 +92,6 @@ internal object ClipFolderReader {
         }
         ClipFolder(clips.sortedByDescending { it.epochMs }, docs, notices)
     }
+
+
 }

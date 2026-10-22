@@ -8,6 +8,7 @@
 #include "bp16_archive.h"
 #include "export_copy.h"
 #include "dng_preview.h"
+#include "ccraw_preview.h"
 #include <vector>
 
 #define LOG_TAG "CineJNI"
@@ -335,6 +336,30 @@ Java_com_cinecam_engine_NativeRawEngine_nativeRenderDng(JNIEnv* env, jobject, ji
     if (result == nullptr) return nullptr;
     env->SetIntArrayRegion(result, 0, static_cast<jsize>(out.size()), reinterpret_cast<const jint*>(out.data()));
     return result;
+}
+
+extern "C" JNIEXPORT jintArray JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeRenderCcrawFrame(JNIEnv* env, jobject, jint fd,
+        jint frameIndex, jint maxDimension, jint orientation) {
+    const auto result = renderCcrawFrame(static_cast<int>(fd), static_cast<int>(frameIndex),
+        static_cast<int>(maxDimension), static_cast<int>(orientation));
+    const auto& preview = result.image;
+    std::vector<jint> out;
+    out.reserve(4 + preview.argb.size());
+    out.push_back(static_cast<jint>(preview.width));
+    out.push_back(static_cast<jint>(preview.height));
+    out.push_back(static_cast<jint>(preview.orientation));
+    out.push_back(preview.ok ? 0 : 1);
+    for (uint32_t pixel : preview.argb) out.push_back(static_cast<jint>(pixel));
+    jintArray pixels = env->NewIntArray(static_cast<jsize>(out.size()));
+    if (pixels == nullptr) return nullptr;
+    env->SetIntArrayRegion(pixels, 0, static_cast<jsize>(out.size()), reinterpret_cast<const jint*>(out.data()));
+    return pixels;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativePreviewError(JNIEnv* env, jobject) {
+    return env->NewStringUTF(lastPreviewError());
 }
 
 extern "C" JNIEXPORT jstring JNICALL

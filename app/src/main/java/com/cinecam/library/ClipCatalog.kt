@@ -10,7 +10,7 @@ internal data class SavedClip(
     val id: String, val epochMs: Long, val written: Long, val requested: Int,
     val reason: String, val rawBytes: Long, val archiveBytes: Long?, val drops: Long,
     val readback: Boolean?, val dng: Boolean?, val archive: Boolean?,
-    val files: List<ClipFile>, val readable: String
+    val files: List<ClipFile>, val readable: String, val sensorOrientation: Int? = null
 )
 internal object ClipCatalog {
     const val MAX_REPORT_BYTES = 65536

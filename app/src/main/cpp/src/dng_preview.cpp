@@ -10,8 +10,12 @@
 #include <cstdio>
 #include <cstring>
 #include <limits>
+#include <string>
 
 namespace cinecam {
+thread_local std::string g_previewError;
+void setPreviewError(std::string message) { g_previewError = std::move(message); }
+const char* lastPreviewError() { return g_previewError.c_str(); }
 namespace {
 
 constexpr size_t kMaxFileBytes = 96u << 20;
@@ -341,6 +345,7 @@ bool readAllFd(int fd, std::vector<uint8_t>& out, std::string& error) {
 DngPreview fail(std::string message) {
     DngPreview preview;
     preview.error = std::move(message);
+    g_previewError = preview.error;
     return preview;
 }
 
@@ -527,6 +532,7 @@ DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension) 
         }
     }
     DngPreview preview;
+    g_previewError.clear();
     preview.ok = true;
     preview.width = outW;
     preview.height = outH;

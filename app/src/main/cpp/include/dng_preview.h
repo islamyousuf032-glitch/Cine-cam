@@ -22,4 +22,8 @@ struct DngPreview {
 DngPreview renderDngPreview(int fd, int maxDimension);
 DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension);
 
+/** Last human-readable explanation shared by both preview paths (thread local). */
+const char* lastPreviewError();
+void setPreviewError(std::string message);
+
 }  // namespace cinecam

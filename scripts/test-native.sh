@@ -11,6 +11,10 @@ build/native-tests/core_test
   -fno-omit-frame-pointer -Iapp/src/main/cpp/include tests/native/dng_preview_test.cpp \
   app/src/main/cpp/src/dng_preview.cpp -o build/native-tests/dng_preview_test
 build/native-tests/dng_preview_test
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -g -fsanitize=address,undefined \
+  -fno-omit-frame-pointer -Iapp/src/main/cpp/include tests/native/ccraw_preview_test.cpp \
+  app/src/main/cpp/src/{ccraw_preview,ccraw_writer,crc32_dispatch,dng_preview}.cpp -o build/native-tests/ccraw_preview_test
+build/native-tests/ccraw_preview_test
 printf 'Native core tests passed.\n'
 crc_flags=()
 crc_objects=()

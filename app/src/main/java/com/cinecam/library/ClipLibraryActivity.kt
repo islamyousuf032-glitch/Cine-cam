@@ -41,12 +41,18 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
-/** Read-only capture browser with native DNG previews. No migration, deletion, MP4 or audio. */
+private enum class Section(val label: String) {
+    PHOTOS("ছবি"), ARCHIVE("Lossless archive"), FILES("ফাইল ও রিপোর্ট")
+}
+
+/** Read-only capture browser. Photos and lossless archives have separate sections. */
 class ClipLibraryActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { CineCamTheme { Surface(Modifier.fillMaxSize()) { Library() } } }
     }
+
+    private data class Frame(val exported: String, val index: Int, val target: PreviewTarget)
 
     @Composable
     private fun Library() {
@@ -54,6 +60,7 @@ class ClipLibraryActivity : ComponentActivity() {
         val prefs = remember { getSharedPreferences("clip_library", Context.MODE_PRIVATE) }
         var tree by remember { mutableStateOf(prefs.getString("tree", null)) }
         var refresh by remember { mutableIntStateOf(0) }
+        var section by rememberSaveable { mutableStateOf(Section.PHOTOS.name) }
         var selected by rememberSaveable { mutableStateOf<String?>(null) }
         var viewerIndex by remember { mutableStateOf<Int?>(null) }
         var folder by remember { mutableStateOf<ClipFolder?>(null) }
@@ -82,7 +89,7 @@ class ClipLibraryActivity : ComponentActivity() {
                         try { contentResolver.releasePersistableUriPermission(Uri.parse(old), Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                         catch (_: SecurityException) { }
                     }
-                } catch (_: Exception) { actionError = "Folder access রাখা যায়নি; আবার folder বাছুন।" }
+                } catch (_: Exception) { actionError = "Folder access রাখা যায়নি; আবার folder বাছুন।" }
             }
         }
         LaunchedEffect(tree, refresh) {
@@ -92,14 +99,11 @@ class ClipLibraryActivity : ComponentActivity() {
             loading = true
             try { folder = ClipFolderReader.read(context.applicationContext, Uri.parse(location)) }
             catch (e: CancellationException) { throw e }
-            catch (_: Exception) { folder = null; error = "Folder পড়া যায়নি। Access বদলে গেলে আবার folder বাছুন।" }
+            catch (_: Exception) { folder = null; error = "Folder পড়া যায়নি। Access বদলে গেলে আবার folder বাছুন।" }
             finally { loading = false }
         }
         val clip = folder?.clips?.firstOrNull { it.id == selected }
-        val dngUris = remember(clip, folder) {
-            clip?.files?.filter { it.original.endsWith(".dng") }
-                ?.mapNotNull { folder?.documents?.get(it.exported)?.uri } ?: emptyList()
-        }
+        val frames = remember(clip, folder) { framesOf(clip, folder) }
         BackHandler(enabled = selected != null) { selected = null; viewerIndex = null }
         fun openExternal(mime: String, share: Boolean, document: FolderDocument) {
             try {
@@ -108,146 +112,253 @@ class ClipLibraryActivity : ComponentActivity() {
                 } else Intent(Intent.ACTION_VIEW).setDataAndType(document.uri, mime)
                 intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 intent.clipData = ClipData.newRawUri("CineCam file", document.uri)
-                startActivity(Intent.createChooser(intent, if (share) "File শেয়ার করুন" else "অন্য অ্যাপে খুলুন"))
-            } catch (_: Exception) { actionError = "File খোলার app বা access পাওয়া যায়নি। Folder refresh করে দেখুন।" }
+                startActivity(Intent.createChooser(intent, if (share) "File শেয়ার করুন" else "অন্য অ্যাপে খুলুন"))
+            } catch (_: Exception) { actionError = "File খোলার app বা access পাওয়া যায়নি। Folder refresh করে দেখুন।" }
         }
+        val currentSection = Section.entries.firstOrNull { it.name == section } ?: Section.PHOTOS
+
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 Text("Manage clips", style = MaterialTheme.typography.headlineSmall)
                 Row {
-                    TextButton(onClick = { if (selected != null) { selected = null; viewerIndex = null } else finish() }) {
-                        Text(if (selected != null) "তালিকায় ফিরুন" else "ক্যামেরায় ফিরুন")
+                    TextButton(onClick = {
+                        when {
+                            viewerIndex != null -> viewerIndex = null
+                            selected != null -> selected = null
+                            else -> finish()
+                        }
+                    }) {
+                        Text(if (selected != null) "তালিকায় ফিরুন" else "ক্যামেরায় ফিরুন")
                     }
                     TextButton(onClick = { refresh++ }, enabled = tree != null && !loading) { Text("Refresh") }
                 }
-                Text("Download/CineCam folder একবার বাছুন। পুরোনো flat capture-ও দেখা যাবে; ফাইল সরানো/মুছে ফেলা হবে না।")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Section.entries.forEach { entry ->
+                        FilterChip(selected = currentSection == entry, onClick = {
+                            section = entry.name
+                            if (entry != Section.PHOTOS) viewerIndex = null
+                        }, label = { Text(entry.label) })
+                    }
+                }
                 TextButton(onClick = { picker.launch(tree?.let { Uri.parse(it) }) }) { Text("CineCam folder বাছুন") }
-                Text("DNG thumbnail চাপলে অ্যাপের ভিতর RAW ছবি দেখা যাবে। RAW/archive ফাইল নিঃশব্দে photo হিসেবে খোলা হয় না; এখনো continuous video বা MP4 renderer নেই।")
+                Text("Folder: Download/CineCam • read-only; কোনো ফাইল সরানো, মুছে ফেলা বা বদলানো হয় না।")
             }
-            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Capture তালিকা পড়া হচ্ছে…") }
+            if (loading) item { LinearProgressIndicator(Modifier.fillMaxWidth()); Text("Capture তালিকা পড়া হচ্ছে…") }
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             actionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
-            if (clip == null) {
-                if (folder != null && folder!!.clips.isEmpty()) item { Text("এই folder-এ সমর্থিত capture report পাওয়া যায়নি। সরাসরি flat CineCam folder বাছুন।") }
-                items(folder?.notices ?: emptyList()) { Text(it, color = MaterialTheme.colorScheme.error) }
-                items(folder?.clips ?: emptyList(), key = { it.id }) { entry ->
-                    val cover = folder?.documents?.get(entry.files.firstOrNull { it.original.endsWith(".dng") }?.exported)
-                    val present = entry.files.count { folder?.documents?.containsKey(it.exported) == true }
-                    OutlinedCard(Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            DngThumbnail(cover?.uri, maxDimension = 220,
-                                modifier = Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)))
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(DateFormat.getDateTimeInstance().format(Date(entry.epochMs)), style = MaterialTheme.typography.titleMedium)
+            items(folder?.notices ?: emptyList()) { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (folder != null && folder!!.clips.isEmpty()) {
+                item { Text("এই folder-এ সমর্থিত capture report পাওয়া যায়নি। সরাসরি flat CineCam folder বাছুন।") }
+            }
+
+            when (currentSection) {
+                Section.PHOTOS -> {
+                    if (clip == null) {
+                        item {
+                            Text("ছবি — প্রতিটি capture-এর RAW still preview", style = MaterialTheme.typography.titleMedium)
+                            Text("প্রতিটি DNG-এর পাশাপাশি আমাদের নিজস্ব verified RAW frame থেকেও preview তৈরি হয়, তাই DNG viewer না থাকলেও ছবি দেখা যাবে।")
+                        }
+                        items(folder?.clips ?: emptyList(), key = { it.id }) { entry ->
+                            val entryFrames = framesOf(entry, folder)
+                            val present = entry.files.count { folder?.documents?.containsKey(it.exported) == true }
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    FrameThumbnail(entryFrames.firstOrNull()?.target, 240,
+                                        Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)))
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(DateFormat.getDateTimeInstance().format(Date(entry.epochMs)),
+                                            style = MaterialTheme.typography.titleMedium)
+                                        Text(entry.id)
+                                        Text("${entry.written}/${entry.requested} frame • ${entryFrames.size}টি ছবি")
+                                        Text("RAW ${size(entry.rawBytes)} • companion $present/${entry.files.size}")
+                                        Button(onClick = { selected = entry.id; actionError = null }) {
+                                            Text("ছবিগুলো দেখুন (${entryFrames.size})")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        item {
+                            Text(clip.id, style = MaterialTheme.typography.titleMedium)
+                            Text("${frames.size}টি RAW still • ${clip.written}/${clip.requested} লেখা frame • drop ${clip.drops}")
+                            TextButton(onClick = { viewerIndex = 0 }, enabled = frames.isNotEmpty()) { Text("বড় করে দেখুন (1/${frames.size})") }
+                            Text("Preview DNG বা একই capture-এর verified .ccraw frame থেকে; মূল ফাইল অপরিবর্তিত।")
+                        }
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                frames.chunked(3).forEachIndexed { rowIndex, row ->
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        row.forEachIndexed { column, frame ->
+                                            val number = rowIndex * 3 + column
+                                            OutlinedCard(Modifier.weight(1f)) {
+                                                Column(Modifier.padding(6.dp)) {
+                                                    FrameThumbnail(frame.target, 260,
+                                                        Modifier.fillMaxWidth().height(96.dp).clip(RoundedCornerShape(6.dp)))
+                                                    Text("ছবি ${frame.index + 1}", style = MaterialTheme.typography.labelLarge)
+                                                    TextButton(onClick = { viewerIndex = number }) { Text("খুলুন") }
+                                                }
+                                            }
+                                        }
+                                        while (row.size < 3) { Spacer(Modifier.weight(1f)) }
+                                    }
+                                }
+                                if (frames.isEmpty()) Text("এই capture-এ কোনো DNG পাওয়া যায়নি; archive section দেখুন।")
+                            }
+                        }
+                    }
+                }
+                Section.ARCHIVE -> {
+                    item {
+                        Text("Lossless .ccraw.bp16 archive", style = MaterialTheme.typography.titleMedium)
+                        Text("এটি মূল CCRAW payload-এর lossless compressed backup—playable video নয়। মূল RAW/DNG আলাদা থাকে; archive চাইলে শেয়ার বা বাইরে রাখা যায়।")
+                    }
+                    val withArchive = (folder?.clips ?: emptyList()).filter { it.archiveBytes != null }
+                    if (withArchive.isEmpty()) item { Text("কোনো capture-এ lossless archive পাওয়া যায়নি।") }
+                    items(withArchive, key = { it.id }) { entry ->
+                        val document = folder?.documents?.get("${entry.id}_capture.ccraw.bp16")
+                        val ratio = entry.archiveBytes?.let { archive ->
+                            if (entry.rawBytes > 0) String.format(Locale.ROOT, "%.1f%% ছোট", 100.0 * (1 - archive.toDouble() / entry.rawBytes)) else "—"
+                        } ?: "—"
+                        OutlinedCard(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(DateFormat.getDateTimeInstance().format(Date(entry.epochMs)),
+                                    style = MaterialTheme.typography.titleMedium)
                                 Text(entry.id)
-                                Text("${entry.written}/${entry.requested} frame • drop ${entry.drops} • RAW ${size(entry.rawBytes)}")
-                                entry.archiveBytes?.let { Text("Archive ${size(it)}") }
-                                Text("Companion files: $present/${entry.files.size} পাওয়া গেছে")
-                                Button(onClick = { selected = entry.id; actionError = null }) { Text("বিস্তারিত দেখুন") }
+                                Text("RAW ${size(entry.rawBytes)} → archive ${size(entry.archiveBytes!!)} • $ratio")
+                                Text("রিপোর্টে archive যাচাই: ${result(entry.archive)}")
+                                Text(if (document == null) "Archive ফাইল পাওয়া যায়নি" else document.bytes?.let { "ফাইলে ${size(it)}" } ?: "Size অজানা")
+                                Text("সংরক্ষণ করা archive restore/verify করতে native tool লাগবে; এই screen শুধু দেখায় ও শেয়ার করে।",
+                                    style = MaterialTheme.typography.bodySmall)
+                                Row {
+                                    TextButton(onClick = { selected = entry.id; section = Section.FILES.name },
+                                        enabled = document != null) { Text("ফাইল বিস্তারিত") }
+                                    TextButton(onClick = { if (document != null) openExternal("application/octet-stream", true, document) },
+                                        enabled = document != null) { Text("শেয়ার") }
+                                }
                             }
                         }
                     }
                 }
-            } else {
-                item {
-                    Text(clip.id, style = MaterialTheme.typography.titleMedium)
-                    val cover = folder?.documents?.get(clip.files.firstOrNull { it.original.endsWith(".dng") }?.exported)
-                    DngThumbnail(cover?.uri, maxDimension = 900,
-                        modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(10.dp)))
-                    Row {
-                        TextButton(onClick = { viewerIndex = 0 }, enabled = dngUris.isNotEmpty()) {
-                            Text("DNG ছবি দেখুন (1/${dngUris.size})")
+                Section.FILES -> {
+                    if (clip == null) {
+                        item {
+                            Text("ফাইল ও রিপোর্ট", style = MaterialTheme.typography.titleMedium)
+                            Text("যেকোনো capture-এর সব companion file, saved যাচাইয়ের ফল এবং সহজ বাংলা রিপোর্ট।")
                         }
-                        TextButton(onClick = {
-                            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                                .setPrimaryClip(ClipData.newPlainText("CineCam capture report", clip.readable))
-                        }) { Text("সহজ রিপোর্ট কপি") }
-                    }
-                    Text("Frame ${clip.written}/${clip.requested}; native drop ${clip.drops}")
-                    Text("শেষ হওয়ার কারণ: ${clip.reason}")
-                    Text("RAW ${size(clip.rawBytes)}; archive ${clip.archiveBytes?.let { size(it) } ?: "নেই"}")
-                    Text("রিপোর্টে RAW যাচাই: ${result(clip.readback)}; DNG: ${result(clip.dng)}; archive: ${result(clip.archive)}")
-                    Text("উপরের ফল saved report-এর; এখন payload আবার যাচাই করা হয়নি। তালিকায় file থাকা মানে bytes অক্ষত যাচাই নয়।")
-                    Text("RAW/archive সাধারণ video নয়। preview app-এর ভিতরের native DNG render; সম্পূর্ণ RAW editor নয়।")
-                }
-                items(clip.files, key = { it.exported }) { file ->
-                    val document = folder?.documents?.get(file.exported)
-                    val dngIndex = if (file.original.endsWith(".dng")) {
-                        clip.files.filter { it.original.endsWith(".dng") }.indexOfFirst { it.exported == file.exported }
-                    } else -1
-                    OutlinedCard(Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(12.dp)) {
-                            Text(file.original, style = MaterialTheme.typography.titleSmall)
-                            Text(file.exported)
-                            Text(if (document == null) "পাওয়া যায়নি / একই নাম একাধিকবার আছে" else document.bytes?.let { size(it) } ?: "Size অজানা")
-                            Row {
-                                if (dngIndex >= 0) {
-                                    TextButton(onClick = { viewerIndex = dngIndex }, enabled = document != null) { Text("অ্যাপে দেখুন") }
+                        items(folder?.clips ?: emptyList(), key = { it.id }) { entry ->
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(DateFormat.getDateTimeInstance().format(Date(entry.epochMs)))
+                                    Text(entry.id, style = MaterialTheme.typography.titleSmall)
+                                    Text("${entry.files.size}টি companion file")
+                                    Button(onClick = { selected = entry.id }) { Text("বিস্তারিত দেখুন") }
                                 }
-                                val mime = when (file.original.substringAfterLast('.')) {
-                                    "dng" -> "image/x-adobe-dng"
-                                    "json" -> "application/json"
-                                    "txt" -> "text/plain"
-                                    else -> "application/octet-stream"
-                                }
-                                TextButton(onClick = { if (document != null) openExternal(mime, false, document) },
-                                    enabled = document != null) { Text("বাইরে খুলুন") }
-                                TextButton(onClick = { if (document != null) openExternal(mime, true, document) },
-                                    enabled = document != null) { Text("শেয়ার") }
                             }
                         }
+                    } else {
+                        item {
+                            Text(clip.id, style = MaterialTheme.typography.titleMedium)
+                            Text("Frame ${clip.written}/${clip.requested}; native drop ${clip.drops}")
+                            Text("শেষ হওয়ার কারণ: ${clip.reason}")
+                            Text("RAW ${size(clip.rawBytes)}; archive ${clip.archiveBytes?.let { size(it) } ?: "নেই"}")
+                            Text("রিপোর্টে RAW যাচাই: ${result(clip.readback)}; DNG: ${result(clip.dng)}; archive: ${result(clip.archive)}")
+                            Text("উপরের ফল saved report-এর; এখন payload আবার যাচাই করা হয়নি।")
+                            TextButton(onClick = {
+                                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                    .setPrimaryClip(ClipData.newPlainText("CineCam capture report", clip.readable))
+                            }) { Text("সহজ রিপোর্ট কপি") }
+                        }
+                        items(clip.files, key = { it.exported }) { file ->
+                            val document = folder?.documents?.get(file.exported)
+                            val frame = frames.firstOrNull { it.exported == file.exported }
+                            OutlinedCard(Modifier.fillMaxWidth()) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(file.original, style = MaterialTheme.typography.titleSmall)
+                                    Text(if (document == null) "পাওয়া যায়নি / একই নাম একাধিকবার" else document.bytes?.let { size(it) } ?: "Size অজানা")
+                                    Row {
+                                        if (frame != null) TextButton(onClick = { viewerIndex = frames.indexOf(frame) }) { Text("ছবি দেখুন") }
+                                        TextButton(onClick = {
+                                            if (document != null) openExternal(mimeOf(file.original), false, document)
+                                        }, enabled = document != null) { Text("বাইরে খুলুন") }
+                                        TextButton(onClick = {
+                                            if (document != null) openExternal(mimeOf(file.original), true, document)
+                                        }, enabled = document != null) { Text("শেয়ার") }
+                                    }
+                                }
+                            }
+                        }
+                        item { Text("Saved সহজ রিপোর্ট", style = MaterialTheme.typography.titleMedium); Text(clip.readable) }
                     }
                 }
-                item { Text("Saved সহজ রিপোর্ট", style = MaterialTheme.typography.titleMedium); Text(clip.readable) }
             }
         }
         val current = viewerIndex
-        if (current != null && dngUris.isNotEmpty()) {
-            DngViewer(dngUris, current.coerceIn(0, dngUris.lastIndex)) { viewerIndex = null }
+        if (current != null && frames.isNotEmpty()) {
+            FrameViewer(frames, current.coerceIn(0, frames.lastIndex)) { viewerIndex = null }
         }
     }
 
+    private fun framesOf(clip: SavedClip?, folder: ClipFolder?): List<Frame> {
+        if (clip == null || folder == null) return emptyList()
+        val ccraw = folder.documents["${clip.id}_capture.ccraw"]?.uri
+        return clip.files.filter { it.original.endsWith(".dng") }.mapIndexedNotNull { position, file ->
+            val document = folder.documents[file.exported] ?: return@mapIndexedNotNull null
+            Frame(file.exported, position, PreviewTarget(document.uri, ccraw, position, clip.sensorOrientation ?: 6))
+        }
+    }
+
+    private fun mimeOf(name: String) = when (name.substringAfterLast('.')) {
+        "dng" -> "image/x-adobe-dng"
+        "json" -> "application/json"
+        "txt" -> "text/plain"
+        else -> "application/octet-stream"
+    }
+
     @Composable
-    private fun DngThumbnail(uri: Uri?, maxDimension: Int, modifier: Modifier) {
+    private fun FrameThumbnail(target: PreviewTarget?, maxDimension: Int, modifier: Modifier) {
         val context = LocalContext.current
-        var bitmap by remember(uri, maxDimension) { mutableStateOf<Bitmap?>(null) }
-        var failed by remember(uri, maxDimension) { mutableStateOf(false) }
-        LaunchedEffect(uri, maxDimension) {
-            bitmap = null; failed = false
-            if (uri == null) return@LaunchedEffect
-            try { bitmap = DngPreviewLoader.load(context, uri, maxDimension) }
+        var bitmap by remember(target, maxDimension) { mutableStateOf<Bitmap?>(null) }
+        var failed by remember(target, maxDimension) { mutableStateOf(false) }
+        var reason by remember(target, maxDimension) { mutableStateOf<String?>(null) }
+        LaunchedEffect(target, maxDimension) {
+            bitmap = null; failed = false; reason = null
+            if (target == null) return@LaunchedEffect
+            try { bitmap = PreviewLoader.load(context, target, maxDimension) }
             catch (e: CancellationException) { throw e }
-            catch (_: Throwable) { failed = true }
+            catch (_: OutOfMemoryError) { failed = true; reason = "memory কম" }
+            catch (e: Throwable) { failed = true; reason = e.message }
         }
         Box(modifier.background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
             val image = bitmap
             when {
                 image != null -> Image(image.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                failed -> Text("Preview নেই", color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                uri != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
+                failed -> Text(reason ?: "Preview নেই", color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(4.dp))
+                target != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.dp)
                 else -> Text("DNG নেই", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }
 
     @Composable
-    private fun DngViewer(uris: List<Uri>, initial: Int, onClose: () -> Unit) {
+    private fun FrameViewer(frames: List<Frame>, initial: Int, onClose: () -> Unit) {
         val context = LocalContext.current
-        var index by rememberSaveable { mutableStateOf(initial.coerceIn(0, uris.lastIndex)) }
+        var index by rememberSaveable { mutableStateOf(initial.coerceIn(0, frames.lastIndex)) }
         var bitmap by remember { mutableStateOf<Bitmap?>(null) }
         var failed by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(uris, index) {
+        LaunchedEffect(frames, index) {
             bitmap = null; failed = null
-            try { bitmap = DngPreviewLoader.load(context, uris[index], 1600) }
+            try { bitmap = PreviewLoader.load(context, frames[index].target, 1600) }
             catch (e: CancellationException) { throw e }
-            catch (_: OutOfMemoryError) { failed = "এই ছবির preview-এর জন্য memory যথেষ্ট নয়" }
-            catch (_: Throwable) { failed = "এই DNG-এর preview তৈরি করা যায়নি" }
+            catch (_: OutOfMemoryError) { failed = "এই ছবির preview-এর জন্য memory যথেষ্ট নয়" }
+            catch (e: Throwable) { failed = e.message ?: "এই ছবির preview তৈরি করা যায়নি" }
         }
         Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = Color.Black) {
                 Column(Modifier.fillMaxSize().padding(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("DNG ছবি ${index + 1}/${uris.size}", color = Color.White,
+                        Text("ছবি ${index + 1}/${frames.size}", color = Color.White,
                             style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         TextButton(onClick = onClose) { Text("বন্ধ") }
                     }
@@ -261,10 +372,10 @@ class ClipLibraryActivity : ComponentActivity() {
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(enabled = index > 0, onClick = { index-- }) { Text("◀ আগের") }
-                        Text("preview; মূল DNG বদলায় না", color = Color.Gray,
+                        Text("preview; মূল ফাইল বদলায় না", color = Color.Gray,
                             style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f))
-                        TextButton(enabled = index < uris.lastIndex, onClick = { index++ }) { Text("পরের ▶") }
+                        TextButton(enabled = index < frames.lastIndex, onClick = { index++ }) { Text("পরের ▶") }
                     }
                 }
             }
@@ -272,5 +383,5 @@ class ClipLibraryActivity : ComponentActivity() {
     }
 
     private fun size(bytes: Long) = String.format(Locale.ROOT, "%.2f MB", bytes / 1_000_000.0)
-    private fun result(flag: Boolean?) = when (flag) { true -> "সফল"; false -> "ব্যর্থ"; null -> "করা হয়নি / তথ্য নেই" }
+    private fun result(flag: Boolean?) = when (flag) { true -> "সফল"; false -> "ব্যর্থ"; null -> "তথ্য নেই" }
 }

@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — তিন section ও নির্ভরযোগ্য ছবি preview] — 2026-10-22
+- v83 device feedback: বাস্তব DNG-এ thumbnail সব "Preview নেই" ছিল। এখন DNG reader ব্যর্থ হলে একই capture-এর verified `.ccraw` frame থেকে native preview—vendor DNG tag-এর উপর নির্ভরতা কম।
+- Library তিনটি আলাদা section: **ছবি** (capture→ছবির grid→viewer), **Lossless archive** (আকার, কত% ছোট, রিপোর্টের যাচাই ফল, শেয়ার), **ফাইল ও রিপোর্ট** (সব companion, সহজ রিপোর্ট)।
+- Preview failure-এর আসল কারণ UI-তে দেখানো হয়; thumbnail/details/viewer একই fallback ব্যবহার করে। Orientation hint optional metadata থেকে; malformed হলে 무시।
+- Native CCRAW frame preview: header/frame-CRC/bounds যাচাই, auto black/white+WB, frame index bound; কোনো source write নেই।
+- DNG/RAW/EXIF/archive/export আচরণ অপরিবর্তিত; archive playable video এখনো নয়; MP4/audio এখনো নেই।
+- Host ASan/UBSan synthetic CCRAW + DNG tests pass, existing suites pass। Android CI ও device preview pending। docs/DNG_PREVIEW.md।
+
 ## [Unreleased — অ্যাপের ভিতরে DNG preview] — 2026-10-22
 - Manage clips-এ cover thumbnail, details-এ বড় preview, প্রতিটি DNG-এর **অ্যাপে দেখুন** এবং full-screen আগের/পরের frame viewer; পুরোনো saved capture দিয়েই কাজ করে।
 - নতুন native `dng_preview.cpp`: bounded TIFF/DNG parse, mmap/pread source, uncompressed 16-bit CFA only, strip/crop/size validation, 2×2 CFA block average, black/white, AsShotNeutral, optional ColorMatrix1, sRGB LUT। Full-frame Java buffer নেই; descriptor caller-owned/read-only।

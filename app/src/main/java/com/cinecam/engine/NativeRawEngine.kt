@@ -64,6 +64,9 @@ class NativeRawEngine private constructor() {
     external fun nativeCopyExport(source: String, outputFd: Int): String
     /** header[0..3] = width, height, EXIF orientation, status (0=ok); then ARGB pixels. */
     external fun nativeRenderDng(fd: Int, maxDimension: Int): IntArray?
+    /** Same header layout; native verified-CCRAW fallback for unsupported DNG layouts. */
+    external fun nativeRenderCcrawFrame(fd: Int, frameIndex: Int, maxDimension: Int, orientation: Int): IntArray?
+    external fun nativePreviewError(): String
     external fun nativeCreateBp16Archive(source: String, destination: String): String
     external fun nativeProbeRaw16Codec(path: String, offset: Long, bytes: Long): String
     external fun nativeGetStatsJson(): String
