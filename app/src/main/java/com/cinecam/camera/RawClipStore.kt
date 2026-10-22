@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.params.ColorSpaceTransform
+import android.os.ParcelFileDescriptor
+import com.cinecam.engine.NativeRawEngine
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
@@ -70,7 +72,7 @@ internal object RawClipStore {
     }
 
     // Unique staging directories stay private; user-visible export is a single flat directory.
-    fun export(context: Context, folder: File, report: JSONObject): String {
+    fun export(context: Context, folder: File, report: JSONObject, onProgress: (String) -> Unit = {}): String {
         val session = folder.name
         val legacyRoot = File(folder.parentFile, "CineCam")
         val destination = if (Build.VERSION.SDK_INT >= 29) "Download/CineCam" else legacyRoot.absolutePath
@@ -104,6 +106,18 @@ internal object RawClipStore {
         writeReports() // Retain a readable diagnostic even if export subsequently fails.
         val inserted = mutableListOf<android.net.Uri>()
         val legacyCreated = mutableListOf<File>()
+        val copyEngine = NativeRawEngine.getInstance()
+        val copyDetails = JSONArray()
+        report.put("exportCopyBackend", "native-sendfile-with-bounded-fallback-v1")
+        report.put("exportCopyDetails", copyDetails)
+        fun copyFd(file: File, descriptor: ParcelFileDescriptor) {
+            val detail = JSONObject(copyEngine.nativeCopyExport(file.absolutePath, descriptor.fd))
+            detail.put("file", mapping.getString(file.name))
+            // Reports copied last; keep their timing out of their own serialized snapshot.
+            if (file.name !in setOf("report.json", "report.txt")) copyDetails.put(detail)
+            check(detail.optBoolean("ok") && detail.optLong("bytes") == file.length()) {
+                "Export copy ব্যর্থ: ${file.name}: ${detail.optString("error")}" }
+        }
         try {
             if (Build.VERSION.SDK_INT < 29) check(legacyRoot.isDirectory || legacyRoot.mkdirs()) { "Export folder তৈরি হয়নি" }
             fun copyPending(file: File) {
@@ -112,7 +126,7 @@ internal object RawClipStore {
                     val output = File(legacyRoot, outputName)
                     check(output.createNewFile()) { "Export destination already exists" }
                     legacyCreated.add(output)
-                    file.inputStream().use { input -> output.outputStream().use { input.copyTo(it, 256 * 1024) } }
+                    ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_WRITE_ONLY).use { copyFd(file, it) }
                     return
                 }
                 val resolver = context.contentResolver
@@ -130,12 +144,15 @@ internal object RawClipStore {
                 resolver.query(uri, arrayOf(MediaStore.Downloads.DISPLAY_NAME), null, null, null)?.use { cursor ->
                     check(cursor.moveToFirst() && cursor.getString(0) == outputName) { "Export name collision; source retained" }
                 } ?: error("Export name যাচাই হয়নি")
-                resolver.openOutputStream(uri, "w")?.use { output -> file.inputStream().use { it.copyTo(output, 256 * 1024) } }
-                    ?: error("Download output খোলা যায়নি")
+                resolver.openFileDescriptor(uri, "w")?.use { copyFd(file, it) }
+                    ?: error("Download output descriptor খোলা যায়নি")
             }
             val copyBegin = SystemClock.elapsedRealtimeNanos()
             var dataBytes = 0L
-            files.forEach { copyPending(it); dataBytes += it.length() }
+            files.forEachIndexed { index, file ->
+                onProgress("Export ${index + 1}/${files.size}: ${file.name}…")
+                copyPending(file); dataBytes += file.length()
+            }
             report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
             report.put("exportDataBytes", dataBytes)
             writeReports()

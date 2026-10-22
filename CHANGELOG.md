@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — Native export + একই build-এ diagnostics] — 2026-10-22
+- Full8-frame v79 device evidence সফল; পরের measured cost প্রায়516MB export/23.69s। এখন একসঙ্গে native fast path, safe fallback, per-file diagnostics ও progress; শুধু ছোট counters-এর জন্য বারবার APK/test নয়।
+- Java copyTo-এর বদলে C++ sendfile→provider descriptor; unsupported হলে exact offset থেকে bounded256KiB fallback। Partial/EINTR handling, exact sizes, no full-frame Java buffer। Kernel path physical zero-copy বা guaranteed speedup নয়।
+- প্রতিটি destination explicit fsync + Kotlin close-এর পরে transaction success; আগের export-এ explicit per-file fsync ছিল না, তাই latency বাড়তেও পারে। RAW/archive flush/full verification অক্ষত, source retained on failure; rollback/naming/pending/report-last/flat folder অপরিবর্তিত।
+- JSON/readable report-এ per-data-file kernel/buffered bytes/copy/fsync/error, in-app file-count progress। Reports নিজেদের serialized timing snapshot-এ ঢোকে না; copy/fsync aggregate timing-এর সঙ্গে double-count নয়।
+- Native ASan/UBSan normal/forced fallback, byte-exact comparison, injected short-kernel+EINTR+unsupported continuation, ENOSPC/readonly/invalid/self/nonempty fd এবং empty source tests স্থানীয়ভাবে সফল। Existing archive/reference/reader tests বজায়। Android CI/device result pending; details docs/NATIVE_EXPORT.md।
+
 ## [Unreleased — Archive record write coalescing] — 2026-10-21
 - F23 v78 চার sidecar cross-check:8written/0drop/readback/DNG সফল;199,757,664→120,139,272bytes archive, byte-exact compare সফল;14 flat names/timestamp/PTS/source-frame mapping মেলে। Evidence docs/device-tests/F23-v78; original binaries পাওয়া যায়নি।
 - Archive pack0.485s,write3.334s,fsync6.774s;10.732s aggregate-এর প্রায়94.19% write+sync। RAW write7.816s/export39.496s-ও ধীর; filesystem/root cause বা sustained FPS সিদ্ধান্ত নয়।

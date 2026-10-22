@@ -1,6 +1,7 @@
 package com.cinecam.camera
 
 import org.json.JSONObject
+import org.json.JSONArray
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.Locale
@@ -46,4 +47,15 @@ class RawReadableReportTest {
             assertTrue(text.contains("1.23"))
         } finally { Locale.setDefault(previous) }
     }
+    @Test fun exportCopyAndFlushDetailsAreNotCalledReadback() {
+        val report = JSONObject().put("exportCopyBackend", "native-sendfile-with-bounded-fallback-v1")
+            .put("exportCopyDetails", JSONArray().put(JSONObject().put("file", "test.dng")
+                .put("ok", true).put("copyNs", 12000000).put("fsyncNs", 34000000)
+                .put("kernelBytes", 10).put("bufferedBytes", 20)))
+        val text = RawReadableReport.text(report)
+        assertTrue(text.contains("Export test.dng: copy 12.00 ms; fsync 34.00 ms"))
+        assertTrue(text.contains("kernel 10 / buffered 20"))
+        assertTrue(text.contains("post-export byte readback নয়"))
+    }
+
 }

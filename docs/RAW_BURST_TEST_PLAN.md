@@ -149,3 +149,7 @@ v77-এ actual archive সফল; এখন একই settings-এ আরেক�
 ## Coalesced archive writes পরীক্ষা
 
 আগের settings অপরিবর্তিত রাখুন: Paced/Internal/verification/all-DNG/archive ON, reserve OFF,>=1.5GiB free। নতুন report-এ `blockWriteMode=coalesced-record-v1`, `ok`/`byteExactSourceComparison=true`, same14flatfiles চাই। F23-এর199,757,664byte RAW-এ3049blocks; full writes হলে3050writeCalls (আগে6099), partial/EINTR হলে বেশি হতে পারে। Pack/write/fsync/verify/export সময় আলাদা তুলনা করুন। Scene বদলালে archive ratio বদলাবে; fsync/background/thermal variability থেকে এক run-এ speedup নিশ্চিত নয়। চার ছোট sidecar পাঠান; huge binary প্রয়োজন নেই। মূল RAW/DNG/EXIF/verification/flush অক্ষত।
+
+## Native export + একসঙ্গে timing পরীক্ষা
+
+একটি full8-frame automatic test যথেষ্ট: আগের successful Paced/Internal/verification/allDNG/archiveON,reserveOFF,>=1.5GiB free; Stop নয়, foreground-এ finalizing/export শেষ হতে দিন। Same14flatfiles/8DNG/readback/archive byteExact চাই। In-app `Export n/total` progress দেখুন। চার sidecar পাঠান; report-এ প্রতি data file copy/fsync ও kernel/buffered bytes থাকবে। Kernel unsupported হলে buffered fallback expected, error নয়। Explicit destinationfsync এখন যোগ হয়েছে—copy দ্রুত হলেও flush-এ সময় লাগতে পারে; total সময় না দেখে speedup নয়। Export error হলে app data clear/uninstall নয়, source private-এ retained। নতুন provider FD path nonregular output reject করে, actual F23 behavior pending।

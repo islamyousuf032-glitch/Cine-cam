@@ -652,7 +652,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     }
                 }
                 postStorageStatus("Download/CineCam-এ export হচ্ছে…")
-                val target = RawClipStore.export(app, folder, report)
+                val target = RawClipStore.export(app, folder, report) { postStorageStatus(it) }
                 message = "RAW test ${if (ok && written > 0 && (!verifySample || report.optBoolean("readbackOk"))) "সংরক্ষিত" else "অসম্পূর্ণ/যাচাই ব্যর্থ"}: $written frames • $target"
                 if (verifySample && written > 0 && report.optBoolean("readbackOk") &&
                     !report.optBoolean(if (sequenceDng) "dngSequenceOk" else "firstFrameDngOk"))

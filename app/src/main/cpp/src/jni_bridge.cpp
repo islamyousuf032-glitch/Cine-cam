@@ -6,6 +6,7 @@
 #include "cine_types.h"
 #include "raw16_codec.h"
 #include "bp16_archive.h"
+#include "export_copy.h"
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -315,5 +316,18 @@ Java_com_cinecam_engine_NativeRawEngine_nativeCreateBp16Archive(JNIEnv* env, job
         (unsigned long long)r.writeNs, (unsigned long long)r.fsyncNs, (unsigned long long)r.closeNs,
         (unsigned long long)r.maxWriteNs, (unsigned long long)r.readCalls, (unsigned long long)r.writeCalls,
         (unsigned long long)r.blocks, r.ok ? "true" : "false", r.error);
+    return env->NewStringUTF(json);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeCopyExport(JNIEnv* env, jobject, jstring source, jint outputFd) {
+    const auto path = jstringToStd(env, source);
+    if (env->ExceptionCheck()) return nullptr;
+    const auto r = copyExportFile(path.c_str(), outputFd);
+    char json[768];
+    snprintf(json, sizeof(json), "{\"ok\":%s,\"bytes\":%llu,\"kernelBytes\":%llu,\"bufferedBytes\":%llu,"
+        "\"copyNs\":%llu,\"fsyncNs\":%llu,\"error\":\"%s\"}",
+        r.ok ? "true" : "false", (unsigned long long)r.bytes, (unsigned long long)r.kernelBytes,
+        (unsigned long long)r.bufferedBytes, (unsigned long long)r.copyNs, (unsigned long long)r.fsyncNs, r.error);
     return env->NewStringUTF(json);
 }

@@ -4,6 +4,10 @@
 #include "ccraw_writer.h"
 #include "raw16_codec.h"
 #include "bp16_archive.h"
+#include "export_copy.h"
+#include <sys/sendfile.h>
+#include <cerrno>
+#include <unistd.h>
 #include <cassert>
 #include <filesystem>
 #include <future>
@@ -425,6 +429,56 @@ int main() {
 
         assert(!createBp16Archive("build/native-tests/no-source", "build/native-tests/no-output.bp16").ok);
         assert(!std::filesystem::exists("build/native-tests/no-output.bp16"));
+    }
+
+    {
+        const char* source = "build/native-tests/all-bits.bin";
+        const auto originalSize = std::filesystem::file_size(source);
+        for (const bool kernel : {true, false}) {
+            const std::string path = kernel ? "build/native-tests/export-kernel.bin" : "build/native-tests/export-buffered.bin";
+            const int fd = ::open(path.c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+            assert(fd >= 0);
+            const auto copied = copyExportFile(source, fd, kernel);
+            assert(copied.ok && copied.bytes == originalSize && copied.copyNs > 0 && copied.fsyncNs > 0);
+            assert(copied.kernelBytes + copied.bufferedBytes == copied.bytes);
+            if (!kernel) assert(copied.kernelBytes == 0 && copied.bufferedBytes == copied.bytes);
+            assert(::lseek(fd, 0, SEEK_SET) == 0); // FD borrowed, never closed by copier
+            assert(!copyExportFile(source, fd).ok); // nonempty destination protected
+            ::close(fd);
+            std::ifstream original(source, std::ios::binary), exported(path, std::ios::binary);
+            assert(std::vector<char>((std::istreambuf_iterator<char>(original)), {}) ==
+                   std::vector<char>((std::istreambuf_iterator<char>(exported)), {}));
+        }
+        const int partial = ::open("build/native-tests/export-partial.bin", O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(partial >= 0);
+        const auto injected = +[](int out, int in, off_t* offset, size_t) -> ssize_t {
+            static bool interrupted = false;
+            if (!interrupted) { interrupted = true; errno = EINTR; return -1; }
+            if (*offset == 0) return ::sendfile(out, in, offset, 13);
+            errno = EINVAL; return -1;
+        };
+        const auto mixed = copyExportFile(source, partial, true, injected);
+        assert(mixed.ok && mixed.kernelBytes == 13 && mixed.bufferedBytes == originalSize - 13);
+        ::close(partial);
+        { std::ifstream original(source, std::ios::binary), exported("build/native-tests/export-partial.bin", std::ios::binary);
+          assert(std::vector<char>((std::istreambuf_iterator<char>(original)), {}) ==
+                 std::vector<char>((std::istreambuf_iterator<char>(exported)), {})); }
+        const int failed = ::open("build/native-tests/export-failed.bin", O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(failed >= 0);
+        const auto noSpace = +[](int, int, off_t*, size_t) -> ssize_t { errno = ENOSPC; return -1; };
+        const auto failure = copyExportFile(source, failed, true, noSpace);
+        assert(!failure.ok && failure.bytes == 0 && failure.bufferedBytes == 0);
+        ::close(failed);
+        const int readOnly = ::open("build/native-tests/export-failed.bin", O_RDONLY);
+        assert(readOnly >= 0 && !copyExportFile(source, readOnly, false).ok); ::close(readOnly);
+        assert(std::filesystem::file_size(source) == originalSize);
+        assert(!copyExportFile(source, -1).ok);
+        const int sourceFd = ::open(source, O_RDWR);
+        assert(sourceFd >= 0 && !copyExportFile(source, sourceFd).ok); ::close(sourceFd);
+        { std::ofstream empty("build/native-tests/empty-export-source"); }
+        const int empty = ::open("build/native-tests/empty-export-output", O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(empty >= 0 && copyExportFile("build/native-tests/empty-export-source", empty).ok);
+        assert(!copyExportFile("build/native-tests/no-such-source", empty).ok); ::close(empty);
     }
 
 }
