@@ -256,3 +256,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.82
 ## In-app DNG preview — 2026-10-22
 
 User feedback: saved DNG ফাইল list-এ ছিল কিন্তু অ্যাপে ছবি দেখা যাচ্ছিল না; external DNG viewer-ও অনেক ডিভাইসে নেই। Added bounded native TIFF/DNG preview renderer + cover thumbnail/details cover/DNG viewer (prev-next, 1/8 counter), auto-refresh library on resume. Old captures directly testable, no recapture। Uncompressed 16-bit CFA only; unsupported gets clear message। No RAW write/export change। Local ASan/UBSan synthetic LE+BE exact-pixel/CFA/FD/corrupt tests pass, archive/export/reader suites pass; Android build/device parse-quality pending। details docs/DNG_PREVIEW.md।
+
+### v83 delivery confirmed — in-app DNG preview
+CI `39773936706`/83 full success: ARM64/x86 sanitizer/native/export/archive/reference plus synthetic LE/BE DNG preview tests, Android unit/lint/debug/unsigned-release/publication। Source `70c3ed93344fa4cc2e73b80955e6ffc8c96b5ec6`। Verified `v0.1.83-alpha-70c3ed9` APK14,953,727bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.83-alpha-70c3ed9/CineCam-debug.apk
+
+পুরোনো capture দিয়েই device check: Manage clips→cover thumbnail দেখা→details→কোনো DNG-এ **অ্যাপে দেখুন**→আগের/পরের frame→back। কোনো DNG-তে thumbnail/preview না এলে সেটি real DNG-এর tag/layout ভেদ—report-এ কোন frame-এ সমস্যা লিখে জানাতে হবে; APK/source অক্ষত। New capture বা পুরোনো diagnostic পুনরাবৃত্তি দরকার নেই।
