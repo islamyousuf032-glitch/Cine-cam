@@ -226,3 +226,10 @@ User কাজ/test iteration দ্রুত করার অনুরোধ �
 
 ### Export CI watchdog follow-up
 প্রথম native-export CI39745023805-এ x86 pass, ARM sanitizer step exit124 (30s watchdog); Android build শুরু হয়নি, broken APK publish হয়নি। Restricted log host-এর কারণে full trace পাওয়া যায়নি; annotation দিয়ে timeout নিশ্চিত। Fixture byte-iterator comparison bulk64KiB reads-এ বদল এবং expanded sanitizer suite watchdog60s করা হয়েছে (finite, assertions unchanged)। ARM root cause/phone performance সম্পর্কে অনুমান নয়; নতুন run যাচাই করতে হবে।
+
+### v81 delivery confirmed — native export batch
+CI `39745351829`/81 সম্পূর্ণ সফল: ARM64/x86_64 sanitizers/native normal+fallback+injected error/byte checks, existing archive reference/restore/reader suites; Android unit/readable export tests/lint/debug/unsigned-release এবং publication। Source `43cbe6bd78debd3dbd3d48bb44b72d397380844b` (feature9c7ebe8)। Verified `v0.1.81-alpha-43cbe6b` APK14,806,172bytes uploaded +SHA256SUMS.txt। Failed80-এ APK publish হয়নি;81 install target।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.81-alpha-43cbe6b/CineCam-debug.apk
+
+পরের এক phone test-এ full8 automatic completion এবংচার sidecar: flat14files, RAW/DNG/archive unchanged, kernel/buffered bytes/copyNs/fsyncNs/per-file errors/progress। Explicit per-file exportfsync নতুন, তাই শুধু kernel-copy দ্রুত দেখে aggregate speedup claim নয়। Actual MediaStoreFD support/export latency/device preservation pending। Related changes grouped to reduce test cycles; no merge/close।
