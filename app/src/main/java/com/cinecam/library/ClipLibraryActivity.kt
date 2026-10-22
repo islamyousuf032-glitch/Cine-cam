@@ -222,7 +222,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                 Text("রিপোর্টে saved RAW যাচাই: ${result(entry.readback)}")
                                 Row {
                                     TextButton(onClick = {
-                                        val count = (entry.written.takeIf { it > 0 } ?: 1).coerceAtMost(64)
+                                        val count = (entry.written.takeIf { it > 0 } ?: 1L).coerceAtMost(64L).toInt()
                                         viewer = ViewerRequest(ccrawTargets(entry, document.uri, count), 0)
                                     }) { Text("frame preview") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
