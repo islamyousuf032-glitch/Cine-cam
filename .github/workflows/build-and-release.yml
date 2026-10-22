@@ -70,8 +70,10 @@ jobs:
         run: |
           set +e
           test -f build.log || exit 0
-          tail -20 build.log | while IFS= read -r line; do
-            echo "::error title=Gradle::${line}"
+          total=$(wc -l < build.log)
+          start=$((total - 70)); [ "$start" -lt 1 ] && start=1
+          sed -n "${start},$((total - 25))p" build.log | while IFS= read -r line; do
+            echo "::error title=Gradle-context::${line}"
           done
       - name: Upload diagnostics
         if: always()
