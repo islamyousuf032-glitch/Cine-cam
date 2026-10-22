@@ -226,7 +226,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                         viewer = ViewerRequest(ccrawTargets(entry, document.uri, count), 0)
                                     }) { Text("frame preview") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
-                                    TextButton(onClick = { detail = entry.id }) { Text("রিপোর্ট") }
+                                    TextButton(onClick = { detail = entry.id; tab = Tab.REPORT.name }) { Text("রিপোর্ট") }
                                 }
                             }
                         }
@@ -254,7 +254,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                 Text("রিপোর্টে archive যাচাই: ${result(entry.archive)}")
                                 Row {
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
-                                    TextButton(onClick = { detail = entry.id }) { Text("রিপোর্ট") }
+                                    TextButton(onClick = { detail = entry.id; tab = Tab.REPORT.name }) { Text("রিপোর্ট") }
                                 }
                             }
                         }
