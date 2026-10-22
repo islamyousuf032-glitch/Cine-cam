@@ -1,0 +1,59 @@
+CineCam — সহজ পরীক্ষার রিপোর্ট
+Capture: CineCam_1792657839174_cabf7553
+Mode: paced
+মেলা frame: 8 / 8
+লেখা frame: 8
+Native drop: 0
+Saved RAW যাচাই: সফল
+DNG mode: all-saved-frames
+DNG sequence: সফল; 8 frame
+Lossless codec byte-exact পরীক্ষা: সফল
+প্রথম saved frame: 24969600 bytes → পরীক্ষামূলক packed 14216344 bytes
+শুধু codec probe; RAW/DNG ফাইল compressed নয়, recording performance proof নয়।
+Lossless archive: সফল ও byte-exact যাচাই
+Archive bytes: 114400776; original bytes: 199757664
+Archive encode/write: 4241.03 ms; পুরো-file verify: 607.33 ms
+Archive write: record header+payload একসঙ্গে; short write/EINTR হলে retry, fsync বজায়।
+Archive stage (ms): read 90.30; encode 395.42; CRC 20.73
+Archive storage (ms): write 139.07; fsync 3591.50; close 0.02; সর্বোচ্চ এক write 5.77
+Archive blocks: 3049; read/write syscall: 3049/3050
+এগুলো encode-phase wall time; পুরো-file verify আলাদা, CPU-only benchmark নয়।
+মূল RAW/DNG রাখা হয়েছে; archive অতিরিক্ত file, playable video নয়।
+সময় (ms; একে অন্যের সঙ্গে সব যোগ করা যাবে না):
+Capture শুরু→writer drain: 6813.03; এর ভিতরে capture window 2146.29
+RAW storage: write 4765.62; fsync 652.95; সর্বোচ্চ এক write 1701.44
+Paced buffer অপেক্ষা: 0.00; এটি capture window-এর অংশ, drop নয়।
+DNG sequence তৈরি: 7860.82
+Export data copy: 38443.73; 514158710 bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)
+Export পথ: native-sendfile-with-bounded-fallback-v1; destination fsync চালু, post-export byte readback নয়।
+Export CineCam_1792657839174_cabf7553_metadata.json: copy 0.99 ms; fsync 6.52 ms; kernel 2259 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_capture.ccraw.bp16: copy 7374.41 ms; fsync 2977.32 ms; kernel 114400776 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_capture.ccraw: copy 8050.09 ms; fsync 6479.44 ms; kernel 199757664 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000001.dng: copy 136.34 ms; fsync 385.25 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000002.dng: copy 111.85 ms; fsync 1683.10 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000003.dng: copy 172.15 ms; fsync 2097.03 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000004.dng: copy 125.93 ms; fsync 1880.02 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000005.dng: copy 249.73 ms; fsync 1493.49 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000006.dng: copy 259.84 ms; fsync 1869.63 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000007.dng: copy 240.35 ms; fsync 1048.68 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_frame_000008.dng: copy 289.98 ms; fsync 492.27 ms; kernel 24999536 / buffered 0 bytes; সফল
+Export CineCam_1792657839174_cabf7553_sequence.json: copy 0.51 ms; fsync 0.55 ms; kernel 1723 / buffered 0 bytes; সফল
+RAW file bytes: 199757664
+গন্তব্য: Download/CineCam
+একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।
+এটি সীমিত RAW/DNG পরীক্ষা; fixed FPS, MP4, audio বা continuous video নয়।
+ফাইলের তালিকা:
+CineCam_1792657839174_cabf7553_capture.ccraw
+CineCam_1792657839174_cabf7553_capture.ccraw.bp16
+CineCam_1792657839174_cabf7553_frame_000001.dng
+CineCam_1792657839174_cabf7553_frame_000002.dng
+CineCam_1792657839174_cabf7553_frame_000003.dng
+CineCam_1792657839174_cabf7553_frame_000004.dng
+CineCam_1792657839174_cabf7553_frame_000005.dng
+CineCam_1792657839174_cabf7553_frame_000006.dng
+CineCam_1792657839174_cabf7553_frame_000007.dng
+CineCam_1792657839174_cabf7553_frame_000008.dng
+CineCam_1792657839174_cabf7553_metadata.json
+CineCam_1792657839174_cabf7553_report.json
+CineCam_1792657839174_cabf7553_report.txt
+CineCam_1792657839174_cabf7553_sequence.json

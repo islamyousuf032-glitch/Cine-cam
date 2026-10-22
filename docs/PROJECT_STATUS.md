@@ -233,3 +233,7 @@ CI `39745351829`/81 সম্পূর্ণ সফল: ARM64/x86_64 sanitizers/
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.81-alpha-43cbe6b/CineCam-debug.apk
 
 পরের এক phone test-এ full8 automatic completion এবংচার sidecar: flat14files, RAW/DNG/archive unchanged, kernel/buffered bytes/copyNs/fsyncNs/per-file errors/progress। Explicit per-file exportfsync নতুন, তাই শুধু kernel-copy দ্রুত দেখে aggregate speedup claim নয়। Actual MediaStoreFD support/export latency/device preservation pending। Related changes grouped to reduce test cycles; no merge/close।
+
+## v81 native export device validation — 2026-10-22
+
+Evidence docs/device-tests/F23-v81: চার sidecar cross-check;automatic8/written8/drop0/readback+DNG8/archivebyteExacttrue/14flat names। Actualarchive199,757,664→114,400,776bytes(42.7302%ছোট)।12data files514,158,710bytes সবkernelcopy/zero buffered/oktrue;providerFD fast path confirmed। Export38.44373s,copy sum17.01217s,explicitfsync sum20.41330s। v79-এর23.69003s-এর তুলনায় এই run বেশি;speedup দাবি নয়,fsync নতুন ও conditions uncontrolled। Original payload binaries নেই,post-export byte-readback নয়। নতুন APK/একই test আবার চাওয়া হয়নি; পরের candidate duplicate I/O review, durability/source retention না কমিয়ে। Code/merge/close unchanged।
