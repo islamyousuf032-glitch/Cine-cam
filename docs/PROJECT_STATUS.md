@@ -296,3 +296,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.93
 ## v94 — D50 colour fix + burst playback — 2026-10-22
 
 User confirmed four sections/preview/freeze work, but previews skew red. Root cause: DNG matrices are D50-referenced while the preview multiplied them with a D65 sRGB matrix (D50 white → R1.18/G0.98/B0.72). Fix: Bradford-adapted D50→sRGB, prefer ForwardMatrix1, else invert ColorMatrix1; same for CCRAW fallback with metadata forwardMatrix1 / Camera2 colorTransform1. Added burst playback in the viewer using real sensor timestamps (50–800 ms clamp, loop, average burst fps, next-frame prefetch, 40 MiB cache). Synthetic ForwardMatrix neutrality test added. Android CI/device pending.
+
+### v94 delivery confirmed — D50 রঙ ও burst playback
+CI `39798806890`/94 সম্পূর্ণ সফল (ARM/x86 sanitizer + DNG ForwardMatrix/neutrality test, Android unit/lint/debug/release/publication)। Source `a450b5b52cab0472f4369b43cfa4fd1a652c37d6`; APK digest v93 থেকে ভিন্ন (sha256:8d6669b0…), আকার14,? bytes।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.94-alpha-a450b5b/CineCam-debug.apk
+
+পরের device check: পুরোনো capture খুলে রঙ আগের চেয়ে কম লাল কি না এবং viewer-এ **চালান** চেপে burst playback/loop দেখা। রঙ এখনো বেশি লাল হলে কোন capture/frame ও আলো কেমন ছিল জানালে ম্যাট্রিক্স আরও টিউন করা যাবে।
