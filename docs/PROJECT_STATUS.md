@@ -278,3 +278,17 @@ Device check (পুরোনো capture দিয়েই): ছবি section�
 ## v85 — four sections, colour and freeze fixes — 2026-10-22
 
 Device feedback: requested exactly four sections (ছবি / clips / lossless archive / report); previews were green instead of red; pressing "ছবিগুলো দেখুন" froze the UI. Root causes: CCRAW fallback hardcoded RGGB while metadata says cfa=1 (GRBG), so red/green samples swapped; and the photo grid decoded up to eight 25MB payloads concurrently with a full-frame allocation each. Fixes: CFA mapping + metadata/report calibration (neutral, black/white, ColorMatrix1); max two concurrent decoders, 320px lazy thumbnails, row-sampled pread instead of whole-payload load, 24MiB cache; four explicit tabs with per-file rows; tiled DNG support. Native sanitizer suites updated and passing; Android CI/device verification pending.
+
+### v93 delivery — চারটি বিভাগ, রঙ ও ফ্রিজ সমাধান
+Source `2aca9a5a9018c18bc92da74765538c2dc9f26d78`। CI `39793532969`-এর ARM/x86 sanitizer, Android unit/lint/debug/release এবং publish ধাপ সফল; verified `v0.1.93-alpha-2aca9a5` APK15,035,647bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf32-glitch/Cine-cam/releases/download/v0.1.93-alpha-2aca9a5/CineCam-debug.apk
+
+**ব্যবহারকারীর রিপোর্ট ও কারণ**
+- চারটি আলাদা section দরকার ছিল; আগের build-এ তিনটি ছিল এবং archive-এ `.ccraw`ও মিশে ছিল। এখন: ছবি (প্রতিটি DNG), Clips (শুধু `.ccraw`), Lossless archive (শুধু `.ccraw.bp16`), Report (report/metadata/sequence)।
+- লাল বস্তু সবুজ দেখানোর দুটি কোড-কারণ পাওয়া গেছে: (1) CCRAW fallback-এ CFA হার্ডকোড RGGB, কিন্তু sensor metadata `cfa=1` (GRBG); (2) DNG path-এ AsShotNeutral gain উল্টো (n_r/n_g) ছিল। দুটোই ঠিক করা হয়েছে; এখন metadata/report-এর CFA, neutral, black/white ও ColorMatrix1 ব্যবহৃত হয়।
+- "ছবিগুলো দেখুন" চাপে ফ্রিজ: একসাথে ৮টি ২৫MB payload decode ও পূর্ণ-frame allocation। এখন সর্বোচ্চ2 concurrent decoder, lazy per-file row, 320px thumbnail, sampled-row pread (full payload নয়), 24MiB cache।
+- 7:07-এর capture-এ DNG ছিল না কারণ ওই test-এ DNG sequence বন্ধ ছিল (companion4/4); এটি bug নয়—photos section-এ শুধু DNG থাকবে, ওই capture-এর RAW frame Clips section-এ দেখা যাবে।
+- tiled DNG (TileOffsets/TileByteCounts) সমর্থন যোগ হয়েছে; unsupported DNG-তে CCRAW fallback ও পরিষ্কার error।
+
+পরের device check পুরোনো capture দিয়েই: চার section দেখুন; ছবি→কোনো DNG→রঙ লাল/সবুজ মিলছে কি না; Clips→frame preview; Report→report খোলা/শেয়ার। নতুন capture বা নতুন diagnostic দরকার নেই।
