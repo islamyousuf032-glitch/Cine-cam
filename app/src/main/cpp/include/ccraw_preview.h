@@ -12,7 +12,8 @@ struct CcrawCalibration {
     double neutral[3] = {1, 1, 1};
     double black[4] = {0, 0, 0, 0};
     double white = 65535;
-    const double* cameraToXyz = nullptr;  // 9 row-major values or null
+    const double* matrix = nullptr;  // 9 row-major values or null
+    int matrixMode = 0;              // 0=none, 1=invert (camera->XYZ), 2=direct (ForwardMatrix)
     bool valid = false;
 };
 

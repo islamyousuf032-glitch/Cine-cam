@@ -13,7 +13,9 @@ internal data class FrameCalibration(
 /** Calibration copied from the capture's own metadata/report sidecars; optional. */
 internal data class ClipMetadata(
     val cfa: Int = 0, val sensorOrientation: Int? = null,
-    val whiteLevel: Double = 0.0, val colorMatrix: DoubleArray? = null
+    val whiteLevel: Double = 0.0, val colorMatrix: DoubleArray? = null,
+    /** 0=none, 1=invert (ColorMatrix/Camera2 ColorTransform), 2=direct ForwardMatrix. */
+    val matrixMode: Int = 0
 )
 internal data class SavedClip(
     val id: String, val epochMs: Long, val written: Long, val requested: Int,
@@ -21,7 +23,7 @@ internal data class SavedClip(
     val readback: Boolean?, val dng: Boolean?, val archive: Boolean?,
     val files: List<ClipFile>, val readable: String, val sensorOrientation: Int? = null,
     val metadata: ClipMetadata? = null, val framesCalibration: List<FrameCalibration> = emptyList(),
-    val report: org.json.JSONObject? = null
+    val report: org.json.JSONObject? = null, val frameTimestamps: List<Long> = emptyList()
 )
 internal object ClipCatalog {
     const val MAX_REPORT_BYTES = 65536
@@ -54,19 +56,32 @@ internal object ClipCatalog {
         val cfa = json.optInt("cfa", 0).coerceIn(0, 3)
         val orientation = json.optInt("sensorOrientation", 0).takeIf { it in 90..270 && it % 90 == 0 }
         val white = fraction(json.opt("whiteLevel"))?.takeIf { it > 0 } ?: 0.0
-        val matrixRows = json.optJSONArray("colorTransform1")
-        val matrix = if (matrixRows != null && matrixRows.length() == 3) {
+        fun flatten(rows: org.json.JSONArray?): DoubleArray? {
+            if (rows == null || rows.length() != 3) return null
             val values = DoubleArray(9)
-            var valid = true
             for (row in 0 until 3) {
-                val cells = numbers(matrixRows.optJSONArray(row), 3)
-                if (cells == null) { valid = false; break }
+                val cells = numbers(rows.optJSONArray(row), 3) ?: return null
                 System.arraycopy(cells, 0, values, row * 3, 3)
             }
-            values.takeIf { valid }
-        } else null
-        ClipMetadata(cfa, orientation, white, matrix)
+            return values
+        }
+        // ForwardMatrix1 already expects white-balanced camera values and maps to XYZ D50.
+        val forward = flatten(json.optJSONArray("forwardMatrix1"))
+        val matrix = forward ?: flatten(json.optJSONArray("colorTransform1"))
+        ClipMetadata(cfa, orientation, white, matrix, if (forward != null) 2 else if (matrix != null) 1 else 0)
     } catch (_: Exception) { null }
+
+    private fun frameTimestamps(report: JSONObject): List<Long> {
+        val frames = report.optJSONArray("frames") ?: return emptyList()
+        val out = mutableListOf<Long>()
+        for (i in 0 until frames.length()) {
+            val frame = frames.optJSONObject(i) ?: continue
+            if (!frame.optBoolean("accepted", true)) continue
+            val timestamp = frame.optLong("timestampNs", 0)
+            if (timestamp > 0) out.add(timestamp)
+        }
+        return out
+    }
 
     private fun frameCalibration(report: JSONObject): List<FrameCalibration> {
         val frames = report.optJSONArray("frames") ?: return emptyList()
@@ -113,6 +128,6 @@ internal object ClipCatalog {
         return SavedClip(id, epoch, written, requested, report.optString("reason"), rawBytes,
             archiveBytes, drops, flag(report, "readbackOk"), flag(report, "dngSequenceOk") ?: flag(report, "firstFrameDngOk"),
             archive?.let { flag(it, "ok") }, files, RawReadableReport.text(report), null, null,
-            frameCalibration(report), report)
+            frameCalibration(report), report, frameTimestamps(report))
     }
 }

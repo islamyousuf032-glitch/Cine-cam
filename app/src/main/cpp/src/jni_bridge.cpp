@@ -344,7 +344,7 @@ extern "C" JNIEXPORT jintArray JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeRenderCcrawFrame(JNIEnv* env, jobject, jint fd,
         jint frameIndex, jint maxDimension, jint orientation, jint cfa,
         jdouble neutralR, jdouble neutralG, jdouble neutralB, jdouble white,
-        jdoubleArray black, jdoubleArray matrix) {
+        jdoubleArray black, jdoubleArray matrix, jint matrixMode) {
     CcrawCalibration calibration;
     calibration.cfa = static_cast<int>(cfa);
     calibration.neutral[0] = neutralR;
@@ -364,7 +364,8 @@ Java_com_cinecam_engine_NativeRawEngine_nativeRenderCcrawFrame(JNIEnv* env, jobj
     }
     if (hasBlack) std::copy(blackValues.begin(), blackValues.end(), calibration.black);
     calibration.valid = neutralR > 0 && neutralG > 0 && neutralB > 0 && white > 0 && hasBlack;
-    calibration.cameraToXyz = hasMatrix ? matrixValues.data() : nullptr;
+    calibration.matrix = hasMatrix ? matrixValues.data() : nullptr;
+    calibration.matrixMode = hasMatrix ? static_cast<int>(matrixMode) : 0;
     const auto result = renderCcrawFrame(static_cast<int>(fd), static_cast<int>(frameIndex),
         static_cast<int>(maxDimension), static_cast<int>(orientation), calibration);
     const auto& preview = result.image;

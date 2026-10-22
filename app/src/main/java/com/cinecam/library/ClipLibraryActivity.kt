@@ -50,7 +50,11 @@ private data class PhotoEntry(
     val document: FolderDocument, val target: PreviewTarget
 )
 
-private data class ViewerRequest(val targets: List<Pair<String, PreviewTarget>>, val initial: Int)
+private data class ViewerRequest(
+    val targets: List<Pair<String, PreviewTarget>>, val initial: Int, val timestamps: List<Long> = emptyList()
+)
+
+private const val VIEWER_DIM = 960
 
 /** Read-only four-section browser: DNG photos, CCRAW clips, BP16 archives, reports. */
 class ClipLibraryActivity : ComponentActivity() {
@@ -178,7 +182,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                                 viewer = ViewerRequest(
                                                     photos.filter { it.clip.id == entry.clip.id }
                                                         .map { it.file.exported to it.target },
-                                                    entry.frameIndex
+                                                    entry.frameIndex, entry.clip.frameTimestamps
                                                 )
                                             }) { Text("খুলুন") }
                                             TextButton(onClick = { copyReport(entry.clip) }) { Text("রিপোর্ট কপি") }
@@ -196,7 +200,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                 Text(entry.file.exported)
                                 TextButton(onClick = {
                                     viewer = ViewerRequest(selectedPhotos.map { it.file.exported to it.target },
-                                        entry.frameIndex)
+                                        entry.frameIndex, entry.clip.frameTimestamps)
                                 }) { Text("বড় করে দেখুন (${entry.frameIndex + 1}/${selectedPhotos.size})") }
                             }
                         }
@@ -223,7 +227,8 @@ class ClipLibraryActivity : ComponentActivity() {
                                 Row {
                                     TextButton(onClick = {
                                         val count = (entry.written.takeIf { it > 0 } ?: 1L).coerceAtMost(64L).toInt()
-                                        viewer = ViewerRequest(ccrawTargets(entry, document.uri, count), 0)
+                                        viewer = ViewerRequest(ccrawTargets(entry, document.uri, count), 0,
+                                            entry.frameTimestamps)
                                     }) { Text("frame preview") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, document) }) { Text("শেয়ার") }
                                     TextButton(onClick = { detail = entry.id; tab = Tab.REPORT.name }) { Text("রিপোর্ট") }
@@ -322,7 +327,8 @@ class ClipLibraryActivity : ComponentActivity() {
         val neutral = frame?.let { doubleArrayOf(it.neutralR, it.neutralG, it.neutralB) }
         return PreviewTarget(dng, ccraw, frameIndex,
             clip.sensorOrientation ?: metadata?.sensorOrientation ?: 6,
-            metadata?.cfa ?: 0, neutral, white, black, metadata?.colorMatrix)
+            metadata?.cfa ?: 0, neutral, white, black, metadata?.colorMatrix,
+            metadata?.matrixMode ?: 0)
     }
 
     private fun ccrawTargets(clip: SavedClip, uri: Uri, count: Int): List<Pair<String, PreviewTarget>> =
@@ -363,12 +369,25 @@ class ClipLibraryActivity : ComponentActivity() {
         var index by remember(request) { mutableIntStateOf(initial.coerceIn(0, request.targets.lastIndex)) }
         var bitmap by remember { mutableStateOf<Bitmap?>(null) }
         var failed by remember { mutableStateOf<String?>(null) }
+        var playing by remember(request) { mutableStateOf(false) }
         LaunchedEffect(request, index) {
             bitmap = null; failed = null
-            try { bitmap = PreviewLoader.load(context, request.targets[index].second, 1280) }
+            try { bitmap = PreviewLoader.load(context, request.targets[index].second, VIEWER_DIM) }
             catch (e: CancellationException) { throw e }
             catch (_: OutOfMemoryError) { failed = "এই ছবির জন্য memory যথেষ্ট নয়" }
             catch (e: Throwable) { failed = e.message ?: "preview তৈরি করা যায়নি" }
+            if (failed == null) request.targets.getOrNull(index + 1)?.let { next ->
+                try { PreviewLoader.load(context, next.second, VIEWER_DIM) } catch (_: Throwable) { }
+            }
+        }
+        // Burst playback uses real sensor timestamps, not an invented fixed FPS.
+        LaunchedEffect(playing, index, request) {
+            if (!playing) return@LaunchedEffect
+            val stamps = request.timestamps
+            val stepMs = if (index + 1 < stamps.size && index + 1 < request.targets.size)
+                ((stamps[index + 1] - stamps[index]) / 1_000_000L).coerceIn(50L, 800L) else 400L
+            kotlinx.coroutines.delay(stepMs)
+            index = if (index + 1 < request.targets.size) index + 1 else 0
         }
         Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Surface(Modifier.fillMaxSize(), color = Color.Black) {
@@ -377,6 +396,9 @@ class ClipLibraryActivity : ComponentActivity() {
                         Text("${request.targets[index].first}  (${index + 1}/${request.targets.size})",
                             color = Color.White, style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f))
+                        TextButton(onClick = { playing = !playing }) {
+                            Text(if (playing) "থামান" else "চালান")
+                        }
                         TextButton(onClick = onClose) { Text("বন্ধ") }
                     }
                     Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -389,14 +411,25 @@ class ClipLibraryActivity : ComponentActivity() {
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         TextButton(enabled = index > 0, onClick = { index-- }) { Text("◀ আগের") }
-                        Text("preview; মূল ফাইল বদলায় না", color = Color.Gray,
-                            style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center,
-                            modifier = Modifier.weight(1f))
+                        Text(
+                            if (request.targets.size > 1) "preview • ${spanText(request)}" else "preview; মূল ফাইল বদলায় না",
+                            color = Color.Gray, style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center, modifier = Modifier.weight(1f))
                         TextButton(enabled = index < request.targets.lastIndex, onClick = { index++ }) { Text("পরের ▶") }
                     }
                 }
             }
         }
+    }
+
+    /** Average rate over the real timestamps; this is a burst, not sustained FPS. */
+    private fun spanText(request: ViewerRequest): String {
+        val stamps = request.timestamps
+        if (stamps.size < 2) return "preview; মূল ফাইল বদলায় না"
+        val spanMs = (stamps.last() - stamps.first()) / 1_000_000L
+        if (spanMs <= 0) return "preview; মূল ফাইল বদলায় না"
+        val fps = (stamps.size - 1) * 1000.0 / spanMs
+        return String.format(Locale.ROOT, "%.1f fps burst • %.2f s", fps, spanMs / 1000.0)
     }
 
     private fun mimeOf(name: String) = when (name.substringAfterLast('.')) {

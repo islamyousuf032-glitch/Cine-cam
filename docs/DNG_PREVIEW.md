@@ -60,3 +60,13 @@ Host ASan/UBSan tests synthetic LE/BE uncompressed DNG, RGGB/GRBG channel mappin
 **Tiled DNG:** DngCreator বা অন্য writer strip-এর বদলে tile (322–325) ব্যবহার করলে সেটিও পড়া হয়; tile offset/count ফাইলের ভিতরে ও মাপে বাঁধা। LinearizationTable/JPEG-CFA এখনো প্রত্যাখ্যাত, কিন্তু CCRAW fallback থাকায় preview পাওয়া যায়।
 
 **বিভাগ:** Manage clips-এ এখন চারটি আলাদা tab—ছবি (প্রতিটি DNG আলাদা), Clips (শুধু `.ccraw`), Lossless archive (শুধু `.ccraw.bp16`), Report (report/metadata/sequence sidecar)। আগের মতো কোনো file move/rename/delete নেই।
+
+## v94 — D50 রঙ সংশোধন ও sequence playback
+
+**লাল ভাবের কারণ:** DNG ColorMatrix1/ForwardMatrix1 ডিফাইন করা হয় **XYZ D50** বেসে। v93 পর্যন্ত preview ওই ম্যাট্রিক্সকে D65 sRGB ম্যাট্রিক্স (`3.2406 …`) দিয়ে গুণ করত। D50-এর সাদা D65 ম্যাট্রিক্সে গেলে R≈1.18, G≈0.98, B≈0.72 হয়—অর্থাৎ সব ছবি লাল/ম্যাগেন্টা। এখন Bradford-adapted D50→sRGB (`3.1339 … 1.4052`) ব্যবহৃত হয়।
+
+**ম্যাট্রিক্স নির্বাচন:** থাকলে **ForwardMatrix1 (50964)**—এটি white-balanced camera value→XYZ D50, তাই সরাসরি গুণ; না থাকলে ColorMatrix1 invert; কোনোটিই না থাকলে identity + neutral percentile fallback। CCRAW path-এ metadata-র forwardMatrix1 (mode 2), নাহলে Camera2 colorTransform1 (XYZ→camera, mode 1 invert) ব্যবহৃত হয়।
+
+**Playback:** viewer-এ ▶ চালান—প্রতি frame report-এর বাস্তব `timestampNs` ব্যবধান অনুযায়ী (50–800ms clamp), শেষে loop; নিচে গড় burst fps। এটি ৮-frame burst review; sustained/24fps প্রমাণ নয়। পরের frame prefetch, 960px preview, 40MiB bounded cache।
+
+**পরীক্ষা:** synthetic DNG-তে F23-এর আসল ForwardMatrix1 দিয়ে neutral raw→neutral sRGB যাচাই (পুরোনো D65 ম্যাট্রিক্সে লাল হতো), ColorMatrix fallback, ও frame timestamp monotonicity/forward-matrix preference Kotlin test।

@@ -67,7 +67,7 @@ class NativeRawEngine private constructor() {
     /** Same header layout; verified-CCRAW fallback calibrated from saved capture metadata. */
     external fun nativeRenderCcrawFrame(fd: Int, frameIndex: Int, maxDimension: Int, orientation: Int,
         cfa: Int, neutralR: Double, neutralG: Double, neutralB: Double, white: Double,
-        black: DoubleArray?, matrix: DoubleArray?): IntArray?
+        black: DoubleArray?, matrix: DoubleArray?, matrixMode: Int): IntArray?
     external fun nativePreviewError(): String
     external fun nativeCreateBp16Archive(source: String, destination: String): String
     external fun nativeProbeRaw16Codec(path: String, offset: Long, bytes: Long): String

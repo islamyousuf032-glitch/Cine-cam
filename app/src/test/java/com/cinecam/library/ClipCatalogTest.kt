@@ -35,6 +35,20 @@ class ClipCatalogTest {
         assertEquals(523.0 / 1024.0, first.neutralB, 1e-9)
         assertEquals(64.0, first.black[0], 0.0)
         assertEquals(1023.0, first.white, 0.0)
+        assertEquals(8, clip.frameTimestamps.size)
+        assertTrue(clip.frameTimestamps.zipWithNext().all { (a, b) -> b > a })
+    }
+    @Test fun calibrationMatrixPrefersForwardMatrix() {
+        val metadata = ClipCatalog.parseMetadata(
+            """{"cfa":1,"forwardMatrix1":[["1/1","0/1","0/1"],["0/1","1/1","0/1"],["0/1","0/1","1/1"]],
+                "colorTransform1":[["0/1","1/1","0/1"],["1/1","0/1","0/1"],["0/1","0/1","1/1"]]}""")
+        requireNotNull(metadata)
+        assertEquals(2, metadata.matrixMode)
+        assertEquals(1.0, metadata.colorMatrix!![0], 0.0)
+        val colorOnly = ClipCatalog.parseMetadata(
+            """{"colorTransform1":[["1/2","0/1","0/1"],["0/1","1/1","0/1"],["0/1","0/1","1/1"]]}""")
+        assertEquals(1, colorOnly!!.matrixMode)
+        assertEquals(0.5, colorOnly.colorMatrix!![0], 0.0)
     }
     @Test fun captureCalibrationMetadataIsOptionalAndBounded() {
         val metadata = ClipCatalog.parseMetadata("""{"cfa":1,"sensorOrientation":90,"whiteLevel":1023,

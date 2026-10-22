@@ -199,16 +199,19 @@ CcrawPreviewResult renderCcrawFrame(int fd, int frameIndex, int maxDimension, in
     }
 
     std::array<double, 9> transform{{1, 0, 0, 0, 1, 0, 0, 0, 1}};
-    if (calibration.cameraToXyz != nullptr) {
-        std::array<double, 9> matrix{};
-        for (int i = 0; i < 9; ++i) matrix[i] = calibration.cameraToXyz[i];
-        std::array<double, 9> inverse{};
-        if (invert3(matrix, inverse)) {
-            const std::array<double, 9> xyzToSrgb{{3.2406, -1.5372, -0.4986,
-                                                   -0.9689, 1.8758, 0.0415,
-                                                   0.0557, -0.2040, 1.0570}};
-            multiply3(xyzToSrgb, inverse, transform);
+    if (calibration.matrix != nullptr && calibration.matrixMode != 0) {
+        // DNG matrices use XYZ D50. The D65 sRGB matrix previously pushed previews red.
+        const std::array<double, 9> xyzD50ToSrgb{{3.1338561, -1.6168667, -0.4906146,
+                                                  -0.9787684, 1.9161415, 0.0334540,
+                                                  0.0719453, -0.2289914, 1.4052427}};
+        std::array<double, 9> cameraToXyz{};
+        for (int i = 0; i < 9; ++i) cameraToXyz[i] = calibration.matrix[i];
+        if (calibration.matrixMode == 1) {
+            std::array<double, 9> inverse{};
+            cameraToXyz = invert3(cameraToXyz, inverse) ? inverse
+                                                        : std::array<double, 9>{{1, 0, 0, 0, 1, 0, 0, 0, 1}};
         }
+        multiply3(xyzD50ToSrgb, cameraToXyz, transform);
     }
 
     const int requested = std::clamp(maxDimension, 16, kMaxDimension);

@@ -15,14 +15,14 @@ import kotlinx.coroutines.withContext
 internal data class PreviewTarget(
     val dng: Uri?, val ccraw: Uri?, val frameIndex: Int, val orientation: Int,
     val cfa: Int = 0, val neutral: DoubleArray? = null, val white: Double = 0.0,
-    val black: DoubleArray? = null, val matrix: DoubleArray? = null
+    val black: DoubleArray? = null, val matrix: DoubleArray? = null, val matrixMode: Int = 0
 )
 
 /** Bounded native previews; no full-frame Java RAW buffer and no source modification. */
 internal object PreviewLoader {
     // Two decoders at a time keep large phones responsive; the old unbounded fan-out froze the UI.
     private val permits = Semaphore(2)
-    private val cache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+    private val cache = object : LruCache<String, Bitmap>(40 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
 
@@ -55,7 +55,8 @@ internal object PreviewLoader {
                 return render(context, ccraw) { fd ->
                     engine.nativeRenderCcrawFrame(fd, target.frameIndex, maxDimension, target.orientation,
                         target.cfa, target.neutral?.get(0) ?: 0.0, target.neutral?.get(1) ?: 0.0,
-                        target.neutral?.get(2) ?: 0.0, target.white, target.black, target.matrix)
+                        target.neutral?.get(2) ?: 0.0, target.white, target.black, target.matrix,
+                        target.matrixMode)
                 }
             } catch (e: Exception) {
                 errors.add(e.message ?: "RAW frame preview ব্যর্থ")

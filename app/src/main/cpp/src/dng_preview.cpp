@@ -49,6 +49,7 @@ constexpr uint16_t kTagWhiteLevel = 50717;
 constexpr uint16_t kTagCropOrigin = 50719;
 constexpr uint16_t kTagCropSize = 50720;
 constexpr uint16_t kTagColorMatrix1 = 50721;
+constexpr uint16_t kTagForwardMatrix1 = 50964;
 constexpr uint16_t kTagAsShotNeutral = 50728;
 constexpr uint16_t kTagActiveArea = 50829;
 
@@ -192,6 +193,7 @@ struct RawInfo {
     bool neutral = false;
     std::array<double, 3> asShotNeutral{{1, 1, 1}};
     bool colorMatrix = false;
+    bool forwardMatrix = false;
     std::array<double, 9> matrix{};
     bool crop = false;
     int64_t cropX = 0, cropY = 0, cropW = 0, cropH = 0;
@@ -276,6 +278,12 @@ bool readRawInfo(const Reader& r, const Ifd& ifd, RawInfo& info) {
     if (numberList(r, ifd, kTagColorMatrix1, pattern, 9) && pattern.size() == 9) {
         for (int i = 0; i < 9; ++i) info.matrix[i] = pattern[i];
         info.colorMatrix = true;
+    }
+    // ForwardMatrix1 already maps white-balanced camera values to XYZ D50, which is
+    // more reliable than inverting ColorMatrix1 when both are present.
+    if (numberList(r, ifd, kTagForwardMatrix1, pattern, 9) && pattern.size() == 9) {
+        for (int i = 0; i < 9; ++i) info.matrix[i] = pattern[i];
+        info.forwardMatrix = true;
     }
     std::vector<double> cropOrigin, cropSize;
     if (numberList(r, ifd, kTagCropOrigin, cropOrigin, 2) && cropOrigin.size() == 2 &&
@@ -537,12 +545,20 @@ DngPreview renderDngPreview(const uint8_t* data, size_t size, int maxDimension) 
                  info.asShotNeutral[1] / info.asShotNeutral[2]}};
     }
     std::array<double, 9> transform{{1, 0, 0, 0, 1, 0, 0, 0, 1}};
-    if (info.colorMatrix) {
-        std::array<double, 9> inverse{};
-        const std::array<double, 9> xyzToSrgb{{3.2406, -1.5372, -0.4986,
-                                               -0.9689, 1.8758, 0.0415,
-                                               0.0557, -0.2040, 1.0570}};
-        if (invert3(info.matrix, inverse)) multiply3(xyzToSrgb, inverse, transform);
+    if (info.forwardMatrix || info.colorMatrix) {
+        // DNG matrices are referenced to the D50 white point, so the output matrix must
+        // be the Bradford-adapted D50 -> sRGB transform. Using the D65 matrix here made
+        // every preview noticeably too red/magenta.
+        const std::array<double, 9> xyzD50ToSrgb{{3.1338561, -1.6168667, -0.4906146,
+                                                  -0.9787684, 1.9161415, 0.0334540,
+                                                  0.0719453, -0.2289914, 1.4052427}};
+        std::array<double, 9> cameraToXyz = info.matrix;
+        if (!info.forwardMatrix) {
+            std::array<double, 9> inverse{};
+            if (!invert3(info.matrix, inverse)) cameraToXyz = {{1, 0, 0, 0, 1, 0, 0, 0, 1}};
+            else cameraToXyz = inverse;
+        }
+        multiply3(xyzD50ToSrgb, cameraToXyz, transform);
     }
     const GammaLut lut;
     std::vector<uint32_t> pixels(static_cast<size_t>(outW) * outH);

@@ -292,3 +292,7 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.93
 - tiled DNG (TileOffsets/TileByteCounts) সমর্থন যোগ হয়েছে; unsupported DNG-তে CCRAW fallback ও পরিষ্কার error।
 
 পরের device check পুরোনো capture দিয়েই: চার section দেখুন; ছবি→কোনো DNG→রঙ লাল/সবুজ মিলছে কি না; Clips→frame preview; Report→report খোলা/শেয়ার। নতুন capture বা নতুন diagnostic দরকার নেই।
+
+## v94 — D50 colour fix + burst playback — 2026-10-22
+
+User confirmed four sections/preview/freeze work, but previews skew red. Root cause: DNG matrices are D50-referenced while the preview multiplied them with a D65 sRGB matrix (D50 white → R1.18/G0.98/B0.72). Fix: Bradford-adapted D50→sRGB, prefer ForwardMatrix1, else invert ColorMatrix1; same for CCRAW fallback with metadata forwardMatrix1 / Camera2 colorTransform1. Added burst playback in the viewer using real sensor timestamps (50–800 ms clamp, loop, average burst fps, next-frame prefetch, 40 MiB cache). Synthetic ForwardMatrix neutrality test added. Android CI/device pending.

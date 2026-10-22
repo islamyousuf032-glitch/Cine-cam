@@ -2,6 +2,12 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — সঠিক রঙ (D50) ও burst sequence playback] — 2026-10-22
+- "ছবি লাল বেশি" সমস্যার মূল কারণ: DNG-র ColorMatrix1/ForwardMatrix1 হলো **XYZ D50**, কিন্তু preview সেগুলোকে D65 sRGB ম্যাট্রিক্স দিয়ে গুণ করছিল—তাই মাঝারি রঙ লাল/ম্যাগেন্টা হয়ে যেত। এখন Bradford-adapted D50→sRGB ম্যাট্রিক্স, এবং থাকলে **ForwardMatrix1** (white-balanced camera→XYZ D50) সরাসরি ব্যবহার হয়; না থাকলে ColorMatrix1 invert করা হয়। CCRAW fallback-ও একই পথ ও D50 ম্যাট্রিক্স ব্যবহার করে।
+- CCRAW ক্যালিব্রেশনে metadata-র `forwardMatrix1` অগ্রাধিকার পায়, তারপর Camera2 `colorTransform1` (XYZ→camera, invert করে)। vivo/স্যামসাং-ভেদে DNG tag ভিন্ন হলেও fallback স্বাভাবিক রঙ দেয়।
+- **Burst playback**: viewer-এ চালান/থামান; প্রতিটি frame আসল sensor timestamp অনুযায়ী (50–800ms clamp) এগোয়, শেষে loop; পাশে গড় burst fps ও সময়। পরের frame আগেই decode হয়ে cache-এ থাকে (960px, 40MiB cache)।
+- ফাইল/রিপোর্ট/EXIF/export আচরণ অপরিবর্তিত; এটা ৮-frame burst review, sustained video নয়। Host sanitizer + DNG ForwardMatrix/neutrality test pass; Android CI/device pending।
+
 ## [Unreleased — চারটি বিভাগ, সঠিক রঙ, ফ্রিজসমূহ সমাধান] — 2026-10-22
 - Manage clips চারটি আলাদা section: **ছবি** (প্রতিটি DNG), **Clips** (শুধু `.ccraw`), **Lossless archive** (শুধু `.ccraw.bp16`), **Report** (report/metadata/sequence)।
 - লাল বস্তু সবুজ দেখানোর কারণ ধরা পড়েছে: CCRAW fallback-এ CFA origin হার্ডকোড RGGB ছিল, কিন্তু এই sensor GRBG (`cfa=1`)। এখন capture-এর metadata/report calibration (CFA, neutral, black/white, color matrix) ব্যবহার হয়।

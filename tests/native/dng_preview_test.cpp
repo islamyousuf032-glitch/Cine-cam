@@ -44,8 +44,9 @@ std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_
                            uint16_t blue, uint16_t black, uint16_t white, const uint8_t pattern[4],
                            uint16_t compression = 1, uint16_t photometric = 32803,
                            uint32_t widthOverride = 0, bool truncate = false,
-                           uint32_t neutralR = 1, uint32_t neutralG = 1, uint32_t neutralB = 1) {
-    constexpr size_t kEntries = 15;
+                           uint32_t neutralR = 1, uint32_t neutralG = 1, uint32_t neutralB = 1,
+                           const double* forwardMatrix = nullptr) {
+    const size_t kEntries = forwardMatrix != nullptr ? 16 : 15;
     const size_t cfaOff = 8 + 2 + 12 * kEntries + 4 + 24 + 8;
     Writer w;
     w.little = little;
@@ -76,6 +77,10 @@ std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_
     w.entryTag(p, 50714, 3, 4, static_cast<uint32_t>(blackOff)); p += 12;
     w.entryTag(p, 50717, 3, 1, white); p += 12;
     w.entryTag(p, 50728, 5, 3, static_cast<uint32_t>(neutralOff)); p += 12;
+    const size_t matrixOff = cfaOff + static_cast<size_t>(width) * height * 2;
+    if (forwardMatrix != nullptr) {
+        w.entryTag(p, 50964, 10, 9, static_cast<uint32_t>(matrixOff)); p += 12;
+    }
     w.u32(p, 0);
     const uint32_t neutrals[3] = {neutralR, neutralG, neutralB};
     for (int i = 0; i < 3; ++i) {
@@ -88,6 +93,15 @@ std::vector<uint8_t> build(bool little, uint32_t width, uint32_t height, uint16_
             const uint8_t channel = pattern[(y % 2) * 2 + (x % 2)];
             const uint16_t value = channel == 0 ? red : (channel == 1 ? green : blue);
             w.u16(cfaOff + (static_cast<size_t>(y) * width + x) * 2, value);
+        }
+    }
+    if (forwardMatrix != nullptr) {
+        w.bytes.resize(matrixOff + 9 * 8);
+        for (int i = 0; i < 9; ++i) {
+            const long numerator = std::lround(forwardMatrix[i] * 100000.0);
+            w.u32(matrixOff + i * 8, static_cast<uint32_t>(numerator < 0 ? -numerator : numerator));
+            w.u32(matrixOff + i * 8 + 4, 100000);
+            if (numerator < 0) w.u32(matrixOff + i * 8, static_cast<uint32_t>(numerator));
         }
     }
     if (truncate) w.bytes.resize(w.bytes.size() - 97);
@@ -171,6 +185,21 @@ int main() {
         for (size_t i = 0; i < preview.argb.size(); ++i) expectPixel(preview, i, linR, linG, linB);
     }
 
+    {
+        // Real F23 ForwardMatrix1 maps white-balanced camera values to XYZ D50.
+        // D50 white must render neutral sRGB; the old D65 matrix turned this reddish.
+        const double forward[9] = {823.0 / 1024, 79.0 / 1024, 85.0 / 1024,
+                                   177.0 / 1024, 1115.0 / 1024, -67.0 / 256,
+                                   -305.0 / 1024, -513.0 / 1024, 1663.0 / 1024};
+        const auto file = build(true, 16, 16, 900, 900, 900, 0, 1023, rggb, 1, 32803, 0, false, 1, 1, 1, forward);
+        const auto preview = renderDngPreview(file.data(), file.size(), 16);
+        assert(preview.ok);
+        for (uint32_t pixel : preview.argb) {
+            const int r = (pixel >> 16) & 0xff, g = (pixel >> 8) & 0xff, b = pixel & 0xff;
+            assert(std::abs(r - g) <= 2 && std::abs(g - b) <= 2);
+            assert(r > 225);
+        }
+    }
     {
         // White balance: raw levels proportional to AsShotNeutral must render neutral.
         const auto file = build(true, 16, 16, 500, 1000, 250, 0, 65535, rggb, 1, 32803, 0, false, 2, 4, 1);
