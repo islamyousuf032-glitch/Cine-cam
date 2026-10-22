@@ -27,6 +27,17 @@
 #endif
 
 using namespace cinecam;
+// Bulk reads keep byte-exact fixture comparison cheap on sanitizer ARM runners.
+bool sameFiles(const char* a, const char* b) {
+    std::ifstream left(a, std::ios::binary), right(b, std::ios::binary);
+    if (!left || !right) return false;
+    std::array<char, 65536> x{}, y{};
+    do {
+        left.read(x.data(), x.size()); right.read(y.data(), y.size());
+        if (left.gcount() != right.gcount() || std::memcmp(x.data(), y.data(), left.gcount()) != 0) return false;
+    } while (left.gcount());
+    return left.eof() && right.eof();
+}
 RawFrame pooled(MemoryPool& pool, int number) {
     RawFrame f;
     f.poolSlotIndex = pool.acquire();
@@ -445,9 +456,7 @@ int main() {
             assert(::lseek(fd, 0, SEEK_SET) == 0); // FD borrowed, never closed by copier
             assert(!copyExportFile(source, fd).ok); // nonempty destination protected
             ::close(fd);
-            std::ifstream original(source, std::ios::binary), exported(path, std::ios::binary);
-            assert(std::vector<char>((std::istreambuf_iterator<char>(original)), {}) ==
-                   std::vector<char>((std::istreambuf_iterator<char>(exported)), {}));
+            assert(sameFiles(source, path.c_str()));
         }
         const int partial = ::open("build/native-tests/export-partial.bin", O_CREAT | O_TRUNC | O_RDWR, 0600);
         assert(partial >= 0);
@@ -460,9 +469,7 @@ int main() {
         const auto mixed = copyExportFile(source, partial, true, injected);
         assert(mixed.ok && mixed.kernelBytes == 13 && mixed.bufferedBytes == originalSize - 13);
         ::close(partial);
-        { std::ifstream original(source, std::ios::binary), exported("build/native-tests/export-partial.bin", std::ios::binary);
-          assert(std::vector<char>((std::istreambuf_iterator<char>(original)), {}) ==
-                 std::vector<char>((std::istreambuf_iterator<char>(exported)), {})); }
+        assert(sameFiles(source, "build/native-tests/export-partial.bin"));
         const int failed = ::open("build/native-tests/export-failed.bin", O_CREAT | O_TRUNC | O_RDWR, 0600);
         assert(failed >= 0);
         const auto noSpace = +[](int, int, off_t*, size_t) -> ssize_t { errno = ENOSPC; return -1; };

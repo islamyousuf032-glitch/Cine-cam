@@ -223,3 +223,6 @@ Evidence docs/device-tests/F23-v79/full-eight-frames: চার sidecar cross-ch
 ## Native export implementation — 2026-10-22
 
 User কাজ/test iteration দ্রুত করার অনুরোধ করেছেন। Related work এক build-এ: C++ sendfile fast path + bounded256KiB exact-offset fallback + explicit per-file destinationfsync + JSON/readable per-file timings/backend bytes/errors + in-app progress। Flat layout/IS_PENDING/collision/rollback/report-last/source-retention/RAW+DNG+archive/full verification unchanged। আগের output explicitfsync ছিল না; এতে latency বাড়তে পারে, speedup claim নয়। docs/NATIVE_EXPORT.md-এ contract/limitations। Local native sanitizers এবং injected partial/EINTR/unsupported/ENOSPC/safety/exact-byte tests pass, archive reference/restore suites pass; new Kotlin readable test। Android CI/release/physical provider timing pending। Branch same, no merge/close।
+
+### Export CI watchdog follow-up
+প্রথম native-export CI39745023805-এ x86 pass, ARM sanitizer step exit124 (30s watchdog); Android build শুরু হয়নি, broken APK publish হয়নি। Restricted log host-এর কারণে full trace পাওয়া যায়নি; annotation দিয়ে timeout নিশ্চিত। Fixture byte-iterator comparison bulk64KiB reads-এ বদল এবং expanded sanitizer suite watchdog60s করা হয়েছে (finite, assertions unchanged)। ARM root cause/phone performance সম্পর্কে অনুমান নয়; নতুন run যাচাই করতে হবে।
