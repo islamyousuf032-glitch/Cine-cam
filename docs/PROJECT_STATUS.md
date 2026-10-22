@@ -307,3 +307,10 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.94
 ## v95 — MP4 render from saved burst — 2026-10-22
 
 User confirmed colours and burst playback now correct (3.0 fps shown from real timestamps). Next milestone implemented: silent H.264 MP4 render from the saved burst's native preview frames via MediaCodec/MediaMuxer, real sensor-timestamp PTS, NV12/I420 capability selection, MediaStore flat Download/CineCam naming (API29+) or app-specific legacy folder, pending/publication and failure cleanup, in-app progress and share. Sources untouched. JVM unit tests cover YUV conversion and scaling/timestamp rules; Android encoder/playback verification pending.
+
+### v95 delivery — MP4 render
+CI `39803625141`/95 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `d089067e1ca57be36d41aefb52b43a5afbc2ec52`। Release `v0.1.95-alpha-d089067`, APK 15,068,415 bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.95-alpha-d089067/CineCam-debug.apk
+
+Device check (পুরোনো capture): Clips→`MP4` বা ছবি-details→`MP4 তৈরি করুন (8)`। সফল হলে `Download/CineCam/CineCam_<capture>_render_<epoch>.mp4` এবং **ভিডিও শেয়ার**; ফোনের gallery/player-এ চালিয়ে দেখা যাবে। Encoder/playback physical verification এখনো বাকি; ব্যর্থ হলে app-এর দেখানো error text জানাতে হবে (এতে encoder capability/image layout বোঝা যাবে)।
