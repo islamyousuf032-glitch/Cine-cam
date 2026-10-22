@@ -70,11 +70,8 @@ jobs:
         run: |
           set +e
           test -f build.log || exit 0
-          line=$(grep -n -m1 -E "^[[:space:]]+at org\.gradle" build.log | cut -d: -f1 || true)
-          [ -z "${line:-}" ] && exit 0
-          start=$((line - 10)); [ "$start" -lt 1 ] && start=1
-          sed -n "${start},$((line - 1))p" build.log | while IFS= read -r text; do
-            echo "::error title=Gradle-context::${text}"
+          grep -a -m 12 "e: file" build.log | sed -E 's/\x1b\[[0-9;]*m//g' | while IFS= read -r text; do
+            echo "::error title=Kotlin::${text}"
           done
       - name: Upload diagnostics
         if: always()
