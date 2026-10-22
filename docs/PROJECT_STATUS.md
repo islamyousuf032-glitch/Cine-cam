@@ -215,3 +215,7 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.79
 ## v79 প্রথম device ফল — চার frame-এ user stop
 
 2026-10-22: docs/device-tests/F23-v79-এ চার original sidecar সংরক্ষিত/cross-check সফল। reason=user stop,target8/submitted5/written4/nativeDrop0;readback/DNG4/archive byteExact সফল,10flat names/manifest mappings ঠিক। Source99,878,880→57,194,312bytes (42.7363% ছোট);1525blocks/1526writes প্রত্যাশিতcoalescedB+1। Archive690.01ms+verify316.21ms,export8.375s/257MB; RAW fsync2.539s এখনও আছে। Four-frame result8-frame performance proof নয়; no sustained FPS/causal speedup claim। Next: একই v79 APK-তে automatic8-request completion পর্যন্ত অপেক্ষা, আগে stop নয়। এই evidence update-এ code/APK/branch merge পরিবর্তন নেই।
+
+## v79 পূর্ণ8-frame automatic completion নিশ্চিত — 2026-10-22
+
+Evidence docs/device-tests/F23-v79/full-eight-frames: চার sidecar cross-check;reason=paced request limit reached,8submitted/matched/written,0failed/drop;readback8/DNG8/archivebyteExacttrue;14flat names/PTS/sourceFrameNumber মিলে গেছে।199,757,664→116,067,848bytes(41.8957%ছোট);3049blocks/3050calls প্রত্যাশিতB+1। Archive3988.74ms,তার মধ্যে pack397.97/write230.53/fsync3249.69ms;verify632.26ms। DNG5843.29ms/export23690.03ms for515,825,782bytes। Source retained, no net disk/FPS/causal performance claim। Coalesced full8-frame validation milestone complete; আবার একই test বা নতুন APK চাওয়া হয়নি। পরের candidate export-copy/flush review; implementation এখনও শুরু নয়। এই turn docs/evidence only, code/merge/close unchanged।

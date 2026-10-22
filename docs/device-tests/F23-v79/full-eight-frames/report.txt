@@ -1,0 +1,46 @@
+CineCam — সহজ পরীক্ষার রিপোর্ট
+Capture: CineCam_1792655632626_446ac4f9
+Mode: paced
+মেলা frame: 8 / 8
+লেখা frame: 8
+Native drop: 0
+Saved RAW যাচাই: সফল
+DNG mode: all-saved-frames
+DNG sequence: সফল; 8 frame
+Lossless codec byte-exact পরীক্ষা: সফল
+প্রথম saved frame: 24969600 bytes → পরীক্ষামূলক packed 13905048 bytes
+শুধু codec probe; RAW/DNG ফাইল compressed নয়, recording performance proof নয়।
+Lossless archive: সফল ও byte-exact যাচাই
+Archive bytes: 116067848; original bytes: 199757664
+Archive encode/write: 3988.74 ms; পুরো-file verify: 632.26 ms
+Archive write: record header+payload একসঙ্গে; short write/EINTR হলে retry, fsync বজায়।
+Archive stage (ms): read 85.89; encode 397.97; CRC 20.77
+Archive storage (ms): write 230.53; fsync 3249.69; close 0.07; সর্বোচ্চ এক write 14.31
+Archive blocks: 3049; read/write syscall: 3049/3050
+এগুলো encode-phase wall time; পুরো-file verify আলাদা, CPU-only benchmark নয়।
+মূল RAW/DNG রাখা হয়েছে; archive অতিরিক্ত file, playable video নয়।
+সময় (ms; একে অন্যের সঙ্গে সব যোগ করা যাবে না):
+Capture শুরু→writer drain: 5905.67; এর ভিতরে capture window 3027.54
+RAW storage: write 2898.25; fsync 844.64; সর্বোচ্চ এক write 1553.40
+Paced buffer অপেক্ষা: 0.00; এটি capture window-এর অংশ, drop নয়।
+DNG sequence তৈরি: 5843.29
+Export data copy: 23690.03; 515825782 bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)
+RAW file bytes: 199757664
+গন্তব্য: Download/CineCam
+একই Capture prefix-এর ফাইলগুলো একই পরীক্ষার অংশ। পুরোনো capture মুছে ফেলা হয়নি।
+এটি সীমিত RAW/DNG পরীক্ষা; fixed FPS, MP4, audio বা continuous video নয়।
+ফাইলের তালিকা:
+CineCam_1792655632626_446ac4f9_capture.ccraw
+CineCam_1792655632626_446ac4f9_capture.ccraw.bp16
+CineCam_1792655632626_446ac4f9_frame_000001.dng
+CineCam_1792655632626_446ac4f9_frame_000002.dng
+CineCam_1792655632626_446ac4f9_frame_000003.dng
+CineCam_1792655632626_446ac4f9_frame_000004.dng
+CineCam_1792655632626_446ac4f9_frame_000005.dng
+CineCam_1792655632626_446ac4f9_frame_000006.dng
+CineCam_1792655632626_446ac4f9_frame_000007.dng
+CineCam_1792655632626_446ac4f9_frame_000008.dng
+CineCam_1792655632626_446ac4f9_metadata.json
+CineCam_1792655632626_446ac4f9_report.json
+CineCam_1792655632626_446ac4f9_report.txt
+CineCam_1792655632626_446ac4f9_sequence.json
