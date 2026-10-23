@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.os.StatFs
+import com.cinecam.camera.CcrawVerifier
 import com.cinecam.engine.NativeRawEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
