@@ -317,4 +317,11 @@ Device check (পুরোনো capture): Clips→`MP4` বা ছবি-detail
 
 ## v96 — wrong-clip MP4 & archive listing fixes — 2026-10-23
 
-Device feedback: new capture's MP4 showed the previously rendered clip; Lossless archive showed .ccraw rows. Root causes: (1) preview cache key omitted the CCRAW URI, so every clip's frame N shared one cache entry; (2) sections were built from saved-report mappings rather than actual files. Fixed with PreviewCacheKey (DNB/CCRAW URI+frame+calibration+size) and document-derived sections (dng / ccraw / ccraw.bp16 / sidecars), plus CCRAW header frame counts when reports are missing and a rendered-MP4 list showing each video's capture id. New JVM tests for cache-key uniqueness and header parsing. Android CI/device verification pending.
+Device feedback: new capture's MP4 showed the previously rendered clip; Lossless archive showed .ccraw rows. Root causes: (1) preview cache key omitted the CCRAW URI, so every clip's frame N shared one cache entry; (2) sections were built from saved-report mappings rather than actual files. Fixed with PreviewCacheKey (DNG/CCRAW URI+frame+calibration+size) and document-derived sections (dng / ccraw / ccraw.bp16 / sidecars), plus CCRAW header frame counts when reports are missing and a rendered-MP4 list showing each video's capture id. New JVM tests for cache-key uniqueness and header parsing. Android CI/device verification pending.
+
+### v97 delivery — library fix build
+CI `39910039682`/97 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `6123e1bb2b6f5064315222820159474ee24374f0`। Release `v0.1.97-alpha-6123e1b`, APK 15,084,799 bytes + SHA256SUMS.txt। প্রথম build (06a9161) Kotlin compile-এ ব্যর্থ হয়েছিল (`InputStream.readBytes(Int)` নেই); report পড়া এখন 64 KiB bounded buffer দিয়ে String-এ decode হয়।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.97-alpha-6123e1b/CineCam-debug.apk
+
+Device check: Clips-এ 23 Oct capture → `MP4` → ভিডিওতে ওই capture-এর 8 frame দেখা উচিত (পুরোনো clip-এর নয়); এরপর 22 Oct capture-এ গিয়ে আবার render করলে সেটির নিজের frame আসবে। Archive-.bp16 ট্যাবে শুধু `.ccraw.bp16` ফাইল থাকবে, কোনো `.ccraw` নয়। App থেকে বেরিয়ে আবার ঢুকলে তালিকা নিজে থেকে refresh হবে।
