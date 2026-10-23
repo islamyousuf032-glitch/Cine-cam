@@ -47,6 +47,22 @@ import java.text.DateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Reads at most [ClipCatalog.MAX_REPORT_BYTES]; a report is never loaded whole into memory. */
+private fun readReportText(context: Context, uri: Uri): String? = try {
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        val buffer = ByteArray(ClipCatalog.MAX_REPORT_BYTES)
+        var total = 0
+        while (total < buffer.size) {
+            val read = input.read(buffer, total, buffer.size - total)
+            if (read <= 0) break
+            total += read
+        }
+        if (total == 0) null else String(buffer, 0, total, Charsets.UTF_8)
+    }
+} catch (_: Exception) {
+    null
+}
+
 private enum class Tab(val label: String) {
     PHOTOS("ছবি"), CLIPS("Clips"), ARCHIVE("Archive (.bp16)"), REPORT("Report")
 }
@@ -177,7 +193,7 @@ class ClipLibraryActivity : ComponentActivity() {
                     val document = documents[name] ?: continue
                     if (document.bytes != null && document.bytes > ClipCatalog.MAX_REPORT_BYTES) continue
                     try {
-                        val text = context.contentResolver.openInputStream(document.uri)?.use { it.readBytes(ClipCatalog.MAX_REPORT_BYTES) }
+                        val text = readReportText(context, document.uri)
                         if (text != null) ClipCatalog.parseMetadata(text)?.let { metaMap[id] = it }
                     } catch (_: Exception) { }
                 }
