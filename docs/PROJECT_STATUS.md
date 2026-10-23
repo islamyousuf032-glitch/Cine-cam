@@ -364,3 +364,10 @@ Device check: Lossless archive tab → কোনো `.ccraw.bp16` → **Restore*
 ## v102 — faster finalize/export + pipeline depth — 2026-10-23
 
 Device session CineCam_1792758475596_d1c3faae (40/50 frames, 3.94 fps, 0 drops, 998 MB CCRAW) showed the capture path is healthy but finalize is expensive: 30.0 s of DNG sequence writing and 134.0 s of export for 2.55 GB, dominated by one fsync per DNG (~1.5 s each). Fixes: export per-file cap raised from 1 GiB to 8 GiB (a long CCRAW above 1 GiB would previously fail to export), bounded 3-worker parallel copies and DNG generation with cleanup that waits for workers, 1 MiB buffered DNG streams, an opt-in pipeline depth 2 for RAW requests (still ≤2 acquired Images, one driver slot free), and MP4 render progress with elapsed/ETA. Native + JVM tests added; device verification pending.
+
+### v102 delivery — faster finalize/export
+CI `39956492226`/107 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `452630d`। Release `v0.1.107-alpha-452630d`, APK 15,150,339 bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.107-alpha-452630d/CineCam-debug.apk
+
+Device check (পুরোনো capture-ই যথেষ্ট, নতুন capture ছাড়াও চলে): Camera → RAW session → **Pipeline depth 2** বেছে ১০s × ৫ fps → report-এ `আসল rate` আগের 3.94 fps থেকে বাড়ে কি না দেখুন। আর Manage clips-এ কোনো render করা MP4 → আবার MP4 → progress-এ elapsed/আনুমানিক সময় দেখা যাবে। Export সময় কমেছে কি না দেখতে একই ৪০-frame capture আবার তৈরি করতে হবে (নতুন capture লাগবে)।
