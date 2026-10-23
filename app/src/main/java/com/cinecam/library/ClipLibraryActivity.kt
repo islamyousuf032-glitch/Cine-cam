@@ -14,6 +14,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -37,7 +39,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.cinecam.render.Mp4Renderer
+import com.cinecam.render.RenderOptions
 import com.cinecam.render.RenderOutput
+import com.cinecam.render.RenderPacing
+import com.cinecam.render.RenderQuality
+import com.cinecam.render.RenderResolution
 import com.cinecam.ui.theme.CineCamTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -106,6 +112,16 @@ class ClipLibraryActivity : ComponentActivity() {
         var rendering by remember { mutableStateOf(false) }
         var renderStatus by remember { mutableStateOf<String?>(null) }
         var renderedVideo by remember { mutableStateOf<Pair<String, RenderOutput>?>(null) }
+        var pendingRender by remember { mutableStateOf<Pair<String, List<Pair<String, PreviewTarget>>>?>(null) }
+        var renderResolution by rememberSaveable {
+            mutableStateOf(prefs.getString("render_res", null) ?: RenderResolution.HD.name)
+        }
+        var renderQuality by rememberSaveable {
+            mutableStateOf(prefs.getString("render_quality", null) ?: RenderQuality.STANDARD.name)
+        }
+        var renderPacing by rememberSaveable {
+            mutableStateOf(prefs.getString("render_pacing", null) ?: RenderPacing.REAL.name)
+        }
         var headerFrames by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         var extraMetadata by remember { mutableStateOf<Map<String, ClipMetadata>>(emptyMap()) }
         val scope = rememberCoroutineScope()
@@ -236,15 +252,16 @@ class ClipLibraryActivity : ComponentActivity() {
                     ccraw = doc.document.uri, meta = metaFor(doc.clipId), clip = clip)
             }
         }
-        fun renderVideo(clipId: String, targets: List<Pair<String, PreviewTarget>>) {
+        fun renderVideo(clipId: String, targets: List<Pair<String, PreviewTarget>>,
+                        options: RenderOptions = RenderOptions()) {
             if (rendering || targets.isEmpty()) return
             rendering = true
             renderedVideo = null
-            renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে • $clipId"
+            renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে • $clipId • লম্বা দিক ≤ ${options.maxDimension} px"
             scope.launch {
                 try {
                     val output = Mp4Renderer.render(context.applicationContext, clipId,
-                        targets.map { it.second }, timestampsFor(clipById[clipId], targets.size)) { done, total ->
+                        targets.map { it.second }, timestampsFor(clipById[clipId], targets.size), options) { done, total ->
                         withContext(Dispatchers.Main) { renderStatus = "ভিডিও রেন্ডার $done/$total • $clipId" }
                     }
                     renderedVideo = clipId to output
@@ -258,6 +275,57 @@ class ClipLibraryActivity : ComponentActivity() {
                     rendering = false
                 }
             }
+        }
+
+        pendingRender?.let { request ->
+            val (clipId, targets) = request
+            AlertDialog(
+                onDismissRequest = { if (!rendering) pendingRender = null },
+                title = { Text("ভিডিও সেটিংস") },
+                text = {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("$clipId • ${targets.size} frame", style = MaterialTheme.typography.bodySmall)
+                        Text("রেজোলিউশন", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RenderResolution.values().forEach { option ->
+                                FilterChip(selected = renderResolution == option.name,
+                                    onClick = { renderResolution = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        Text("কোয়ালিটি (ফাইল সাইজ বনাম বিশদ)", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RenderQuality.values().forEach { option ->
+                                FilterChip(selected = renderQuality == option.name,
+                                    onClick = { renderQuality = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        Text("frame-এর সময়", style = MaterialTheme.typography.labelLarge)
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            RenderPacing.values().forEach { option ->
+                                FilterChip(selected = renderPacing == option.name,
+                                    onClick = { renderPacing = option.name }, label = { Text(option.label) })
+                            }
+                        }
+                        Text("আসল = sensor-এর নিজের burst timing; সমান = প্রতিটি frame সমান সময়ে (ছোট clip)। " +
+                            "লম্বা দিক ≤ ${RenderResolution.of(renderResolution).maxDimension} px, শব্দ নেই।",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = !rendering, onClick = {
+                        prefs.edit().putString("render_res", renderResolution)
+                            .putString("render_quality", renderQuality)
+                            .putString("render_pacing", renderPacing).apply()
+                        val options = RenderOptions.of(RenderResolution.of(renderResolution),
+                            RenderQuality.of(renderQuality), RenderPacing.of(renderPacing))
+                        pendingRender = null
+                        renderVideo(clipId, targets, options)
+                    }) { Text("তৈরি করুন") }
+                },
+                dismissButton = {
+                    TextButton(enabled = !rendering, onClick = { pendingRender = null }) { Text("বাতিল") }
+                }
+            )
         }
 
         LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -347,7 +415,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                         entry.frameIndex, clipById[entry.clipId]?.frameTimestamps ?: emptyList())
                                 }) { Text("বড় করে দেখুন (${entry.frameIndex + 1}/${selectedPhotos.size})") }
                                 TextButton(enabled = !rendering, onClick = {
-                                    renderVideo(entry.clipId, selectedPhotos.map { it.file to it.target })
+                                    pendingRender = entry.clipId to selectedPhotos.map { it.file to it.target }
                                 }) { Text(if (rendering) "রেন্ডার…" else "MP4 তৈরি করুন (${selectedPhotos.size})") }
                             }
                         }
@@ -378,7 +446,7 @@ class ClipLibraryActivity : ComponentActivity() {
                                             clip?.frameTimestamps ?: emptyList())
                                     }) { Text("frame preview") }
                                     TextButton(enabled = count > 0 && !rendering, onClick = {
-                                        renderVideo(doc.clipId, targetsFor(doc, count))
+                                        pendingRender = doc.clipId to targetsFor(doc, count)
                                     }) { Text(if (rendering) "রেন্ডার…" else "MP4") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, doc.document) }) { Text("শেয়ার") }
                                     TextButton(enabled = clip != null, onClick = {

@@ -29,13 +29,14 @@ internal data class RenderOutput(
 internal object Mp4Renderer {
     suspend fun render(
         context: Context, clipId: String, targets: List<PreviewTarget>, sensorNs: List<Long>,
+        options: RenderOptions = RenderOptions(),
         onProgress: suspend (Int, Int) -> Unit
     ): RenderOutput = withContext(Dispatchers.IO) {
         require(targets.isNotEmpty()) { "রেন্ডার করার frame নেই" }
         require(targets.size == sensorNs.size) { "Frame ও timestamp সংখ্যা মেলে না" }
-        val first = PreviewLoader.load(context, targets.first(), VideoRenderPlan.MAX_DIMENSION)
-        val (width, height) = VideoRenderPlan.dimensions(first.width, first.height)
-        val timestamps = VideoRenderPlan.timestampsUs(sensorNs)
+        val first = PreviewLoader.load(context, targets.first(), options.maxDimension)
+        val (width, height) = VideoRenderPlan.dimensions(first.width, first.height, options.maxDimension)
+        val timestamps = VideoRenderPlan.timestampsUs(sensorNs, options.constantFps)
         val fps = VideoRenderPlan.nominalFps(timestamps)
         val name = "CineCam_${clipId}_render_${System.currentTimeMillis()}.mp4"
 
@@ -59,7 +60,7 @@ internal object Mp4Renderer {
                 val descriptor = context.contentResolver.openFileDescriptor(inserted, "w")
                     ?: error("Video output খোলা যায়নি")
                 descriptor.use { muxer = MediaMuxer(it.fileDescriptor, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4) }
-                layout = createEncoder(width, height, fps) { codec = it }
+                layout = createEncoder(width, height, fps, options.bitsPerPixel) { codec = it }
             } else {
                 val directory = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
                     ?: error("Video storage পাওয়া যায়নি"), "CineCam")
@@ -67,7 +68,7 @@ internal object Mp4Renderer {
                 val output = File(directory, name)
                 file = output
                 muxer = MediaMuxer(output.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-                layout = createEncoder(width, height, fps) { codec = it }
+                layout = createEncoder(width, height, fps, options.bitsPerPixel) { codec = it }
             }
             val activeCodec = requireNotNull(codec)
             val activeMuxer = requireNotNull(muxer)
@@ -106,7 +107,7 @@ internal object Mp4Renderer {
                 }
             }
             for (index in targets.indices) {
-                val bitmap = PreviewLoader.load(context, targets[index], VideoRenderPlan.MAX_DIMENSION)
+                val bitmap = PreviewLoader.load(context, targets[index], options.maxDimension)
                 val scaled = scale(bitmap)
                 val pixels = IntArray(width * height)
                 scaled.getPixels(pixels, 0, width, 0, 0, width, height)
@@ -168,7 +169,8 @@ internal object Mp4Renderer {
         }
     }
 
-    private fun createEncoder(width: Int, height: Int, fps: Int, assign: (MediaCodec) -> Unit): YuvLayout {
+    private fun createEncoder(width: Int, height: Int, fps: Int, bitsPerPixel: Int,
+                             assign: (MediaCodec) -> Unit): YuvLayout {
         val codec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
         assign(codec)
         val capabilities = codec.codecInfo.getCapabilitiesForType(MediaFormat.MIMETYPE_VIDEO_AVC)
@@ -186,7 +188,7 @@ internal object Mp4Renderer {
         else MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Planar
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, colorFormat)
-            setInteger(MediaFormat.KEY_BIT_RATE, (width * height * 4).coerceIn(2_000_000, 12_000_000))
+            setInteger(MediaFormat.KEY_BIT_RATE, VideoRenderPlan.bitrate(width, height, bitsPerPixel))
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }

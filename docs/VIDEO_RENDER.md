@@ -33,3 +33,19 @@
 **কারণ ২ (section):** list report-এ থাকা mapping-এর উপর নির্ভর করত। report/metadata না মিললে বা পুরোনো হলে archive section-এ `.ccraw` ঢুকে যেত। এখন প্রতিটি section সরাসরি folder-এর ফাইল নাম দিয়ে তৈরি হয়; Archive-এ কেবল `.ccraw.bp16`, Clips-এ কেবল `.ccraw`।
 
 **বাড়তি:** report না থাকলেও CCRAW header থেকে width/height/frame সংখ্যা পড়া যায়; Clips-এ রেন্ডার করা MP4-এর তালিকা (কোন capture-এর ভিডিও) দেখা যায়।
+
+## v98 — render settings (resolution / quality / pacing)
+
+Before encoding, the **MP4** button now opens **ভিডিও সেটিংস**:
+
+| ধাপ | অপশন | মানে |
+|---|---|---|
+| রেজোলিউশন | 540p / 720p / 1080p | video-র লম্বা দিক যথাক্রমে 960 / 1280 / 1920 px; source ছোট হলে **upscale হয় না** |
+| কোয়ালিটি | ছোট / স্বাভাবিক / উচ্চ | encoder bitrate = width×height×2 / ×4 / ×8, clamp **2–20 Mbps** |
+| frame-এর সময় | আসল / সমান ১০ fps | আসল = sensor timestamps অনুযায়ী burst-এর নিজের গতি; সমান = প্রতিটি frame সমান 100ms ব্যবধানে (ছোট, স্থির clip) |
+
+- নির্বাচন SharedPreferences-এ থাকে; পরের রেন্ডারে একই অপশন আগে থেকে বাছা থাকে।
+- Frame decode এখন নির্বাচিত `maxDimension`-এ হয় (আগে সবসময় 1280), তাই 540p রেন্ডার দ্রুত ও হালকা, 1080p-এ বেশি বিশদ।
+- PTS নিয়ম অপরিবর্তিত: প্রথম frame 0, ন্যূনতম 33.333 ms ব্যবধান, duplicate PTS নয়; সমান-১০fps মোডেও এই minima প্রযোজ্য।
+- bitrate clamp বদলেছে: আগে সর্বোচ্চ 12 Mbps, এখন quality-নির্ভর সর্বোচ্চ 20 Mbps; ন্যূনতম 2 Mbps আগের মতোই।
+- `RenderOptionsTest` ও বর্ধিত `VideoRenderPlanTest` presets, scaling, bitrate, pacing যাচাই করে (JVM; Android encoder এখনো ফোনে যাচাই বাকি)।

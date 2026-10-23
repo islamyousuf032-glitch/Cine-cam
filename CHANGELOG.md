@@ -2,6 +2,12 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — রেন্ডার quality/speed অপশন] — 2026-10-23
+- **MP4** চাপলে এখন "ভিডিও সেটিংস" ডায়ালগ: **রেজোলিউশন** (540p / 720p / 1080p — লম্বা দিক 960/1280/1920 px), **কোয়ালিটি** (ছোট / স্বাভাবিক / উচ্চ = 2/4/8 bits-per-pixel) এবং **frame-এর সময়** (আসল sensor burst timing বা সমান ১০ fps)।
+- একই সেটিংস পরেরবারের জন্য মনে রাখা হয় (SharedPreferences), তাই বারবার বাছতে হয় না।
+- bitrate এখন নির্বাচিত quality অনুযায়ী 2–20 Mbps-এর মধ্যে encoder-safe clamp; 1080p-তেও বড় আকারের অকারণ ফোলা ফাইল হয় না। মূল `.ccraw`/`.dng`/archive-এ কোনো পরিবর্তন নেই।
+- `VideoRenderPlan`/`RenderOptions` pure-Kotlin unit tests: preset mapping, per-preset scaling (কোনো upscale নয়), bitrate clamp, সমান-ব্যবধান PTS, সীমার বাইরের মান rejection।
+
 ## [Unreleased — ভুল ক্লিপের ভিডিও ও archive section সংশোধন] — 2026-10-23
 - **মূল বাগ:** preview cache key-তে `.ccraw` container URI ছিল না; CCRAW frame-এর DNG URI null হওয়ায় সব clip-এর একই frame index একই cache entry পেত। ফলে নতুন capture-এর MP4 রেন্ডার করলে **আগের clip-এর ছবি** আসত। এখন key-তে container URI, frame index, CFA, matrix mode, white level ও আকার—সব থাকে (unit test সহ)।
 - Manage clips-এর প্রতিটি section এখন **বাস্তব folder ফাইল** থেকে তৈরি: ছবি = `.dng`, Clips = `.ccraw`, Archive = **শুধু** `.ccraw.bp16`, Report = sidecar। report/metadata হারালেও ফাইল তালিকা থাকে; CCRAW header (64 byte) পড়ে frame সংখ্যা বের করা হয়, তাই report ছাড়াও preview/render চলে (রঙের calibration ছাড়া)।

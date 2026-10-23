@@ -325,3 +325,9 @@ CI `39910039682`/97 সম্পূর্ণ সফল (ARM/x86 native sanitizer
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.97-alpha-6123e1b/CineCam-debug.apk
 
 Device check: Clips-এ 23 Oct capture → `MP4` → ভিডিওতে ওই capture-এর 8 frame দেখা উচিত (পুরোনো clip-এর নয়); এরপর 22 Oct capture-এ গিয়ে আবার render করলে সেটির নিজের frame আসবে। Archive-.bp16 ট্যাবে শুধু `.ccraw.bp16` ফাইল থাকবে, কোনো `.ccraw` নয়। App থেকে বেরিয়ে আবার ঢুকলে তালিকা নিজে থেকে refresh হবে।
+
+## v98 — render settings — 2026-10-23
+
+User confirmed v97 fixed the wrong-clip MP4 and the archive listing. Next milestone step: render quality/speed control. `RenderOptions` + `RenderResolution`/`RenderQuality`/`RenderPacing` presets (960/1280/1920 px long edge, 2/4/8 bpp clamped 2–20 Mbps, real sensor pacing or constant 10 fps), a settings dialog before every render, and persisted choices. Frame decoding follows the chosen size, so 540p renders faster and lighter than before. Pure-Kotlin tests cover presets, no-upscale scaling, bitrate clamps and constant pacing. Android CI/device verification pending.
+
+Delivery: CI run — (pending), APK — (pending).
