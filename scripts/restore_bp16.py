@@ -7,7 +7,8 @@ from pathlib import Path
 import struct
 import zlib
 
-LIMIT = 257 * 1024 * 1024
+# Long RAW sessions exceed the old 257 MiB burst cap; blocks still stream.
+LIMIT = 8 * 1024 * 1024 * 1024
 
 def restore(source: Path, output: Path):
     created = False

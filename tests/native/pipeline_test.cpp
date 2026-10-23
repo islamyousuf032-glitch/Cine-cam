@@ -505,6 +505,39 @@ int main() {
         assert(mixed.ok && mixed.kernelBytes == 13 && mixed.bufferedBytes == originalSize - 13);
         ::close(partial);
         assert(sameFiles(source, "build/native-tests/export-partial.bin"));
+        // Archive restore streams the exact original bytes back through descriptors.
+        const std::string archive = "build/native-tests/roundtrip.ccraw.bp16";
+        const std::string original = "build/native-tests/ccraw/capture.ccraw";
+        const std::string output = "build/native-tests/restored.ccraw";
+        std::filesystem::remove(output);
+        auto restoreInto = [](const std::string& from, const std::string& to) {
+            const int in = ::open(from.c_str(), O_RDONLY);
+            const int out = ::open(to.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            const auto result = restoreBp16Archive(in, out);
+            ::close(in); ::close(out);
+            return result;
+        };
+        const auto restored = restoreInto(archive, output);
+        assert(restored.ok && restored.sourceBytes == 320 && restored.restoredBytes == 320 && restored.blocks == 1);
+        assert(restored.totalNs > 0 && restored.readNs > 0 && restored.unpackNs > 0 && restored.writeNs > 0);
+        {
+            std::ifstream a(original, std::ios::binary), b(output, std::ios::binary);
+            assert(std::vector<char>(std::istreambuf_iterator<char>(a), std::istreambuf_iterator<char>()) ==
+                   std::vector<char>(std::istreambuf_iterator<char>(b), std::istreambuf_iterator<char>()));
+        }
+        // Corrupt, truncated and trailing-byte archives must never look restored.
+        std::filesystem::copy_file(archive, "build/native-tests/restore-bad.bp16", std::filesystem::copy_options::overwrite_existing);
+        { std::fstream bad("build/native-tests/restore-bad.bp16", std::ios::binary | std::ios::in | std::ios::out);
+          bad.seekp(30); char byte = 0xff; bad.write(&byte, 1); }
+        const auto corrupt = restoreInto("build/native-tests/restore-bad.bp16", "build/native-tests/restore-bad.ccraw");
+        assert(!corrupt.ok && std::string(corrupt.error).size() > 0);
+        std::filesystem::resize_file("build/native-tests/restore-bad.bp16", 20);
+        assert(!restoreInto("build/native-tests/restore-bad.bp16", "build/native-tests/restore-short.ccraw").ok);
+        std::filesystem::copy_file(archive, "build/native-tests/restore-trailing.bp16", std::filesystem::copy_options::overwrite_existing);
+        { std::ofstream trailing("build/native-tests/restore-trailing.bp16", std::ios::binary | std::ios::app); trailing.put(7); }
+        const auto trailing = restoreInto("build/native-tests/restore-trailing.bp16", "build/native-tests/restore-trailing.ccraw");
+        assert(!trailing.ok && std::string(trailing.error).find("Trailing") != std::string::npos);
+        assert(!restoreBp16Archive(-1, -1).ok);
         const int failed = ::open("build/native-tests/export-failed.bin", O_CREAT | O_TRUNC | O_RDWR, 0600);
         assert(failed >= 0);
         const auto noSpace = +[](int, int, off_t*, size_t) -> ssize_t { errno = ENOSPC; return -1; };

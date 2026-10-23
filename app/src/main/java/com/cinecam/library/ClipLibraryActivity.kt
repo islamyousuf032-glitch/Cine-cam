@@ -113,6 +113,10 @@ class ClipLibraryActivity : ComponentActivity() {
         var renderStatus by remember { mutableStateOf<String?>(null) }
         var renderedVideo by remember { mutableStateOf<Pair<String, RenderOutput>?>(null) }
         var pendingRender by remember { mutableStateOf<Pair<String, List<Pair<String, PreviewTarget>>>?>(null) }
+        var restoreTarget by remember { mutableStateOf<MediaDoc?>(null) }
+        var restoring by remember { mutableStateOf<String?>(null) }
+        var restoreStatus by remember { mutableStateOf<String?>(null) }
+        var restored by remember { mutableStateOf<RestoreOutput?>(null) }
         var renderResolution by rememberSaveable {
             mutableStateOf(prefs.getString("render_res", null) ?: RenderResolution.HD.name)
         }
@@ -166,7 +170,8 @@ class ClipLibraryActivity : ComponentActivity() {
         val documents = folder?.documents ?: emptyMap()
         val currentTab = Tab.values().firstOrNull { it.name == tab } ?: Tab.PHOTOS
         val photos = remember(folder) { photosOf(folder) }
-        val ccrawDocs = remember(folder) { mediaDocs(documents.values, "_capture.ccraw") }
+        // Any `.ccraw` is a real RAW container, including a restored copy; `.ccraw.bp16` is not.
+        val ccrawDocs = remember(folder) { mediaDocs(documents.values, ".ccraw") }
         val archiveDocs = remember(folder) { mediaDocs(documents.values, "_capture.ccraw.bp16") }
         val reportDocs = remember(folder) { reportDocuments(folder) }
         val videos = remember(folder) {
@@ -178,8 +183,10 @@ class ClipLibraryActivity : ComponentActivity() {
         // header and optional metadata directly so every section still lists real files.
         LaunchedEffect(folder) {
             if (folder == null) { headerFrames = emptyMap(); extraMetadata = emptyMap(); return@LaunchedEffect }
+            // A restored copy's header is the authority, even when the original report exists.
             val pending = ccrawDocs.filter {
-                (clipById[it.clipId]?.written ?: 0L) <= 0 && headerFrames[it.name] == null
+                (RestoreNames.isRestored(it.name) || (clipById[it.clipId]?.written ?: 0L) <= 0) &&
+                    headerFrames[it.name] == null
             }
             val metaPending = documents.keys.filter { name ->
                 name.endsWith("_metadata.json") && extraMetadata[clipIdOf(name) ?: ""] == null
@@ -240,9 +247,11 @@ class ClipLibraryActivity : ComponentActivity() {
             openExternal("video/mp4", true, FolderDocument(video.path.substringAfterLast('/'), media, video.bytes))
         }
         fun frameCount(doc: MediaDoc): Int {
+            val header = headerFrames[doc.name]
+            if (RestoreNames.isRestored(doc.name) && header != null) return header
             val fromClip = clipById[doc.clipId]?.written ?: 0L
             return if (fromClip > 0) fromClip.coerceAtMost(CcrawHeader.MAX_FRAMES.toLong()).toInt()
-            else (headerFrames[doc.name] ?: 0)
+            else (header ?: 0)
         }
         fun metaFor(clipId: String): ClipMetadata? = clipById[clipId]?.metadata ?: extraMetadata[clipId]
         fun targetsFor(doc: MediaDoc, count: Int): List<Pair<String, PreviewTarget>> {
@@ -275,6 +284,57 @@ class ClipLibraryActivity : ComponentActivity() {
                     rendering = false
                 }
             }
+        }
+
+        fun restoreArchive(doc: MediaDoc) {
+            if (restoring != null) return
+            restoring = doc.name
+            restored = null
+            restoreStatus = "Archive restore প্রস্তুত হচ্ছে • ${doc.clipId}"
+            scope.launch {
+                try {
+                    val output = Bp16Restorer.restore(context.applicationContext, doc.document, doc.clipId) { stage ->
+                        withContext(Dispatchers.Main) { restoreStatus = stage }
+                    }
+                    restored = output
+                    restoreStatus = "Restore সফল • ${output.name}: ${output.frames} frame, " +
+                        "${output.width}×${output.height}, ${size(output.bytes)} • CRC যাচাই হয়েছে"
+                    refresh++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    restoreStatus = "Archive restore ব্যর্থ • ${doc.name}: ${e.message ?: "অজানা কারণ"}"
+                } finally {
+                    restoring = null
+                }
+            }
+        }
+
+        restoreTarget?.let { doc ->
+            AlertDialog(
+                onDismissRequest = { if (restoring == null) restoreTarget = null },
+                title = { Text("Archive restore") },
+                text = {
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(doc.name, style = MaterialTheme.typography.bodySmall)
+                        Text("এই archive থেকে আসল CCRAW ফিরিয়ে আনা হবে — নতুন ফাইল " +
+                            "`${doc.clipId}_capture_restored_<timestamp>.ccraw` হিসেবে Download/CineCam-এ।")
+                        Text("• প্রতিটি block-এর CRC যাচাই হয়, তাই restored file byte-exact।\n" +
+                            "• archive ও মূল capture ফাইল যেমন আছে তেমনই থাকে; কিছু মুছে যায় না।\n" +
+                            "• restore শেষে frame/CRC যাচাই ও Download export হয়; এতে সময় লাগতে পারে।\n" +
+                            "• restore + export-এর জন্য অন্তত মূল মাপ + 96 MiB ফাঁকা জায়গা দরকার।")
+                    }
+                },
+                confirmButton = {
+                    TextButton(enabled = restoring == null, onClick = {
+                        restoreTarget = null
+                        restoreArchive(doc)
+                    }) { Text("Restore শুরু করুন") }
+                },
+                dismissButton = {
+                    TextButton(enabled = restoring == null, onClick = { restoreTarget = null }) { Text("বাতিল") }
+                }
+            )
         }
 
         pendingRender?.let { request ->
@@ -355,6 +415,21 @@ class ClipLibraryActivity : ComponentActivity() {
             error?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             actionError?.let { message -> item { Text(message, color = MaterialTheme.colorScheme.error) } }
             items(folder?.notices ?: emptyList()) { Text(it, color = MaterialTheme.colorScheme.error) }
+            restoreStatus?.let { status ->
+                item {
+                    Text(status, color = if (status.contains("ব্যর্থ")) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.secondary)
+                    if (restoring != null) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    restored?.let { output ->
+                        Text("${output.frames} frame • ${output.width}×${output.height} • ${size(output.bytes)} • " +
+                            "${output.blocks} block • ${output.elapsedMs} ms restore",
+                            style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { openExternal("application/octet-stream", true,
+                            FolderDocument(output.name, output.uri ?: Uri.EMPTY, output.bytes)) },
+                            enabled = output.uri != null) { Text("Restored CCRAW শেয়ার") }
+                    }
+                }
+            }
             renderStatus?.let { status ->
                 item {
                     Text(status, color = if (status.contains("ব্যর্থ")) MaterialTheme.colorScheme.error
@@ -435,6 +510,11 @@ class ClipLibraryActivity : ComponentActivity() {
                         OutlinedCard(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text(doc.name, style = MaterialTheme.typography.titleSmall)
+                                if (RestoreNames.isRestored(doc.name)) {
+                                    Text("restored copy — archive থেকে ফিরিয়ে আনা, CRC যাচাই করা",
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        style = MaterialTheme.typography.bodySmall)
+                                }
                                 Text(DateFormat.getDateTimeInstance().format(Date(epochOf(doc.clipId))))
                                 Text("$count frame • ${doc.document.bytes?.let { size(it) } ?: "size অজানা"}")
                                 if (clip == null) Text("Report পাওয়া যায়নি—header থেকে frame সংখ্যা দেখানো হচ্ছে; রঙের calibration ছাড়া preview হবে।",
@@ -500,6 +580,9 @@ class ClipLibraryActivity : ComponentActivity() {
                                 clip?.let { Text("রিপোর্টে archive যাচাই: ${result(it.archive)}") }
                                     ?: Text("Report পাওয়া যায়নি; ফাইলের মাপ দেখানো হচ্ছে।", style = MaterialTheme.typography.bodySmall)
                                 Row {
+                                    TextButton(enabled = restoring == null, onClick = { restoreTarget = doc }) {
+                                        Text(if (restoring == doc.name) "Restore চলছে…" else "Restore")
+                                    }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, doc.document) }) { Text("শেয়ার") }
                                     TextButton(enabled = clip != null, onClick = {
                                         detail = doc.clipId; tab = Tab.REPORT.name

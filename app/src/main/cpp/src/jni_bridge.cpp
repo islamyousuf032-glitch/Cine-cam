@@ -291,6 +291,24 @@ Java_com_cinecam_engine_NativeRawEngine_nativeRawClipCapacity(JNIEnv*, jobject) 
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeRestoreBp16Archive(
+        JNIEnv* env, jobject, jint archiveFd, jint destinationFd) {
+    const auto r = cinecam::restoreBp16Archive(archiveFd, destinationFd);
+    char json[640];
+    snprintf(json, sizeof(json),
+             "{\"ok\":%s,\"sourceBytes\":%llu,\"restoredBytes\":%llu,\"archiveBytes\":%llu,"
+             "\"blocks\":%llu,\"readNs\":%llu,\"unpackNs\":%llu,\"crcNs\":%llu,\"writeNs\":%llu,"
+             "\"fsyncNs\":%llu,\"totalNs\":%llu,\"error\":\"%s\"}",
+             r.ok ? "true" : "false",
+             (unsigned long long)r.sourceBytes, (unsigned long long)r.restoredBytes,
+             (unsigned long long)r.archiveBytes, (unsigned long long)r.blocks,
+             (unsigned long long)r.readNs, (unsigned long long)r.unpackNs,
+             (unsigned long long)r.crcNs, (unsigned long long)r.writeNs,
+             (unsigned long long)r.fsyncNs, (unsigned long long)r.totalNs, r.error);
+    return env->NewStringUTF(json);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeProbeRaw16Codec(
         JNIEnv* env, jobject, jstring path, jlong offset, jlong bytes) {
     const auto file = jstringToStd(env, path);

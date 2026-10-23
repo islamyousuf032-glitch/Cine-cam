@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — `.ccraw.bp16` থেকে in-app restore] — 2026-10-23
+- Lossless archive section-এ **Restore**: archive থেকে আসল CCRAW ফিরিয়ে আনা হয় নতুন ফাইল `CineCam_<epoch>_<id>_capture_restored_<timestamp>.ccraw` হিসেবে Download/CineCam-এ; কিছু overwrite/delete হয় না।
+- C++ `restoreBp16Archive(archiveFd, destinationFd)`: descriptor-থেকে-descriptor স্ট্রিম (কোনো full-file buffer নেই), প্রতি block decode+record CRC, trailing-byte/EOF ও মোট byte মিলিয়ে **byte-exact** নিশ্চিত; ব্যর্থ হলে নিজের partial ফাইল মুছে দেয়। archive limit আগের ২৫৭ MiB → **8 GiB** (দীর্ঘ session-এর জন্য), Python CLI-ও একই সীমা।
+- Kotlin: header CRC পড়ে free-space যাচাই (মূল মাপ + 96 MiB), staging-এ restore, তারপর `CcrawVerifier` দিয়ে restored CCRAW-এর frame/footer CRC যাচাই, MediaStore publish ও staging cleanup। সফল হলে Clips section-এ "restored copy" লেবেলসহ দেখা যায় এবং সেই clip-এর report calibration/রঙ প্রযোজ্য হয়।
+- যন্ত্র-তথ্য (v0.1.102, ২৭ frame): 674,181,888 bytes CCRAW, achieved 2.69 fps, 0 native drop, writer write 751 ms (সর্বোচ্চ এক write 35.7 ms), export copy 25.2 s (~26.7 MB/s)। এগুলো এক ডিভাইসের পরিমাপ, প্রতিশ্রুতি নয়।
+- Tests: `Bp16HeaderTest`, `RestoreNamesTest`, native restore round-trip/corruption/truncation/trailing tests, Python 8 GiB limit। Android restore UI/MediaStore যাচাই ফোনে বাকি।
+
 ## [Unreleased — দীর্ঘ RAW session (৩–৩০ সেকেন্ড)] — 2026-10-23
 - RAW capture এখন **৮-frame burst নয়, সীমিত session**: দৈর্ঘ্য ৩/৫/১০/২০/৩০ সেকেন্ড ও target fps ২/৩/৫। Camera screen-এ বাছাই ও বর্তমান free space অনুযায়ী 예상 frame/সাইজ দেখা যায়।
 - `RecordingPlanner` (pure Kotlin) আগেই হিসাব করে কত frame লেখা হবে: চাওয়া সময় × fps, এবং ১ GiB reserve রেখে বাকি জায়গা (DNG/archive copy-সহ)। storage কম হলে session শুরুর আগেই পরিষ্কার error, অথবা কম frame নিয়ে শুরু।

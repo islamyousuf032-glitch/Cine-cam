@@ -70,6 +70,8 @@ class NativeRawEngine private constructor() {
         black: DoubleArray?, matrix: DoubleArray?, matrixMode: Int): IntArray?
     external fun nativePreviewError(): String
     external fun nativeCreateBp16Archive(source: String, destination: String): String
+    /** Streams a CCBP0001 archive into an already-open destination descriptor; returns JSON. */
+    external fun nativeRestoreBp16Archive(archiveFd: Int, destinationFd: Int): String
     external fun nativeProbeRaw16Codec(path: String, offset: Long, bytes: Long): String
     external fun nativeGetStatsJson(): String
     external fun nativeRawClipCapacity(): Int
