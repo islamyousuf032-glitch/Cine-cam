@@ -353,3 +353,10 @@ Device check: RAW session → দৈর্ঘ্য (৩–৩০s) ও target f
 Device test of the long session (CineCam_1792750236346_07a3ccc3): 27 of 30 slots, 27 frames written, 0 native drops, achieved 2.69 fps, 674,181,888-byte CCRAW; writer time 751 ms with a 35.7 ms worst write, so storage was never the bottleneck — the camera simply delivered 27 frames in 10 s. Export copied 674 MB in 25.2 s (~26.7 MB/s to MediaStore) and MP4 render of that clip works on device.
 
 Next milestone step: in-app restore of `.ccraw.bp16`. `restoreBp16Archive(fd, fd)` streams the archive, validating every block CRC, EOF and byte count, and the Kotlin layer verifies the restored CCRAW with `CcrawVerifier` before publishing it as `<clipId>_capture_restored_<ts>.ccraw` in Download/CineCam. Archive limit raised to 8 GiB for long sessions. Native restore, header parsing and naming are covered by tests; Android restore UI/MediaStore still needs a device check.
+
+### v101 delivery — archive restore
+CI `39939472246`/105 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `4fa25d3`। Release `v0.1.105-alpha-4fa25d3`, APK 15,133,951 bytes + SHA256SUMS.txt (digest আগের release থেকে আলাদা)।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.105-alpha-4fa25d3/CineCam-debug.apk
+
+Device check: Lossless archive tab → কোনো `.ccraw.bp16` → **Restore** → নিশ্চিত করুন। সফল হলে Clips-এ `…_capture_restored_<timestamp>.ccraw` "restored copy" লেবেলসহ আসবে, frame preview ও MP4 তার উপরেও চলবে। archive ও মূল capture অপরিবর্তিত থাকবে।
