@@ -330,4 +330,9 @@ Device check: Clips-এ 23 Oct capture → `MP4` → ভিডিওতে ও�
 
 User confirmed v97 fixed the wrong-clip MP4 and the archive listing. Next milestone step: render quality/speed control. `RenderOptions` + `RenderResolution`/`RenderQuality`/`RenderPacing` presets (960/1280/1920 px long edge, 2/4/8 bpp clamped 2–20 Mbps, real sensor pacing or constant 10 fps), a settings dialog before every render, and persisted choices. Frame decoding follows the chosen size, so 540p renders faster and lighter than before. Pure-Kotlin tests cover presets, no-upscale scaling, bitrate clamps and constant pacing. Android CI/device verification pending.
 
-Delivery: CI run — (pending), APK — (pending).
+### v98 delivery
+CI `39912141455`/98 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `31e73fe`। Release `v0.1.98-alpha-31e73fe`, APK 15,084,799 bytes (digest v97 থেকে ভিন্ন: sha256:8fd23faa…), SHA256SUMS.txt সহ।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.98-alpha-31e73fe/CineCam-debug.apk
+
+Device check: Clips → **MP4** → নতুন **ভিডিও সেটিংস** ডায়ালগে 540p/720p/1080p, ছোট/স্বাভাবিক/উচ্চ, আসল/সমান ১০ fps বেছে **তৈরি করুন**। 540p সবচেয়ে দ্রুত ও ছোট ফাইল; 1080p সবচেয়ে বিশদ। সেটিংস পরেরবারও মনে থাকবে।
