@@ -34,7 +34,7 @@ Queue/pool reclamation, bounded 256 MiB allocation (default 8 buffers), engine l
 
 ## সীমিত RAW test burst
 
-নতুন opt-in **RAW test • সর্বোচ্চ 8 frames** Camera2 থেকে আসল RAW plane ও matching metadata C++ writer-এ পাঠায়। এটি একটি সীমিত diagnostic burst, **চলমান RAW video/MP4 recording নয়**। প্রায় 200 MB ফাইল ও export copy-এর জন্য 650 MiB free storage প্রয়োজন। ফোনে কার্যকারিতা পরীক্ষা বাকি।
+নতুন opt-in **RAW session** Camera2 থেকে আসল RAW plane ও matching metadata C++ writer-এ পাঠায়। দৈর্ঘ্য ৩–৩০ সেকেন্ড ও target fps ২/৩/৫ বাছা যায়; frame সংখ্যা জায়গা ও সময় দিয়ে আগেই হিসাব হয়, তাই session সবসময় সীমিত। এটি **চলমান RAW video/MP4 recording নয়**; আসল rate storage/sensor-নির্ভর। ফোনে যাচাই ছাড়া কোনো FPS দাবি নেই। বিস্তারিত: `docs/LONG_RAW_SESSION.md`।
 
 Android 14-এ output: `Download/CineCam/<session>/capture.ccraw`, `metadata.json`, `report.json`। `.ccraw` একটি নথিভুক্ত experimental format, MotionCam `.mcraw` নয়। যাচাই:
 

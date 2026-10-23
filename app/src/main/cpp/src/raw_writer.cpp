@@ -1,4 +1,5 @@
 #include "raw_writer.h"
+#include <algorithm>
 #include "cinemadng_writer.h"
 #include "cine_log.h"
 #include <sys/stat.h>
@@ -43,7 +44,9 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
-    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs, config.preallocateCcraw)) {
+    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs,
+            config.preallocateCcraw, static_cast<uint32_t>(std::max(1, config.maxFrames)),
+            static_cast<uint64_t>(std::max<int64_t>(1, config.maxBytes)))) {
         lastError_ = ccraw_.error(); return WriterStatus::IO_ERROR;
     }
 

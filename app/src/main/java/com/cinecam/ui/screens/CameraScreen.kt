@@ -17,8 +17,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -35,7 +37,9 @@ import com.cinecam.camera.CameraController
 import com.cinecam.camera.RawSupportInfo
 import com.cinecam.camera.PreviewGeometry
 import com.cinecam.camera.ManualSettings
+import com.cinecam.camera.RawClipStore
 import com.cinecam.camera.RawReadableReport
+import com.cinecam.camera.RecordingPlanner
 import org.json.JSONObject
 import com.cinecam.camera.CaptureRules
 import kotlinx.coroutines.delay
@@ -67,6 +71,9 @@ fun CameraScreen() {
     var preallocateRawTest by remember { mutableStateOf(false) }
     var pacedRawTest by remember { mutableStateOf(true) }
     var showRawWarning by remember { mutableStateOf(false) }
+    var sessionSeconds by rememberSaveable { mutableIntStateOf(5) }
+    var sessionFps by rememberSaveable { mutableIntStateOf(3) }
+    var sessionEstimate by remember { mutableStateOf<String?>(null) }
     var showClipReport by remember { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(ManualSettings()) }
@@ -95,6 +102,35 @@ fun CameraScreen() {
         }
     }
     val camera = remember(infos) { CameraCapabilities.pickBestRawCamera(infos) }
+    // Planning is arithmetic plus one StatFs call; kept off the composition thread.
+    LaunchedEffect(showRawWarning, sessionSeconds, sessionFps, allSavedFramesDng, losslessArchive, verifyRawSample, internalRawStaging, camera) {
+        if (!showRawWarning) return@LaunchedEffect
+        sessionEstimate = "হিসাব হচ্ছে…"
+        sessionEstimate = withContext(Dispatchers.IO) {
+            val size = camera?.maxRawSize
+            if (size == null) "RAW মাপ পাওয়া যায়নি"
+            else try {
+                val free = RawClipStore.availableCaptureBytes(context.applicationContext, internalRawStaging)
+                val copies = 1.0 + (if (verifyRawSample && allSavedFramesDng) 1.0 else 0.0) +
+                    (if (verifyRawSample && losslessArchive) 0.6 else 0.0)
+                val plan = RecordingPlanner.plan(size.width, size.height, sessionFps,
+                    sessionSeconds, free, copies)
+                buildString {
+                    append("${plan.seconds}s × ${plan.fps} fps = ${plan.slotFrames} frame চাওয়া হচ্ছে • ")
+                    if (plan.maxFrames == 0) append("জায়গা নেই: অন্তত ${(plan.frameBytes * copies / (1024 * 1024)).toLong()} MiB লাগবে")
+                    else {
+                        append("এই session-এ সর্বোচ্চ ${plan.maxFrames} frame (~${plan.sessionBytes / (1024 * 1024)} MiB CCRAW")
+                        if (copies > 1.0) append(" + DNG/archive copy")
+                        append(")")
+                        if (plan.storageLimited) append(" • জায়গা অনুযায়ী কমেছে")
+                    }
+                }
+            } catch (e: Exception) {
+                "হিসাব করা যায়নি: ${e.message}"
+            }
+        }
+    }
+
     var texture by remember { mutableStateOf<SurfaceTexture?>(null) }
     var view by remember { mutableStateOf<TextureView?>(null) }
     var displayRotation by remember { mutableIntStateOf(Surface.ROTATION_0) }
@@ -194,7 +230,7 @@ fun CameraScreen() {
                         "recording" -> "RAW test বন্ধ করুন"
                         "starting" -> "RAW প্রস্তুতি…"
                         "finalizing" -> "RAW export হচ্ছে…"
-                        else -> "RAW test • সর্বোচ্চ 8 frames"
+                        else -> "RAW session • ${sessionSeconds}s"
                     })
                 }
             }
@@ -221,7 +257,23 @@ fun CameraScreen() {
         AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW test") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                    Text("সর্বোচ্চ 8 RAW frames (~200 MB), DNG sequence-এ আরও প্রায় 200 MB। নিচের mode অনুযায়ী free-space guard প্রযোজ্য। MP4/audio বা compressed recording নেই; fixed FPS নয়। Download/CineCam-এ export হবে।")
+                    Text("RAW session: দৈর্ঘ্য ও target fps বাছুন। প্রতিটি request একবারে একটি, তাই 3-buffer pool নিরাপদ থাকে; আসল frame rate storage/sensor speed-এর উপর নির্ভর করে (fixed FPS নয়)। MP4/audio নেই। Download/CineCam-এ export হবে।")
+                    Text("দৈর্ঘ্য (seconds)", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(3, 5, 10, 20, 30).forEach { option ->
+                            FilterChip(selected = sessionSeconds == option, onClick = { sessionSeconds = option },
+                                label = { Text("${option}s") })
+                        }
+                    }
+                    Text("target fps (পacing)", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(2, 3, 5).forEach { option ->
+                            FilterChip(selected = sessionFps == option, onClick = { sessionFps = option },
+                                label = { Text("$option fps") })
+                        }
+                    }
+                    Text(sessionEstimate ?: "", style = MaterialTheme.typography.bodySmall)
+                    Text("1 GiB জায়গা সবসময় খালি রাখা হয়; storage কম হলে session আগেই থেমে report-এ কারণ লেখা হবে।", style = MaterialTheme.typography.bodySmall)
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Paced mode", Modifier.weight(1f))
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
@@ -246,8 +298,8 @@ fun CameraScreen() {
                         Switch(checked = allSavedFramesDng, onCheckedChange = { allSavedFramesDng = it }, enabled = verifyRawSample)
                     }
                     Text(if (verifyRawSample && allSavedFramesDng)
-                        "Archive OFF-এ sequence: অন্তত 1 GiB free দরকার। Saved RAW যাচাইয়ের পরে frame_000001.dng… + sequence.json; DNG-তেই আরও প্রায় 200 MB। Extra সময় লাগবে; fixed FPS/audio নয়।"
-                        else "Archive OFF + যাচাই ON + sequence OFF: আগের first_frame.dng sample (~25 MB)। 650 MiB free প্রয়োজন।")
+                        "সব frame-এর DNG: প্রতিটি frame-এর জন্য আলাদা ~25 MB DNG + sequence.json — জায়গা প্রায় দ্বিগুণ লাগবে, তাই হিসাবে সেটি ধরা আছে। দীর্ঘ session-এ এটি বন্ধ রাখলে অনেক জায়গা বাঁচবে।"
+                        else "শুধু প্রথম frame-এর DNG sample (~25 MB)। 650 MiB free প্রয়োজন।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("Lossless archive (পরীক্ষামূলক)", Modifier.weight(1f))
                         Switch(checked = losslessArchive, onCheckedChange = { losslessArchive = it }, enabled = verifyRawSample)
@@ -260,7 +312,9 @@ fun CameraScreen() {
             },
             confirmButton = { TextButton(onClick = {
                 showRawWarning = false
-                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest, internalRawStaging, verifyRawSample, allSavedFramesDng, losslessArchive)
+                controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest,
+                    internalRawStaging, verifyRawSample, allSavedFramesDng, losslessArchive,
+                    if (pacedRawTest) sessionSeconds else 3, sessionFps)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

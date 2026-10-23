@@ -387,6 +387,41 @@ int main() {
     }
 
     {
+        // Long-session budget: explicit frame/byte caps replace the old fixed 8-frame burst.
+        const std::string root = "build/native-tests/long-session";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root + "/a");
+        uint8_t data[16]{};
+        RawFrame frame; frame.data = data; frame.sizeBytes = 16; frame.isValid = true;
+        frame.metadata.width = 4; frame.metadata.height = 2; frame.metadata.stride = 8;
+        frame.metadata.bitDepth = 16; frame.metadata.iso = 100; frame.metadata.exposureTimeNs = 1000;
+        CcrawWriter longSession;
+        assert(longSession.open(root + "/a", 4, 2, 100, false, 120, 1ULL * 1024 * 1024));
+        for (int i = 0; i < 40; ++i) {
+            frame.metadata.timestampNs = 200 + i * 100LL;
+            frame.metadata.frameNumber = i;
+            assert(longSession.append(frame));
+        }
+        assert(longSession.finish());
+        assert(std::filesystem::file_size(root + "/a/capture.ccraw") == 64 + 40 * (96 + 16) + 32);
+
+        std::filesystem::create_directories(root + "/b");
+        CcrawWriter tooSmall;
+        // 2 frame headers leave a 31-byte payload budget: one 16-byte frame fits, the second does not.
+        assert(tooSmall.open(root + "/b", 4, 2, 100, false, 2, 319));
+        frame.metadata.timestampNs = 200; frame.metadata.frameNumber = 0;
+        assert(tooSmall.append(frame));
+        frame.metadata.timestampNs = 300;
+        assert(!tooSmall.append(frame)); // Byte budget, not frame count, is the binding limit.
+        assert(!tooSmall.finish());
+
+        std::filesystem::create_directories(root + "/c");
+        CcrawWriter bad;
+        assert(!bad.open(root + "/c", 4, 2, 100, false, 0, 4096));
+        assert(!bad.open(root + "/d", 4, 2, 100, false, 8, 100)); // Below one frame.
+    }
+
+    {
         const char* source = "build/native-tests/ccraw/capture.ccraw";
         const char* archive = "build/native-tests/roundtrip.ccraw.bp16";
         std::filesystem::remove(archive);

@@ -2,6 +2,15 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — দীর্ঘ RAW session (৩–৩০ সেকেন্ড)] — 2026-10-23
+- RAW capture এখন **৮-frame burst নয়, সীমিত session**: দৈর্ঘ্য ৩/৫/১০/২০/৩০ সেকেন্ড ও target fps ২/৩/৫। Camera screen-এ বাছাই ও বর্তমান free space অনুযায়ী 예상 frame/সাইজ দেখা যায়।
+- `RecordingPlanner` (pure Kotlin) আগেই হিসাব করে কত frame লেখা হবে: চাওয়া সময় × fps, এবং ১ GiB reserve রেখে বাকি জায়গা (DNG/archive copy-সহ)। storage কম হলে session শুরুর আগেই পরিষ্কার error, অথবা কম frame নিয়ে শুরু।
+- Pacing: প্রতিটি request নির্ধারিত slot-এ, একবারে **একটি** (3-buffer pool ও 8-request নীতি অটুট)। দেরি হলে slot বাদ পড়ে `skippedSlots`-এ; writer ৩ সেকেন্ড buffer না দিলে session থামে ও কারণ report-এ লেখা হয়। safety timeout সর্বোচ্চ ৬ সেকেন্ড বেশি, কখনো অসীম নয়।
+- Native: `CcrawWriter`-এর হার্ডকোড ৮-frame/২৫৬ MiB সীমা বদলে session-নির্দিষ্ট `maxFrames`/`maxBytes`; JNI clamp 100000 frame/64 GiB। CCRAW preview আর ১ GiB/৬৪-frame-এ আটকায় না; `.bp16` archive limit 8 GiB; verifier ২০০০ frame পর্যন্ত।
+- Report ও বাংলা summary: পরিকল্পনা, **আসল** achieved fps, বাদ পড়া slot, থামার কারণ। কোনো fixed-FPS বা sustained-video দাবি নেই।
+- Export: শত শত ফাইলে report অস্বাভাবিক বড় না হয় সেজন্য per-file copy detail প্রথম ২৪টি রাখা হয়, বাকিগুলো শুধু গণনা; mapping limit 64 → 4096।
+- Tests: `RecordingPlanTest`, বর্ধিত `PacedRequestGateTest`/`CcrawHeaderTest`/`DngSequencePlanTest`, native ৪০-frame long-session writer test। ফোনে capture/render যাচাই এখনো বাকি।
+
 ## [Unreleased — রেন্ডার quality/speed অপশন] — 2026-10-23
 - **MP4** চাপলে এখন "ভিডিও সেটিংস" ডায়ালগ: **রেজোলিউশন** (540p / 720p / 1080p — লম্বা দিক 960/1280/1920 px), **কোয়ালিটি** (ছোট / স্বাভাবিক / উচ্চ = 2/4/8 bits-per-pixel) এবং **frame-এর সময়** (আসল sensor burst timing বা সমান ১০ fps)।
 - একই সেটিংস পরেরবারের জন্য মনে রাখা হয় (SharedPreferences), তাই বারবার বাছতে হয় না।

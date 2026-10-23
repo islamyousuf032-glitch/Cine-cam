@@ -28,6 +28,12 @@ class CcrawHeaderTest {
         assertEquals(8, info.frames)
     }
 
+    @Test fun longSessionFrameCountIsNotCappedAtEight() {
+        val info = requireNotNull(CcrawHeader.parse(header(), fileSize(150)))
+        assertEquals(150, info.frames)
+        assertEquals(150, requireNotNull(CcrawHeader.parse(header(), fileSize(150, 1024, 768))).frames)
+    }
+
     @Test fun malformedHeadersAreRejected() {
         assertNull(CcrawHeader.parse(header(magic = "CCRAW002"), fileSize(1)))
         assertNull(CcrawHeader.parse(header(headerBytes = 60), fileSize(1)))

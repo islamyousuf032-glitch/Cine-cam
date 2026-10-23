@@ -336,3 +336,7 @@ CI `39912141455`/98 সম্পূর্ণ সফল (ARM/x86 native sanitizer
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.98-alpha-31e73fe/CineCam-debug.apk
 
 Device check: Clips → **MP4** → নতুন **ভিডিও সেটিংস** ডায়ালগে 540p/720p/1080p, ছোট/স্বাভাবিক/উচ্চ, আসল/সমান ১০ fps বেছে **তৈরি করুন**। 540p সবচেয়ে দ্রুত ও ছোট ফাইল; 1080p সবচেয়ে বিশদ। সেটিংস পরেরবারও মনে থাকবে।
+
+## v99 — long RAW session — 2026-10-23
+
+User confirmed v98 and asked to start the next planned milestone. The capture path is no longer an 8-frame burst: the user picks 3/5/10/20/30 s and a 2/3/5 fps pacing target. `RecordingPlanner` computes a finite frame budget from duration and free storage (1 GiB reserve, 8 GiB cap, DNG/archive copies counted), so a session can never run unbounded. Requests are scheduled at absolute slot times with exactly one in flight; missed slots are counted, and a writer that refuses buffers for 3 s stops the session with a reason. The native `CcrawWriter` now takes explicit `maxFrames`/`maxBytes` (defaults keep the old 8-frame/256 MiB container byte-identical), and the verifier, preview reader, BP16 archive and library caps were raised for long files. Reports add the plan, achieved fps, skipped slots and stop reason. Native + JVM tests added; Android device verification pending (this build is the first compiler check of the Kotlin).

@@ -8,6 +8,9 @@ import java.util.zip.CRC32
 
 /** Independent of the native CRC/writer: bounded 64 KiB readback, no full-frame buffer. */
 internal object CcrawVerifier {
+    // A planned long session has hundreds of frames; these are safety bounds, not formats.
+    const val MAX_FRAMES = 2000
+    const val MAX_TOTAL_BYTES = 8L * 1024 * 1024 * 1024
     data class Frame(val timestampNs: Long, val sourceFrameNumber: Long, val payloadOffset: Long)
     data class Verified(val width: Int, val height: Int, val frames: List<Frame>, val payloadBytes: Long, val epochNs: Long)
     fun verify(file: File): Verified = RandomAccessFile(file, "r").use { input ->
@@ -37,13 +40,14 @@ internal object CcrawVerifier {
                 check(input.filePointer == input.length()) { "Trailing bytes after footer" }
                 break
             }
-            check(magic(tag, "FRM1") && frames.size < 8) { "Invalid frame magic/count" }
+            check(magic(tag, "FRM1") && frames.size < MAX_FRAMES) { "Invalid frame magic/count" }
             val frame = tag + read(92); val f = le(frame)
             check(f.getInt(4) == 96 && zero(frame, 80) && crc(frame, 76) == uint(f, 76)) { "Frame header CRC/layout invalid" }
             val timestamp = f.getLong(8); val exposure = f.getLong(16)
             check(timestamp >= epoch && timestamp > previous && exposure >= 0) { "Invalid/nonmonotonic timestamp" }
             check(f.getInt(32) == width && f.getInt(36) == height && f.getInt(40) == width * 2 && f.getInt(52) == 16) { "Frame geometry invalid" }
-            check(f.getLong(24) == frameBytes && total + frameBytes <= 256L * 1024 * 1024) { "Frame payload size invalid" }
+            check(f.getLong(24) == frameBytes && frameBytes <= 256L * 1024 * 1024 &&
+                total + frameBytes <= MAX_TOTAL_BYTES) { "Frame payload size invalid" }
             check(f.getInt(44) >= 0 && f.getInt(48) >= 0) { "Invalid ISO/frame number" }
             val offset = input.filePointer
             val payloadCrc = CRC32()

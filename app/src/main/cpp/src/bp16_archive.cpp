@@ -12,7 +12,9 @@
 
 namespace cinecam {
 namespace {
-constexpr uint64_t limit = 257ULL * 1024 * 1024;
+// Long RAW sessions exceed the original 257 MiB burst cap. Decoding stays block-streamed,
+// so the limit only bounds duration, not memory.
+constexpr uint64_t limit = 8ULL * 1024 * 1024 * 1024;
 struct Fd { int n; ~Fd() { if (n >= 0) ::close(n); } };
 uint32_t get32(const uint8_t* p) { return uint32_t(p[0]) | uint32_t(p[1]) << 8 | uint32_t(p[2]) << 16 | uint32_t(p[3]) << 24; }
 uint64_t get64(const uint8_t* p) { return uint64_t(get32(p)) | uint64_t(get32(p + 4)) << 32; }

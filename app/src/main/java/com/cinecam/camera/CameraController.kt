@@ -20,6 +20,10 @@ import com.cinecam.engine.NativeRawEngine
 import com.cinecam.app.BuildConfig
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** How long a writer may refuse every buffer before the session is stopped as storage-bound. */
+private const val STORAGE_STALL_LIMIT_NS = 3_000_000_000L
+private const val STORAGE_STALL_LIMIT_MS = 3000L
+
 /** Camera/session state is handler-confined; one bounded still is owned by the storage worker. */
 class CameraController(context: Context, private val onStatus: (String) -> Unit,
                        private val onCaptureState: (Boolean) -> Unit = {},
@@ -55,6 +59,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var internalStagingRequested = true
     private var clipPrepared: RawClipStore.PreparedClip? = null
     private var clipGate: PacedRequestGate? = null
+    private var clipPlan: RecordingPlan? = null
+    private var clipSlot = 0
+    private var clipSkippedSlots = 0
+    private var clipStallSinceNs = 0L
+    private var clipStallCount = 0
     private var clipPump: Runnable? = null
     private var clipFailedRequests = 0
     private var clipCapacityWaitStartNs = 0L
@@ -281,7 +290,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -307,11 +316,25 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging, verifyAndSample && allFramesDng, verifyAndSample && losslessArchive)
                 clipPrepared = prepared; clipFolder = prepared.folder
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
-                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate)) {
+                // Optional DNG copies and the archive are written after recording, into the same free space.
+                val copyFactor = 1.0 + (if (verifyAndSample && allFramesDng) 1.0 else 0.0) +
+                    (if (verifyAndSample && losslessArchive) 0.6 else 0.0)
+                val plan = RecordingPlanner.plan(raw.width, raw.height,
+                    (if (paced) targetFps else minOf(targetFps, 8)).coerceIn(RecordingPlanner.MIN_FPS, RecordingPlanner.MAX_FPS),
+                    sessionSeconds.coerceIn(RecordingPlanner.MIN_SECONDS, RecordingPlanner.MAX_SECONDS),
+                    prepared.captureAvailableBytes, copyFactor)
+                clipPlan = plan
+                val wanted = if (paced) plan.maxFrames else minOf(8, plan.maxFrames)
+                check(wanted > 0) {
+                    "এই session-এর জন্য ফাঁকা জায়গা নেই: অন্তত ${(plan.frameBytes * copyFactor).toLong() / (1024 * 1024)} MiB " +
+                        "প্রয়োজন, ${RecordingPlanner.RESERVE_BYTES / (1024 * 1024)} MiB reserve রাখা হয়"
+                }
+                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate,
+                    wanted, plan.sessionBytes.coerceAtLeast(RecordingPlanner.CcrawFrameHeaderBytes + raw.width.toLong() * raw.height * 2))) {
                     engine.getLastError()
                 }
-                clipLimit = minOf(8, (192L * 1024 * 1024 / (raw.width.toLong() * raw.height * 2)).toInt())
-                check(clipLimit > 0) { "RAW resolution exceeds burst storage budget" }
+                clipLimit = wanted
+                clipSlot = 0; clipSkippedSlots = 0; clipStallSinceNs = 0L; clipStallCount = 0
                 internalStagingRequested = internalStaging
                 clipArchive = verifyAndSample && losslessArchive
                 clipVerify = verifyAndSample; clipSequence = verifyAndSample && allFramesDng; clipAcceptedResults.clear(); clipSampleOrientation = orientation
@@ -335,8 +358,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     setTag(id)
                 }.build()
                 clipTimeout = Runnable {
-                    if (clipActive && id == clipSerial) stopClipInternal("12-second safety timeout", true)
-                }.also { handler.postDelayed(it, 12000) }
+                    if (clipActive && id == clipSerial) stopClipInternal("session safety timeout", true)
+                }.also { handler.postDelayed(it, plan.safetyTimeoutMs) }
                 val callback = object : CameraCaptureSession.CaptureCallback() {
                     override fun onCaptureCompleted(s: CameraCaptureSession, r: CaptureRequest, result: TotalCaptureResult) {
                         if (!clipActive || generation != token || id != clipSerial) return
@@ -365,27 +388,57 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     }
                 }
                 if (clipPaced) {
-                    clipPump = Runnable {
-                        if (!clipActive || generation != token || id != clipSerial) return@Runnable
-                        val gate = clipGate ?: return@Runnable
-                        if (gate.inFlight) return@Runnable
-                        if (gate.exhausted) { stopClipInternal("paced request limit reached", true); return@Runnable }
-                        val capacity = engine.nativeRawClipCapacity()
-                        if (capacity < 0) { stopClipInternal("native writer unavailable", true); return@Runnable }
-                        if (capacity == 0) {
-                            if (clipCapacityWaitStartNs == 0L) clipCapacityWaitStartNs = SystemClock.elapsedRealtimeNanos()
-                            clipPump?.let { handler.postDelayed(it, 10) }
-                            return@Runnable
-                        }
-                        finishCapacityWait()
-                        if (gate.trySubmit(capacity)) {
-                            try { current.capture(request, callback, handler) }
-                            catch (e: Exception) { stopClipInternal("paced request error: ${e.message}", true) }
+                    val pump = object : Runnable {
+                        override fun run() {
+                            if (!clipActive || generation != token || id != clipSerial) return
+                            val gate = clipGate ?: return
+                            if (gate.inFlight) return
+                            if (gate.exhausted) { stopClipInternal("session frame budget reached", true); return }
+                            val activePlan = clipPlan ?: return
+                            val now = SystemClock.elapsedRealtimeNanos()
+                            if (now - clipStartNs >= activePlan.durationMs * 1_000_000L + RecordingPlanner.GRACE_MS * 1_000_000L) {
+                                stopClipInternal("session duration reached", true); return
+                            }
+                            if (clipSlot >= activePlan.slotFrames) { stopClipInternal("session duration reached", true); return }
+                            val due = RecordingPlanner.slotDueNs(clipStartNs, clipSlot, activePlan.fps)
+                            if (now < due) {
+                                handler.postDelayed(this, ((due - now) / 1_000_000L).coerceIn(1L, 20L))
+                                return
+                            }
+                            val missed = RecordingPlanner.missedSlots(due, now, activePlan.fps)
+                            if (missed > 0) {
+                                clipSkippedSlots += missed
+                                clipSlot = (clipSlot + missed).coerceAtMost(activePlan.slotFrames)
+                            }
+                            val capacity = engine.nativeRawClipCapacity()
+                            if (capacity < 0) { stopClipInternal("native writer unavailable", true); return }
+                            if (capacity == 0) {
+                                if (clipCapacityWaitStartNs == 0L) clipCapacityWaitStartNs = now
+                                if (clipStallSinceNs == 0L) clipStallSinceNs = now
+                                // A writer that never frees a buffer means storage cannot keep up.
+                                if (now - clipStallSinceNs >= STORAGE_STALL_LIMIT_NS) {
+                                    clipStallCount++
+                                    stopClipInternal("storage $STORAGE_STALL_LIMIT_MS ms ধরে frame নিচ্ছে না", true)
+                                    return
+                                }
+                                handler.postDelayed(this, 10)
+                                return
+                            }
+                            clipStallSinceNs = 0L
+                            finishCapacityWait()
+                            if (gate.trySubmit(capacity)) {
+                                clipSlot++
+                                try { current.capture(request, callback, handler) }
+                                catch (e: Exception) { stopClipInternal("paced request error: ${e.message}", true) }
+                            }
                         }
                     }
-                    clipPump?.let { handler.post(it) }
+                    clipPump = pump
+                    handler.post(pump)
                 } else current.captureBurst(List(clipLimit) { request }, callback, handler)
-                onStatus("RAW ${if (clipPaced) "Paced" else "Burst"}: সর্বোচ্চ $clipLimit frames • variable FPS • no audio")
+                onStatus("RAW ${if (clipPaced) "session ${plan.seconds}s @ ${plan.fps}fps target" else "burst"}: " +
+                    "সর্বোচ্চ $clipLimit frame • আসল rate storage-নির্ভর • no audio" +
+                    if (plan.storageLimited) " • জায়গা অনুযায়ী frame কমেছে" else "")
             } catch (e: Exception) {
                 if (clipActive) stopClipInternal("Burst error: ${e.message}", true)
                 else {
@@ -462,6 +515,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         if (accepted) {
                             wasAccepted = true
                             clipAccepted++
+                            if (clipAccepted % 10 == 0) onStatus("RAW session: ${clipAccepted} frame লেখা হয়েছে • " +
+                                "${clipPlan?.let { "${it.seconds}s @ ${it.fps}fps target" } ?: ""}")
                             if (clipFirstNs == 0L) clipFirstNs = timestamp
                             if (clipVerify) clipAcceptedResults[timestamp] = result
                             clipLastNs = timestamp
@@ -503,6 +558,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         val pendingResults = pendingResultTimestamps.size; clipPairs.clearResults()
         val folder = clipFolder ?: return
         clipFolder = null
+        val planForReport = clipPlan
         val report = JSONObject().apply {
             put("frames", JSONArray(clipFrameMetadata.toList()))
             put("schema", "cinecam-raw-test-2"); put("reason", reason)
@@ -522,6 +578,17 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("internalStagingRequested", internalStagingRequested)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
+            planForReport?.let { plan ->
+                put("recordingPlan", JSONObject().apply {
+                    put("fps", plan.fps); put("seconds", plan.seconds)
+                    put("maxFrames", plan.maxFrames); put("slotFrames", plan.slotFrames)
+                    put("frameBytes", plan.frameBytes); put("sessionBytes", plan.sessionBytes)
+                    put("requiredBytes", plan.requiredBytes); put("storageLimited", plan.storageLimited)
+                    put("reserveBytes", RecordingPlanner.RESERVE_BYTES)
+                })
+            }
+            put("skippedSlots", clipSkippedSlots)
+            put("storageStallStops", clipStallCount)
             put("submittedRequests", if (clipPaced) clipGate?.submitted ?: 0 else clipLimit)
             put("failedRequests", clipFailedRequests); put("pacedCapacityWaitNs", clipCapacityWaitNs)
             put("requestedFrames", clipLimit); put("imagesReceived", clipImagesReceived); put("resultsReceived", clipResultsReceived)
@@ -531,9 +598,12 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("firstAcceptedSensorNs", clipFirstNs); put("lastAcceptedSensorNs", clipLastNs)
             put("epochBoottimeNs", clipStartNs)
             put("sensorSpanNs", if (clipAccepted > 1) clipLastNs - clipFirstNs else 0)
+            put("achievedFps", if (clipAccepted > 1 && clipLastNs > clipFirstNs)
+                String.format(java.util.Locale.ROOT, "%.2f", (clipAccepted - 1) * 1e9 / (clipLastNs - clipFirstNs)).toDouble() else 0.0)
             put("captureWindowNs", SystemClock.elapsedRealtimeNanos() - clipStartNs)
-            put("warning", "Short diagnostic RAW burst only; not sustained FPS, playable video, audio sync or MotionCam compatibility")
+            put("warning", "Bounded RAW session; the real rate depends on storage and sensor speed. No fixed-FPS promise, audio, MP4 or MotionCam compatibility")
         }
+        clipPlan = null
         try {
             session?.abortCaptures()
             if (resumePreview) repeatPreview()

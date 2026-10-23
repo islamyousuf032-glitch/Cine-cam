@@ -28,6 +28,21 @@ class PacedRequestGateTest {
         assertEquals(8, gate.submitted)
         assertEquals(8, gate.completed)
     }
+    @Test fun longSessionBudgetStillKeepsOneRequestInFlight() {
+        val gate = PacedRequestGate(120)
+        repeat(120) {
+            assertTrue(gate.trySubmit(1))
+            assertFalse(gate.trySubmit(1)) // One RAW request at a time, always.
+            assertTrue(gate.finish())
+        }
+        assertTrue(gate.exhausted)
+        assertEquals(120, gate.submitted)
+        assertEquals(120, gate.completed)
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun invalidLimitRejected() { PacedRequestGate(0) }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun oversizedLimitRejected() { PacedRequestGate(RecordingPlanner.MAX_FRAMES + 1) }
 }

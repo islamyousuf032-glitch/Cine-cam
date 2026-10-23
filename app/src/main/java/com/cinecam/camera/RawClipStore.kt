@@ -16,7 +16,18 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 
+/** Per-file copy diagnostics kept in report.json; the rest is counted only. */
+private const val MAX_COPY_DETAILS = 24
+
 internal object RawClipStore {
+    /** Free bytes in the same staging root the session will write to. */
+    fun availableCaptureBytes(context: Context, internalStaging: Boolean): Long {
+        val external = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: return 0L
+        val root = if (RawStoragePolicy.useInternal(internalStaging, Build.VERSION.SDK_INT))
+            File(context.filesDir, "raw-clips") else external
+        return try { StatFs(root.absolutePath).availableBytes } catch (_: Exception) { 0L }
+    }
+
     data class PreparedClip(val folder: File, val stagingLocation: String,
                             val captureAvailableBytes: Long, val exportAvailableBytes: Long)
     fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean, archive: Boolean): PreparedClip {
@@ -110,11 +121,15 @@ internal object RawClipStore {
         val copyDetails = JSONArray()
         report.put("exportCopyBackend", "native-sendfile-with-bounded-fallback-v1")
         report.put("exportCopyDetails", copyDetails)
+        var copyDetailsElided = 0
         fun copyFd(file: File, descriptor: ParcelFileDescriptor) {
             val detail = JSONObject(copyEngine.nativeCopyExport(file.absolutePath, descriptor.fd))
             detail.put("file", mapping.getString(file.name))
             // Reports copied last; keep their timing out of their own serialized snapshot.
-            if (file.name !in setOf("report.json", "report.txt")) copyDetails.put(detail)
+            // Long sessions copy hundreds of files; keep the report bounded and count the rest.
+            if (file.name !in setOf("report.json", "report.txt")) {
+                if (copyDetails.length() < MAX_COPY_DETAILS) copyDetails.put(detail) else copyDetailsElided++
+            }
             check(detail.optBoolean("ok") && detail.optLong("bytes") == file.length()) {
                 "Export copy ব্যর্থ: ${file.name}: ${detail.optString("error")}" }
         }
@@ -155,6 +170,7 @@ internal object RawClipStore {
             }
             report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
             report.put("exportDataBytes", dataBytes)
+            report.put("exportCopyDetailsElided", copyDetailsElided)
             writeReports()
             copyPending(File(folder, "report.txt")); copyPending(File(folder, "report.json"))
             inserted.forEach { uri ->

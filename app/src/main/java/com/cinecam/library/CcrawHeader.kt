@@ -7,7 +7,8 @@ internal object CcrawHeader {
     const val HEADER_BYTES = 64
     const val FRAME_HEADER_BYTES = 96
     const val FOOTER_BYTES = 32
-    const val MAX_FRAMES = 64
+    // Sanity bound only: a long session has hundreds of frames.
+    const val MAX_FRAMES = 20000
 
     fun parse(header: ByteArray, fileSize: Long?): CcrawInfo? {
         if (header.size < HEADER_BYTES) return null

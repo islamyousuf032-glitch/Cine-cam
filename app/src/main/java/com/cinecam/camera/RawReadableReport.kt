@@ -9,6 +9,13 @@ internal object RawReadableReport {
         appendLine("CineCam — সহজ পরীক্ষার রিপোর্ট")
         appendLine("Capture: ${report.optString("exportSessionId", "unknown")}")
         appendLine("Mode: ${report.optString("captureMode")}")
+        report.optJSONObject("recordingPlan")?.let { plan ->
+            appendLine("Session: ${plan.optInt("seconds")} s • ${plan.optInt("fps")} fps target • " +
+                "সর্বোচ্চ ${plan.optInt("maxFrames")} frame (${plan.optInt("slotFrames")} slot)" +
+                if (plan.optBoolean("storageLimited")) " • জায়গা অনুযায়ী সীমিত" else "")
+        }
+        if (report.has("achievedFps")) appendLine("আসল rate: ${report.optDouble("achievedFps")} fps (sensor timestamp থেকে; fixed FPS নয়)")
+        if (report.has("skippedSlots")) appendLine("ব্যবহার হয়নি এমন slot: ${report.optInt("skippedSlots")} (storage/sensor ধীর হলে)")
         appendLine("মেলা frame: ${report.optInt("matchedFrames")} / ${report.optInt("requestedFrames")}")
         appendLine("লেখা frame: ${report.optJSONObject("native")?.optLong("framesWritten") ?: 0}")
         appendLine("Native drop: ${report.optJSONObject("native")?.optLong("framesDropped") ?: 0}")

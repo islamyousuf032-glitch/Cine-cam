@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <algorithm>
 #include <string>
 #include <android/log.h>
 #include <android/hardware_buffer.h>
@@ -248,7 +249,8 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
 // Bounded diagnostic burst: RAW_SENSOR storage is 16-bit, sensor precision is separate metadata.
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
-        JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs, jboolean preallocate) {
+        JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs, jboolean preallocate,
+        jint maxFrames, jlong maxBytes) {
     auto* engine = GetGlobalEngine();
     const auto directory = jstringToStd(env, path);
     if (env->ExceptionCheck() || epochNs < 0) return JNI_FALSE;
@@ -256,6 +258,10 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
     RecordingConfig config;
     config.width = width; config.height = height; config.bitDepth = 16;
     config.preallocateCcraw = preallocate == JNI_TRUE;
+    // Session budget is decided by the Kotlin planner; never exceed the container limits here.
+    config.maxFrames = maxFrames > 0 ? static_cast<int32_t>(std::min<int32_t>(maxFrames, 100000)) : 8;
+    config.maxBytes = maxBytes > 0 ? static_cast<int64_t>(std::min<int64_t>(maxBytes, 64LL * 1024 * 1024 * 1024))
+                                   : 256LL * 1024 * 1024;
     config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
     config.outputPath = directory; config.enableAudio = false; config.enableZstd = false;
     std::string error;

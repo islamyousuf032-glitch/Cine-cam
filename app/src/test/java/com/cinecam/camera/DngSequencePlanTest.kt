@@ -15,7 +15,7 @@ class DngSequencePlanTest {
         assertEquals(272L, plan.last().frame.payloadOffset)
     }
     @Test fun rejectsEmptyOversizedNonmonotonicOrPreEpochPlans() {
-        val bad = listOf(emptyList(), List(9) { CcrawVerifier.Frame(200L + it, it.toLong(), 160) },
+        val bad = listOf(emptyList(), List(CcrawVerifier.MAX_FRAMES + 1) { CcrawVerifier.Frame(200L + it, it.toLong(), 160) },
             listOf(CcrawVerifier.Frame(99, 1, 160)),
             listOf(CcrawVerifier.Frame(200, 1, 160), CcrawVerifier.Frame(200, 2, 272)))
         for (frames in bad) {

@@ -67,9 +67,18 @@ bool CcrawWriter::writeAll(const void* data, size_t size) {
     }
     return true;
 }
-bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t height, int64_t epoch, bool preallocate) {
+bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t height, int64_t epoch,
+                       bool preallocate, uint32_t maxFrames, uint64_t maxBytes) {
+    const uint64_t framePayload = uint64_t(width) * height * 2;
+    constexpr uint64_t kHeaderBytes = 64, kFrameHeaderBytes = 96, kFooterBytes = 32;
     if (fd_ >= 0 || width == 0 || height == 0 || width > 16384 || height > 16384 || epoch < 0 ||
-        uint64_t(width) * height * 2 > 256ULL * 1024 * 1024) { error_ = "Invalid CCRAW configuration"; return false; }
+        framePayload > 256ULL * 1024 * 1024 || maxFrames == 0 || maxFrames > 100000 ||
+        maxBytes < kHeaderBytes + kFooterBytes + kFrameHeaderBytes + framePayload ||
+        maxBytes > 64ULL * 1024 * 1024 * 1024) { error_ = "Invalid CCRAW configuration"; return false; }
+    // Reserve room for every frame header up front so the byte budget cannot be overshot.
+    const uint64_t overhead = kHeaderBytes + kFooterBytes + uint64_t(maxFrames) * kFrameHeaderBytes;
+    if (maxBytes < overhead + framePayload) { error_ = "Invalid CCRAW configuration"; return false; }
+    const uint64_t payloadBudget = maxBytes - overhead;
     partial_ = directory + "/capture.ccraw.partial";
     final_ = directory + "/capture.ccraw";
     struct stat st{};
@@ -81,10 +90,10 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
     allocationNs_.store(0); reservedBytes_.store(0); allocationError_.store(0);
     truncateNs_.store(0); closeNs_.store(0); renameNs_.store(0); writeCalls_.store(0); maxWriteNs_.store(0);
     fileOffset_ = 0; preallocated_ = false; error_.clear();
+    maxFrames_ = maxFrames; maxPayload_ = payloadBudget;
     if (preallocate) {
-        const uint64_t frameBytes = uint64_t(width) * height * 2;
-        const uint64_t frames = std::min<uint64_t>(8, (256ULL * 1024 * 1024) / frameBytes);
-        const int64_t reserve = static_cast<int64_t>(64 + frames * (96 + frameBytes) + 32);
+        const uint64_t frames = std::min<uint64_t>(maxFrames, payloadBudget / framePayload);
+        const int64_t reserve = static_cast<int64_t>(64 + frames * (96 + framePayload) + 32);
         const auto begin = pipelineNowNs();
         int result;
         do { result = allocator_ ? allocator_(fd_, reserve) : ::posix_fallocate(fd_, 0, static_cast<off_t>(reserve)); }
@@ -111,8 +120,8 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
 bool CcrawWriter::append(const RawFrame& frame) {
     const auto& m = frame.metadata;
     const uint64_t expected = uint64_t(width_) * height_ * 2;
-    if (fd_ < 0 || failed_ || !frame.data || !frame.isValid || count_ >= 8 ||
-        frame.sizeBytes != expected || payload_ + expected > 256ULL * 1024 * 1024 ||
+    if (fd_ < 0 || failed_ || !frame.data || !frame.isValid || count_ >= maxFrames_ ||
+        frame.sizeBytes != expected || expected > maxPayload_ || payload_ + expected > maxPayload_ ||
         m.width != static_cast<int32_t>(width_) || m.height != static_cast<int32_t>(height_) ||
         m.bitDepth != 16 || m.exposureTimeNs < 0 || m.iso < 0 || m.frameNumber < 0 ||
         m.stride != static_cast<int32_t>(width_ * 2) || m.timestampNs < epoch_ || m.timestampNs <= lastTimestamp_) {

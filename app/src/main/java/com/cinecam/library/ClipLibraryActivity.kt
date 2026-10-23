@@ -241,7 +241,7 @@ class ClipLibraryActivity : ComponentActivity() {
         }
         fun frameCount(doc: MediaDoc): Int {
             val fromClip = clipById[doc.clipId]?.written ?: 0L
-            return if (fromClip > 0) fromClip.coerceAtMost(64L).toInt()
+            return if (fromClip > 0) fromClip.coerceAtMost(CcrawHeader.MAX_FRAMES.toLong()).toInt()
             else (headerFrames[doc.name] ?: 0)
         }
         fun metaFor(clipId: String): ClipMetadata? = clipById[clipId]?.metadata ?: extraMetadata[clipId]

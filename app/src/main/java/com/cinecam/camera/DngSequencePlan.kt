@@ -6,7 +6,7 @@ import java.util.Locale
 internal object DngSequencePlan {
     data class Entry(val name: String, val frame: CcrawVerifier.Frame, val ptsNs: Long)
     fun entries(verified: CcrawVerifier.Verified): List<Entry> {
-        require(verified.frames.size in 1..8)
+        require(verified.frames.size in 1..CcrawVerifier.MAX_FRAMES)
         var previous = verified.epochNs - 1
         return verified.frames.mapIndexed { index, frame ->
             require(frame.timestampNs >= verified.epochNs && frame.timestampNs > previous)

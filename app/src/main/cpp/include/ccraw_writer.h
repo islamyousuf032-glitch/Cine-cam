@@ -11,7 +11,11 @@ public:
     using AllocationFn = int (*)(int fd, int64_t bytes); // errno-style result; injectable in tests
     explicit CcrawWriter(AllocationFn allocator = nullptr) : allocator_(allocator) {}
     ~CcrawWriter();
-    bool open(const std::string& directory, uint32_t width, uint32_t height, int64_t epochNs, bool preallocate = false);
+    // maxFrames/maxBytes bound one session. Both are explicit so a planned long session
+    // can exceed the original 8-frame burst without any unbounded growth.
+    bool open(const std::string& directory, uint32_t width, uint32_t height, int64_t epochNs,
+              bool preallocate = false, uint32_t maxFrames = 8,
+              uint64_t maxBytes = 256ULL * 1024 * 1024);
     bool append(const RawFrame& frame);
     bool finish();
     struct Timings {
@@ -32,6 +36,8 @@ private:
     std::string partial_, final_, error_;
     uint32_t width_ = 0, height_ = 0;
     uint64_t count_ = 0, payload_ = 0;
+    uint32_t maxFrames_ = 8;
+    uint64_t maxPayload_ = 0;
     int64_t epoch_ = 0, lastTimestamp_ = -1;
     bool failed_ = false;
     std::atomic<uint64_t> allocationNs_{0}, reservedBytes_{0}, truncateNs_{0}, closeNs_{0}, renameNs_{0};

@@ -4,7 +4,8 @@ package com.cinecam.camera
  * Only one paced producer/request may be active, with no DNG/other RAW producer alongside it.
  */
 internal class PacedRequestGate(private val limit: Int) {
-    init { require(limit in 1..8) }
+    // A planned session budget may exceed the old 8-frame burst; concurrency stays 1 regardless.
+    init { require(limit in 1..RecordingPlanner.MAX_FRAMES) }
     var submitted = 0
         private set
     var completed = 0

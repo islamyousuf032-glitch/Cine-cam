@@ -53,7 +53,7 @@ CRC32 is the standard reflected IEEE polynomial 0xedb88320; compatible with Pyth
 
 ## Limits/failure contract
 
-- Native file writer: max 8 frames / 256 MiB total payload; Android adapter further limits requested payload to 192 MiB। Max dimensions 16384×16384 and per-frame payload <=256 MiB; engine pool allocation budget also applies।
+- Native file writer: session-নির্দিষ্ট `maxFrames` / `maxBytes` (ডিফল্ট ৮ frame / 256 MiB)। Android planner দীর্ঘ session-এ কয়েকশো frame দিতে পারে; frame payload এখনও ≤256 MiB, মোট ≤8 GiB এবং pool ৩ slot। Max dimensions 16384×16384 and per-frame payload <=256 MiB; engine pool allocation budget also applies।
 - Android test: 3 native buffers plus ImageReader maxImages=3; hold <=2 unmatched Images and <=12 results। Full pool or invalid metadata is rejected/counts as dropped, not unbounded memory growth।
 - C++ exclusively creates `capture.ccraw.partial`; finish writes footer, fsyncs, closes, then renames inside unique session directory। Existing final file is refused; no append/reuse of prior captures। On error/process kill partial remains; successful complete footer is not invented।
 - Reader rejects truncated records, invalid CRCs, missing footer, invalid dimensions/timestamps/counts or trailing data। Recovery of intact frames from partial files is future work, not automatically supported。
@@ -68,4 +68,4 @@ ARM64 hardware CRC backend runtime-selected হলেও একই IEEE CRC32 (n
 
 ## Optional file reservation
 
-Preallocated output-এ actual written offset পর্যন্ত truncate করে তারপর fsync/close/rename করা হয়। Successful file-এর bytes/header/footer/checksums/exact EOF regular writer-এর সমান। `.partial`-এর reserved zero tail valid frames নয় এবং interrupted output complete বলে গ্রহণ করা যাবে না। Reservation count bounded by8 frames/native256MiB payload guard; Android requested payload budget192MiB অপরিবর্তিত।
+Preallocated output-এ actual written offset পর্যন্ত truncate করে তারপর fsync/close/rename করা হয়। Successful file-এর bytes/header/footer/checksums/exact EOF regular writer-এর সমান। `.partial`-এর reserved zero tail valid frames নয় এবং interrupted output complete বলে গ্রহণ করা যাবে না। Reservation এখন `maxFrames` অনুযায়ী (ডিফল্ট ৮), তাই আগের output byte-identical থাকে।

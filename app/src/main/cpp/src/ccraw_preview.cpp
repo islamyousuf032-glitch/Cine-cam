@@ -16,8 +16,11 @@ namespace {
 
 constexpr uint32_t kHeaderBytes = 64;
 constexpr uint32_t kFrameHeaderBytes = 96;
+constexpr uint32_t kFooterBytes = 32;
 constexpr uint64_t kMaxPayload = 256ull << 20;
-constexpr uint64_t kMaxFileBytes = 1ull << 30;
+// Long sessions legitimately exceed the old 1 GiB burst file; only the wrapper stays bounded.
+constexpr uint64_t kMaxFileBytes = 8ull << 30;
+constexpr uint64_t kMaxFrames = 100000;
 constexpr uint64_t kMaxOutputPixels = 6ull << 20;
 constexpr int kMaxDimension = 4096;
 
@@ -118,8 +121,12 @@ bool readFrameLayout(int fd, int frameIndex, FrameLayout& out) {
         static_cast<uint64_t>(out.width) * out.height > kMaxPayload / 2) return false;
     out.payload = static_cast<uint64_t>(out.width) * out.height * 2;
     const uint64_t stride = kFrameHeaderBytes + out.payload;
-    if (frameIndex < 0 || frameIndex >= 64 ||
-        kHeaderBytes + (static_cast<uint64_t>(frameIndex) + 1) * stride > static_cast<uint64_t>(st.st_size)) return false;
+    const uint64_t fileBytes = static_cast<uint64_t>(st.st_size);
+    // Frame count comes from the real file size (header + frames + footer), not a fixed cap.
+    const uint64_t frames = fileBytes >= kFooterBytes
+        ? ((fileBytes - kFooterBytes - kHeaderBytes) / stride) : 0;
+    if (frameIndex < 0 || static_cast<uint64_t>(frameIndex) >= std::min(frames, kMaxFrames) ||
+        kHeaderBytes + (static_cast<uint64_t>(frameIndex) + 1) * stride > fileBytes) return false;
     out.payloadOffset = kHeaderBytes + static_cast<uint64_t>(frameIndex) * stride + kFrameHeaderBytes;
     std::array<uint8_t, kFrameHeaderBytes> frame{};
     if (!preadAll(fd, frame.data(), frame.size(), kHeaderBytes + static_cast<uint64_t>(frameIndex) * stride)) return false;

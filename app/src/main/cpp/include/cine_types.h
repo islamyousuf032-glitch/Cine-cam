@@ -114,6 +114,10 @@ struct RecordingConfig {
     int32_t zstdLevel = 3;            // 1-22, 3 is good tradeoff
     bool enableAudio = false;
     int32_t audioSampleRate = 48000;
+    // Explicit session budget for the CCRAW container. Defaults keep the original
+    // 8-frame / 256 MiB burst; a planned long session raises both together.
+    int32_t maxFrames = 8;
+    int64_t maxBytes = 256LL * 1024 * 1024;
 };
 
 // ---------------------------------------------------------------------------
