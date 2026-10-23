@@ -340,3 +340,10 @@ Device check: Clips → **MP4** → নতুন **ভিডিও সেটি�
 ## v99 — long RAW session — 2026-10-23
 
 User confirmed v98 and asked to start the next planned milestone. The capture path is no longer an 8-frame burst: the user picks 3/5/10/20/30 s and a 2/3/5 fps pacing target. `RecordingPlanner` computes a finite frame budget from duration and free storage (1 GiB reserve, 8 GiB cap, DNG/archive copies counted), so a session can never run unbounded. Requests are scheduled at absolute slot times with exactly one in flight; missed slots are counted, and a writer that refuses buffers for 3 s stops the session with a reason. The native `CcrawWriter` now takes explicit `maxFrames`/`maxBytes` (defaults keep the old 8-frame/256 MiB container byte-identical), and the verifier, preview reader, BP16 archive and library caps were raised for long files. Reports add the plan, achieved fps, skipped slots and stop reason. Native + JVM tests added; Android device verification pending (this build is the first compiler check of the Kotlin).
+
+### v99 delivery — long RAW session
+CI `39932332069`/102 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `822370f`। Release `v0.1.102-alpha-822370f`, APK 15,101,183 bytes + SHA256SUMS.txt। প্রথম দুটি build শুধু unit-test প্রত্যাশার কারণে লাল হয়েছিল (নতুন long-session limit-গুলো পুরোনো পরীক্ষায় লেখা ছিল); এখন সব unit test pass।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.102-alpha-822370f/CineCam-debug.apk
+
+Device check: RAW session → দৈর্ঘ্য (৩–৩০s) ও target fps (২/৩/৫) বাছুন। হিসাব দেখে নিশ্চিত হয়ে **টেস্ট শুরু করুন**; শেষে report-এ `Session`, `আসল rate`, `ব্যবহৃত হয়নি এমন slot` দেখুন। ফোনে আসল rate ও storage আচরণই এখানে একমাত্র প্রমাণ — কোনো FPS দাবি করা হয়নি।
