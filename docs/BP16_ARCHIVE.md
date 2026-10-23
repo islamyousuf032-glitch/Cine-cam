@@ -37,7 +37,7 @@ Full `.ccraw` header/frame headers/pixels/footer—সব bytes রাখা হ
 Archive tab → **Restore** → নিশ্চিতকরণ → নতুন ফাইল `CineCam_<epoch>_<id>_capture_restored_<timestamp>.ccraw`।
 
 - Native `restoreBp16Archive(archiveFd, destinationFd)` descriptor-থেকে- descriptor স্ট্রিম করে: header সবসময় আছে? CRC? block length/bits/flags/samples মিলছে? প্রতিটি block decode হয়ে **তার record-CRC** মিলে গেলেই লেখা হয়। শেষে EOF (trailing byte নেই), fsync ও মোট byte数の মিল বাধ্যতামূলক। কোনো ধাপ ব্যর্থ হলে নিজের partial file মুছে ফেলা হয়।
-- Kotlin দিক: প্রথমে header পড়ে `sourceBytes` জেনে free space (মূল মাপ + 96 MiB) যাচাই; তারপর staging-এ restore → `CcrawVerifier` দিয়ে পুরো CCRAW-এর frame/CRC/footer যাচাই → MediaStore `Download/CineCam`-এ copy ও publish → staging মুছে ফেলা।
+- Kotlin দিক: প্রথমে header পড়ে `sourceBytes` জেনে free space (staging + Download copy একসঙ্গে, তাই প্রায় ২×মূল মাপ + 96 MiB) যাচাই; তারপর staging-এ restore → `CcrawVerifier` দিয়ে পুরো CCRAW-এর frame/CRC/footer যাচাই → MediaStore `Download/CineCam`-এ copy ও publish → staging মুছে ফেলা।
 - নাম unique, তাই আগের কোনো ফাইল overwrite হয় না; capture id একই থাকে বলে ওই capture-এর `metadata.json` calibration/রঙ restored frame-এও প্রযোজ্য হয় এবং Clips section-এ "restored copy" লেবেল দিয়ে দেখা যায়।
 - বাস্তব সীমা: 674 MB restore-এ staging + Download copy—দুই ধাপ লেখা; time storage-নির্ভর। Android restore UI/MediaStore যাচাই ফোনে বাকি (native/lib restore ASan test করা)।
 - Python `scripts/restore_bp16.py`-এর limit-ও এখন 8 GiB, তাই CLI ও app একই সীমা মানে।

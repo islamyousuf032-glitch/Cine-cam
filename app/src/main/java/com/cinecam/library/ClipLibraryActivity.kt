@@ -322,7 +322,7 @@ class ClipLibraryActivity : ComponentActivity() {
                         Text("• প্রতিটি block-এর CRC যাচাই হয়, তাই restored file byte-exact।\n" +
                             "• archive ও মূল capture ফাইল যেমন আছে তেমনই থাকে; কিছু মুছে যায় না।\n" +
                             "• restore শেষে frame/CRC যাচাই ও Download export হয়; এতে সময় লাগতে পারে।\n" +
-                            "• restore + export-এর জন্য অন্তত মূল মাপ + 96 MiB ফাঁকা জায়গা দরকার।")
+                            "• staging ও Download copy একসঙ্গে থাকে, তাই মূল মাপের প্রায় দ্বিগুণ + 96 MiB ফাঁকা জায়গা দরকার।")
                     }
                 },
                 confirmButton = {

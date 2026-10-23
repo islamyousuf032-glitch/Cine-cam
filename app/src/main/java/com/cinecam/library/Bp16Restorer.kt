@@ -40,10 +40,11 @@ internal object Bp16Restorer {
         val folder = File(root, "restore")
         check(folder.isDirectory || folder.mkdirs()) { "Restore staging folder তৈরি হয়নি" }
         val free = runCatching { StatFs(folder.absolutePath).availableBytes }.getOrDefault(0L)
-        val needed = info.sourceBytes + FREE_MARGIN_BYTES
+        // Staging and the published copy exist at the same time, so the peak is ~2x the RAW.
+        val needed = info.sourceBytes * 2 + FREE_MARGIN_BYTES
         check(free >= needed) {
-            "জায়গা কম: restored CCRAW ${info.sourceBytes / (1024 * 1024)} MiB + নিরাপত্তা মার্জিন দরকার, " +
-                "এখন ফাঁকা ${free / (1024 * 1024)} MiB"
+            "জায়গা কম: restored CCRAW ${info.sourceBytes / (1024 * 1024)} MiB-এর জন্য " +
+                "প্রায় ${needed / (1024 * 1024)} MiB দরকার, এখন ফাঁকা ${free / (1024 * 1024)} MiB"
         }
         val staged = File(folder, name)
         check(staged.createNewFile()) { "একই নামের restored file আগেই আছে" }
