@@ -28,7 +28,8 @@ internal object PreviewLoader {
 
     suspend fun load(context: Context, target: PreviewTarget, maxDimension: Int): Bitmap =
         withContext(Dispatchers.IO) {
-            val key = "${target.dng}|${target.frameIndex}@$maxDimension"
+            val key = PreviewCacheKey.of(target.dng?.toString(), target.ccraw?.toString(),
+                target.frameIndex, maxDimension, target.cfa, target.matrixMode, target.white)
             cache.get(key)?.let { return@withContext it }
             permits.withPermit {
                 cache.get(key)?.let { return@withPermit it }

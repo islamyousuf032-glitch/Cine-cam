@@ -23,3 +23,13 @@
 ## Automated
 
 `YuvConverterTest`: limited-range BT.601 white/black, red chroma direction, NV12 vs I420 layout, invalid dimensions/pixel count। `VideoRenderPlanTest`: 4080×3060→1280×960 even scaling, odd-size truncation, real timestamp spacing, duplicate separation, fps bounds। এগুলো JVM-এ চলে, Android encoder নয়।
+
+## v96 — ভুল clip-এর ভিডিও (সমাধান) ও section ঠিক করা
+
+**উপসর্গ:** নতুন `.ccraw` থেকে MP4 বানালে আগের capture-এর ভিডিও আসত; Report/Archive section-এ ভুল ফাইল দেখাত।
+
+**কারণ ১ (রেন্ডার):** `PreviewLoader` cache key ছিল `<dng>|<frame>@<dim>`। CCRAW frame target-এ DNG URI null, তাই প্রতিটি clip-এর 0..7 frame একই key পেত → অন্য clip-এর cached ছবি ফেরত আসত। ঠিক করা হয়েছে `PreviewCacheKey` দিয়ে, যেখানে DNG URI, **CCRAW URI**, frame index, CFA, matrix mode, white level ও আকার থাকে।
+
+**কারণ ২ (section):** list report-এ থাকা mapping-এর উপর নির্ভর করত। report/metadata না মিললে বা পুরোনো হলে archive section-এ `.ccraw` ঢুকে যেত। এখন প্রতিটি section সরাসরি folder-এর ফাইল নাম দিয়ে তৈরি হয়; Archive-এ কেবল `.ccraw.bp16`, Clips-এ কেবল `.ccraw`।
+
+**বাড়তি:** report না থাকলেও CCRAW header থেকে width/height/frame সংখ্যা পড়া যায়; Clips-এ রেন্ডার করা MP4-এর তালিকা (কোন capture-এর ভিডিও) দেখা যায়।

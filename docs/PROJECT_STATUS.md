@@ -314,3 +314,7 @@ CI `39803625141`/95 সম্পূর্ণ সফল (ARM/x86 native sanitizer
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.95-alpha-d089067/CineCam-debug.apk
 
 Device check (পুরোনো capture): Clips→`MP4` বা ছবি-details→`MP4 তৈরি করুন (8)`। সফল হলে `Download/CineCam/CineCam_<capture>_render_<epoch>.mp4` এবং **ভিডিও শেয়ার**; ফোনের gallery/player-এ চালিয়ে দেখা যাবে। Encoder/playback physical verification এখনো বাকি; ব্যর্থ হলে app-এর দেখানো error text জানাতে হবে (এতে encoder capability/image layout বোঝা যাবে)।
+
+## v96 — wrong-clip MP4 & archive listing fixes — 2026-10-23
+
+Device feedback: new capture's MP4 showed the previously rendered clip; Lossless archive showed .ccraw rows. Root causes: (1) preview cache key omitted the CCRAW URI, so every clip's frame N shared one cache entry; (2) sections were built from saved-report mappings rather than actual files. Fixed with PreviewCacheKey (DNB/CCRAW URI+frame+calibration+size) and document-derived sections (dng / ccraw / ccraw.bp16 / sidecars), plus CCRAW header frame counts when reports are missing and a rendered-MP4 list showing each video's capture id. New JVM tests for cache-key uniqueness and header parsing. Android CI/device verification pending.

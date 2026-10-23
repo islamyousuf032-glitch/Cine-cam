@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — ভুল ক্লিপের ভিডিও ও archive section সংশোধন] — 2026-10-23
+- **মূল বাগ:** preview cache key-তে `.ccraw` container URI ছিল না; CCRAW frame-এর DNG URI null হওয়ায় সব clip-এর একই frame index একই cache entry পেত। ফলে নতুন capture-এর MP4 রেন্ডার করলে **আগের clip-এর ছবি** আসত। এখন key-তে container URI, frame index, CFA, matrix mode, white level ও আকার—সব থাকে (unit test সহ)।
+- Manage clips-এর প্রতিটি section এখন **বাস্তব folder ফাইল** থেকে তৈরি: ছবি = `.dng`, Clips = `.ccraw`, Archive = **শুধু** `.ccraw.bp16`, Report = sidecar। report/metadata হারালেও ফাইল তালিকা থাকে; CCRAW header (64 byte) পড়ে frame সংখ্যা বের করা হয়, তাই report ছাড়াও preview/render চলে (রঙের calibration ছাড়া)।
+- Clips-এ **রেন্ডার করা MP4** তালিকা: capture id, সাইজ, চালান/শেয়ার—কোন ভিডিও কোন capture-এর তা সরাসরি দেখা যায়। নতুন রেন্ডার নতুন ফাইল, পুরোনো মুছে যায় না।
+- রেন্ডার স্টেটাসে capture id যোগ; tab chip সংকুচিত ও অনুভূমিক scroll (Report আর ভেঙে যাচ্ছে না)।
+- Android encoder/playback যাচাই এখনো ফোনে বাকি।
+
 ## [Unreleased — RAW burst থেকে MP4 রেন্ডার] — 2026-10-22
 - Manage clips-এর Clips ও ছবি section থেকে **MP4 তৈরি**: MediaCodec H.264 + MediaMuxer, native preview frame থেকে; শব্দ নেই।
 - আসল sensor timestamp→PTS (প্রথম frame=0, ন্যূনতম 33.333ms ব্যবধান, duplicate PTS নয়); report-এ timestamp না থাকলে তবেই অনুমান। burst গড় fps দেখানো হয়।
