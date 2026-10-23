@@ -101,8 +101,9 @@ class ClipCatalogTest {
         rejects(value = "আ".repeat(ClipCatalog.MAX_REPORT_BYTES / 2))
         // A real long session indexes hundreds of files; it must still parse.
         val longSession = report()
+        // Distinct names: the fixture already owns frame_000001..000008.
         for (i in 1..300) longSession.getJSONObject("exportFiles").put(
-            "frame_%06d.dng".format(i), "${id}_frame_%06d.dng".format(i))
+            "long_frame_%06d.dng".format(i), "${id}_long_frame_%06d.dng".format(i))
         assertEquals(314, ClipCatalog.parse(name, longSession.toString()).files.size)
         val tooMany = report()
         for (i in 1..ClipCatalog.MAX_EXPORT_FILES + 1)
