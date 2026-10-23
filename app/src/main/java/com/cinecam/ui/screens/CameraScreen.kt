@@ -73,6 +73,7 @@ fun CameraScreen() {
     var showRawWarning by remember { mutableStateOf(false) }
     var sessionSeconds by rememberSaveable { mutableIntStateOf(5) }
     var sessionFps by rememberSaveable { mutableIntStateOf(3) }
+    var pipelineDepth by rememberSaveable { mutableIntStateOf(1) }
     var sessionEstimate by remember { mutableStateOf<String?>(null) }
     var showClipReport by remember { mutableStateOf(false) }
     var capturing by remember { mutableStateOf(false) }
@@ -257,7 +258,7 @@ fun CameraScreen() {
         AlertDialog(onDismissRequest = { showRawWarning = false }, title = { Text("পরীক্ষামূলক RAW test") },
             text = {
                 Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
-                    Text("RAW session: দৈর্ঘ্য ও target fps বাছুন। প্রতিটি request একবারে একটি, তাই 3-buffer pool নিরাপদ থাকে; আসল frame rate storage/sensor speed-এর উপর নির্ভর করে (fixed FPS নয়)। MP4/audio নেই। Download/CineCam-এ export হবে।")
+                    Text("RAW session: দৈর্ঘ্য ও target fps বাছুন। আসল frame rate camera/storage-এর গতির উপর নির্ভর করে (fixed FPS নয়)। MP4/audio নেই। Download/CineCam-এ export হবে।")
                     Text("দৈর্ঘ্য (seconds)", style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(3, 5, 10, 20, 30).forEach { option ->
@@ -265,6 +266,17 @@ fun CameraScreen() {
                                 label = { Text("${option}s") })
                         }
                     }
+                    Text("Pipeline depth (একসঙ্গে কত request)", style = MaterialTheme.typography.labelLarge)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(1 to "1 • নিরাপদ", 2 to "2 • দ্রুত").forEach { (value, label) ->
+                            FilterChip(selected = pipelineDepth == value, onClick = { pipelineDepth = value },
+                                label = { Text(label) })
+                        }
+                    }
+                    Text(if (pipelineDepth == 1)
+                        "1 = একটি frame match হওয়ার পরের request — সবচেয়ে নিরাপদ, কিন্তু camera বসে থাকে।"
+                        else "2 = পরের request আগেই দেওয়া হয় (সর্বোচ্চ ২টি in-flight, ৩-buffer pool-এ একটি slot খালি থাকে)। বেশি fps পাওয়ার সম্ভাবনা; কোনো frame না এলে session timeout-এ থামবে — report-এ কারণ থাকবে।",
+                        style = MaterialTheme.typography.bodySmall)
                     Text("target fps (পacing)", style = MaterialTheme.typography.labelLarge)
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf(2, 3, 5).forEach { option ->
@@ -314,7 +326,7 @@ fun CameraScreen() {
                 showRawWarning = false
                 controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest,
                     internalRawStaging, verifyRawSample, allSavedFramesDng, losslessArchive,
-                    if (pacedRawTest) sessionSeconds else 3, sessionFps)
+                    if (pacedRawTest) sessionSeconds else 3, sessionFps, pipelineDepth)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

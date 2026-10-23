@@ -360,3 +360,7 @@ CI `39939472246`/105 সম্পূর্ণ সফল (ARM/x86 native sanitize
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.105-alpha-4fa25d3/CineCam-debug.apk
 
 Device check: Lossless archive tab → কোনো `.ccraw.bp16` → **Restore** → নিশ্চিত করুন। সফল হলে Clips-এ `…_capture_restored_<timestamp>.ccraw` "restored copy" লেবেলসহ আসবে, frame preview ও MP4 তার উপরেও চলবে। archive ও মূল capture অপরিবর্তিত থাকবে।
+
+## v102 — faster finalize/export + pipeline depth — 2026-10-23
+
+Device session CineCam_1792758475596_d1c3faae (40/50 frames, 3.94 fps, 0 drops, 998 MB CCRAW) showed the capture path is healthy but finalize is expensive: 30.0 s of DNG sequence writing and 134.0 s of export for 2.55 GB, dominated by one fsync per DNG (~1.5 s each). Fixes: export per-file cap raised from 1 GiB to 8 GiB (a long CCRAW above 1 GiB would previously fail to export), bounded 3-worker parallel copies and DNG generation with cleanup that waits for workers, 1 MiB buffered DNG streams, an opt-in pipeline depth 2 for RAW requests (still ≤2 acquired Images, one driver slot free), and MP4 render progress with elapsed/ETA. Native + JVM tests added; device verification pending.

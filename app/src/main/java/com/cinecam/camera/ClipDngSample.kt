@@ -4,9 +4,13 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.DngCreator
 import android.hardware.camera2.TotalCaptureResult
 import android.util.Size
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
 
 internal object ClipDngSample {
+    /** 1 MiB buffers; the DNG payload itself is unchanged. */
+    private const val BUFFER_BYTES = 1024 * 1024
     /** Uses the verified first SAVED payload, not a newly captured Image. Platform calibration path. */
     fun write(folder: File, verified: CcrawVerifier.Verified, chars: CameraCharacteristics,
               result: TotalCaptureResult, orientation: Int) {
@@ -22,8 +26,10 @@ internal object ClipDngSample {
         try {
             DngCreator(chars, result).use { creator ->
                 creator.setOrientation(orientation)
-                File(folder, "capture.ccraw").inputStream().use { input ->
-                    output.outputStream().use { out ->
+                // Large buffers: DngCreator copies ~25 MB per frame and the default 8 KiB
+                // streams added measurable overhead to a 40-frame sequence.
+                BufferedInputStream(File(folder, "capture.ccraw").inputStream(), BUFFER_BYTES).use { input ->
+                    BufferedOutputStream(output.outputStream(), BUFFER_BYTES).use { out ->
                         creator.writeInputStream(out, Size(verified.width, verified.height), input, frame.payloadOffset)
                     }
                 }

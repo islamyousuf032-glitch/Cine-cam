@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -269,13 +270,22 @@ class ClipLibraryActivity : ComponentActivity() {
             renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে • $clipId • লম্বা দিক ≤ ${options.maxDimension} px"
             scope.launch {
                 try {
+                    val startedAt = SystemClock.elapsedRealtime()
                     val output = Mp4Renderer.render(context.applicationContext, clipId,
                         targets.map { it.second }, timestampsFor(clipById[clipId], targets.size), options) { done, total ->
-                        withContext(Dispatchers.Main) { renderStatus = "ভিডিও রেন্ডার $done/$total • $clipId" }
+                        val elapsed = SystemClock.elapsedRealtime() - startedAt
+                        // A measured estimate, not a promise: per-frame decode dominates.
+                        val remaining = if (done > 0) (elapsed.toDouble() / done * (total - done)).toLong() else 0L
+                        withContext(Dispatchers.Main) {
+                            renderStatus = "ভিডিও রেন্ডার $done/$total • $clipId • " +
+                                "${elapsed / 1000.0}s হয়েছে" +
+                                if (remaining > 0) " • আনুমানিক আরও ${(remaining / 1000.0 + 0.5).toInt()}s" else ""
+                        }
                     }
                     renderedVideo = clipId to output
                     renderStatus = "ভিডিও তৈরি • $clipId: ${output.width}×${output.height}, ${output.frames} frame, " +
-                        "${output.fps} fps, ${size(output.bytes)} • শব্দ নেই, preview-grade রঙ"
+                        "${output.fps} fps, ${size(output.bytes)} • " +
+                        "${(SystemClock.elapsedRealtime() - startedAt) / 1000.0}s-এ রেন্ডার • শব্দ নেই, preview-grade রঙ"
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Throwable) {

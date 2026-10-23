@@ -290,7 +290,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3, pipelineDepth: Int = 1) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -340,7 +340,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 clipVerify = verifyAndSample; clipSequence = verifyAndSample && allFramesDng; clipAcceptedResults.clear(); clipSampleOrientation = orientation
                 clipPreallocate = preallocate
                 clipPaced = paced
-                clipGate = if (paced) PacedRequestGate(clipLimit) else null
+                val depth = if (paced) pipelineDepth.coerceIn(1, PacedRequestGate.MAX_DEPTH) else 1
+                clipGate = if (paced) PacedRequestGate(clipLimit, depth) else null
                 clipFailedRequests = 0; clipCapacityWaitNs = 0; clipCapacityWaitStartNs = 0
                 clipAcquisitionDeferrals = 0
                 clipImageTimestamps.clear(); clipResultTimestamps.clear(); clipEvictedResultTimestamps.clear()
@@ -392,8 +393,9 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         override fun run() {
                             if (!clipActive || generation != token || id != clipSerial) return
                             val gate = clipGate ?: return
-                            if (gate.inFlight) return
                             if (gate.exhausted) { stopClipInternal("session frame budget reached", true); return }
+                            // Depth 2 keeps the next request queued while the previous frame is matched.
+                            if (gate.inFlightCount >= gate.depth) return
                             val activePlan = clipPlan ?: return
                             val now = SystemClock.elapsedRealtimeNanos()
                             if (now - clipStartNs >= activePlan.durationMs * 1_000_000L + RecordingPlanner.GRACE_MS * 1_000_000L) {
@@ -578,6 +580,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             put("internalStagingRequested", internalStagingRequested)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
+            put("pipelineDepth", clipGate?.depth ?: 1)
             planForReport?.let { plan ->
                 put("recordingPlan", JSONObject().apply {
                     put("fps", plan.fps); put("seconds", plan.seconds)
@@ -680,14 +683,20 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     val result = savedResults[it.frame.timestampNs]
                                     check(result != null && result.frameNumber == it.frame.sourceFrameNumber) { "Saved sequence metadata missing/mismatched" }
                                 }
-                                val completed = mutableListOf<File>()
+                                val completed = java.util.Collections.synchronizedList(mutableListOf<File>())
+                                val dngDone = java.util.concurrent.atomic.AtomicInteger()
                                 try {
                                     val entries = JSONArray()
-                                    plan.forEachIndexed { index, entry ->
-                                        postStorageStatus("Saved DNG sequence: ${index + 1}/${plan.size}…")
+                                    // Independent files: a bounded pool keeps encode/fsync stages overlapping.
+                                    // The manifest order is fixed by index, never by completion order.
+                                    BoundedParallel.map(EXPORT_WORKERS, plan.size) { index ->
+                                        val entry = plan[index]
                                         ClipDngSample.writeFrame(folder, verified, entry.frame, sampleChars,
                                             savedResults.getValue(entry.frame.timestampNs), sampleOrientation, entry.name)
                                         completed.add(File(folder, entry.name))
+                                        postStorageStatus("Saved DNG sequence: ${dngDone.incrementAndGet()}/${plan.size}…")
+                                        entry
+                                    }.forEach { entry ->
                                         entries.put(JSONObject().apply {
                                             put("file", entry.name); put("timestampNs", entry.frame.timestampNs)
                                             put("ptsNs", entry.ptsNs); put("sourceFrameNumber", entry.frame.sourceFrameNumber)
@@ -701,6 +710,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     }
                                     File(folder, "sequence.json").writeText(manifest.toString(2))
                                     report.put("dngSequenceOk", true); report.put("dngSequenceFrames", plan.size)
+                                    report.put("dngSequenceWorkers", EXPORT_WORKERS)
                                     report.put("dngSequenceBytes", completed.sumOf { it.length() })
                                 } catch (e: Exception) {
                                     completed.forEach { it.delete() }; File(folder, "sequence.json").delete()

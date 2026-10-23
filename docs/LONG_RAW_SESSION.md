@@ -22,10 +22,14 @@ maxFrames  = min(slots, byStorage)
 
 ## Pacing ও stop শর্ত
 
-- প্রতিটি request ঠিক `start + slot × (1e9/fps)` ns-এ যায়; একবারে **একটির বেশি request নেই**
-  (3-buffer pool ও আগের ৮-request নীতি অটুট)।
+- প্রতিটি request ঠিক `start + slot × (1e9/fps)` ns-এ যায়। **Pipeline depth 1** (ডিফল্ট) = একবারে
+  একটি request; **depth 2** = সর্বোচ্চ দুটি in-flight, তাই আগের frame match হওয়ার সময়ই camera পরের
+  frame-এ কাজ শুরু করে। 3-buffer pool-এ সবসময় একটি slot খালি থাকে; এর বেশি (3+) কখনো নয়।
 - দেরি হলে ওই slot বাদ পড়ে এবং `skippedSlots` হিসেবে report-এ লেখা হয়; কোনো frame জোর করে
   ঠেলে দেওয়া হয় না।
+- On-device measurement (F23, depth 1, 5 fps target): achieved 3.94 fps, 10/50 slot বাদ। Camera-ই
+  সীমা ছিল — native write পুরো সেশনে ১.২ সেকেন্ড, কোনো drop নেই। Depth 2 দিয়ে বেশি fps-এর চেষ্টা
+  করা যায়, কিন্তু ফল ডিভাইসে মাপতে হবে; কোনো FPS প্রতিশ্রুতি নেই।
 - session থামে: frame budget শেষ, duration শেষ, ব্যবহারকারীর Stop, অথবা writer **৩ সেকেন্ড**
   ধরে কোনো buffer না দিলে ("storage frame নিচ্ছে না")। প্রতিটি কারণ report-এর `reason`-এ থাকে।
 - safety timeout = চাওয়া দৈর্ঘ্য + ৬ সেকেন্ড (কখনোই অসীম নয়)।

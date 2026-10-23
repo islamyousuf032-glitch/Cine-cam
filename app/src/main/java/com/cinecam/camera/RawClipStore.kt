@@ -14,10 +14,14 @@ import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Per-file copy diagnostics kept in report.json; the rest is counted only. */
 private const val MAX_COPY_DETAILS = 24
+/** Concurrent export copies: independent files overlap their per-file fsync stalls. */
+internal const val EXPORT_WORKERS = BoundedParallel.DEFAULT_WORKERS
 
 internal object RawClipStore {
     /** Free bytes in the same staging root the session will write to. */
@@ -115,12 +119,15 @@ internal object RawClipStore {
             File(folder, "report.txt").writeText(RawReadableReport.text(report))
         }
         writeReports() // Retain a readable diagnostic even if export subsequently fails.
-        val inserted = mutableListOf<android.net.Uri>()
-        val legacyCreated = mutableListOf<File>()
+        // Workers run in parallel, so every shared collection/lock here must stay thread-safe.
+        val inserted = Collections.synchronizedList(mutableListOf<android.net.Uri>())
+        val legacyCreated = Collections.synchronizedList(mutableListOf<File>())
         val copyEngine = NativeRawEngine.getInstance()
         val copyDetails = JSONArray()
+        val detailLock = Any()
         report.put("exportCopyBackend", "native-sendfile-with-bounded-fallback-v1")
         report.put("exportCopyDetails", copyDetails)
+        report.put("exportConcurrency", EXPORT_WORKERS)
         var copyDetailsElided = 0
         fun copyFd(file: File, descriptor: ParcelFileDescriptor) {
             val detail = JSONObject(copyEngine.nativeCopyExport(file.absolutePath, descriptor.fd))
@@ -128,7 +135,9 @@ internal object RawClipStore {
             // Reports copied last; keep their timing out of their own serialized snapshot.
             // Long sessions copy hundreds of files; keep the report bounded and count the rest.
             if (file.name !in setOf("report.json", "report.txt")) {
-                if (copyDetails.length() < MAX_COPY_DETAILS) copyDetails.put(detail) else copyDetailsElided++
+                synchronized(detailLock) {
+                    if (copyDetails.length() < MAX_COPY_DETAILS) copyDetails.put(detail) else copyDetailsElided++
+                }
             }
             check(detail.optBoolean("ok") && detail.optLong("bytes") == file.length()) {
                 "Export copy ব্যর্থ: ${file.name}: ${detail.optString("error")}" }
@@ -163,13 +172,16 @@ internal object RawClipStore {
                     ?: error("Download output descriptor খোলা যায়নি")
             }
             val copyBegin = SystemClock.elapsedRealtimeNanos()
-            var dataBytes = 0L
-            files.forEachIndexed { index, file ->
-                onProgress("Export ${index + 1}/${files.size}: ${file.name}…")
-                copyPending(file); dataBytes += file.length()
-            }
+            val done = AtomicInteger()
+            // Files are independent: a bounded pool overlaps copy/fsync instead of serializing them.
+            val copiedBytes = BoundedParallel.map(EXPORT_WORKERS, files.size) { index ->
+                val file = files[index]
+                copyPending(file)
+                onProgress("Export ${done.incrementAndGet()}/${files.size}: ${file.name}…")
+                file.length()
+            }.sum()
             report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
-            report.put("exportDataBytes", dataBytes)
+            report.put("exportDataBytes", copiedBytes)
             report.put("exportCopyDetailsElided", copyDetailsElided)
             writeReports()
             copyPending(File(folder, "report.txt")); copyPending(File(folder, "report.json"))

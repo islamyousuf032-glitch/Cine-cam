@@ -2,6 +2,15 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — দ্রুত finalize/export ও pipeline depth] — 2026-10-23
+- **বাগ ঠিক:** export-এর এক-ফাইল সীমা ছিল 1 GiB — দীর্ঘ session-এ CCRAW 1 GiB ছাড়ালে export ব্যর্থ হতো। এখন 8 GiB।
+- **সমান্তরাল export:** ডেটা ফাইল 3টি worker-এ copy+fsync হয় (এক ফাইলের fsync-এর সময় অন্য ফাইল এগোয়)। ব্যর্থ হলে বাকি worker বন্ধ হওয়ার পরেই cleanup; নাম/সংখ্যা/ক্রম/CRC নীতি অপরিবর্তিত; report-এ `exportConcurrency`।
+- **DNG sequence:** একই 3-worker model + 1 MiB buffered streams; 40 frame-এর ক্রম `sequence.json`-এ index অনুযায়ীই থাকে।
+- **Pipeline depth (opt-in):** 1 = নিরাপদ (আগের মতো), 2 = সর্বোচ্চ দুটি RAW request in-flight — camera আগের frame match হওয়ার আগেই পরের frame ধরতে পারে। 3-buffer pool-এ একটি slot খালি থাকে; report-এ `pipelineDepth`।
+- **MP4 render progress:** এখন elapsed ও আনুমানিক বাকি সময় দেখায়; শেষে মোট রেন্ডার সময় লেখা থাকে (পরিমাপ, প্রতিশ্রুতি নয়)।
+- **যন্ত্র-তথ্য (v0.1.105):** 40/50 frame, 3.94 fps, 0 drop, 998 MB CCRAW; DNG sequence 30.0 s; export copy 134.0 s (2.55 GB); archive 553 MB, encode 10.7 s + verify 6.9 s। সংখ্যাগুলো এক ডিভাইসের মাপ, guarantee নয়।
+- Tests: `BoundedParallelTest` (ক্রম, ব্যর্থতায় বন্ধ, সীমা), depth-2 gate tests, report-line test। ফোনে ফল যাচাই বাকি।
+
 ## [Unreleased — `.ccraw.bp16` থেকে in-app restore] — 2026-10-23
 - Lossless archive section-এ **Restore**: archive থেকে আসল CCRAW ফিরিয়ে আনা হয় নতুন ফাইল `CineCam_<epoch>_<id>_capture_restored_<timestamp>.ccraw` হিসেবে Download/CineCam-এ; কিছু overwrite/delete হয় না।
 - C++ `restoreBp16Archive(archiveFd, destinationFd)`: descriptor-থেকে-descriptor স্ট্রিম (কোনো full-file buffer নেই), প্রতি block decode+record CRC, trailing-byte/EOF ও মোট byte মিলিয়ে **byte-exact** নিশ্চিত; ব্যর্থ হলে নিজের partial ফাইল মুছে দেয়। archive limit আগের ২৫৭ MiB → **8 GiB** (দীর্ঘ session-এর জন্য), Python CLI-ও একই সীমা।

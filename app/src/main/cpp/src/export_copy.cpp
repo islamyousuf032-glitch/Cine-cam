@@ -9,6 +9,10 @@
 #include <unistd.h>
 
 namespace cinecam {
+namespace {
+// A long RAW session exports files above 1 GiB; the cap only bounds a single copy.
+constexpr int64_t kMaxExportSourceBytes = 8LL * 1024 * 1024 * 1024;
+}
 ExportCopyResult copyExportFile(const char* source, int output, bool preferKernel, KernelCopy kernelCopy) {
     ExportCopyResult r;
     const int input = ::open(source, O_RDONLY | O_CLOEXEC);
@@ -16,7 +20,7 @@ ExportCopyResult copyExportFile(const char* source, int output, bool preferKerne
     struct Close { int fd; ~Close() { ::close(fd); } } close{input};
     struct stat src{}, dst{};
     if (::fstat(input, &src) || ::fstat(output, &dst) || !S_ISREG(src.st_mode) || !S_ISREG(dst.st_mode) ||
-        src.st_size < 0 || src.st_size > 1024LL * 1024 * 1024 || dst.st_size != 0 ||
+        src.st_size < 0 || src.st_size > kMaxExportSourceBytes || dst.st_size != 0 ||
         (src.st_dev == dst.st_dev && src.st_ino == dst.st_ino) || ::lseek(output, 0, SEEK_CUR) != 0) {
         r.error = "Export needs bounded source and empty regular destination"; return r;
     }

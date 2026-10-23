@@ -53,6 +53,8 @@ internal object RawReadableReport {
         if (report.has("pacedCapacityWaitNs")) appendLine("Paced buffer অপেক্ষা: ${ms(report.optLong("pacedCapacityWaitNs"))}; এটি capture window-এর অংশ, drop নয়।")
         if (report.has("dngSequenceNs")) appendLine("DNG sequence তৈরি: ${ms(report.optLong("dngSequenceNs"))}")
         if (report.has("exportDataCopyNs")) appendLine("Export data copy: ${ms(report.optLong("exportDataCopyNs"))}; ${report.optLong("exportDataBytes")} bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)")
+        if (report.has("exportConcurrency")) appendLine("Export concurrency: ${report.optInt("exportConcurrency")} (স্বাধীন ফাইল একসঙ্গে লেখা/fsync; ফাইল বা ক্রম বদলায় না)")
+        if (report.has("dngSequenceWorkers")) appendLine("DNG sequence workers: ${report.optInt("dngSequenceWorkers")} (ফাইলের নাম ও ক্রম অপরিবর্তিত)")
         if (report.has("exportCopyBackend")) appendLine("Export পথ: ${report.optString("exportCopyBackend")}; destination fsync চালু, post-export byte readback নয়।")
         report.optJSONArray("exportCopyDetails")?.let { details ->
             for (index in 0 until details.length()) {

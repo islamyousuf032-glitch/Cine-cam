@@ -39,6 +39,14 @@ class RawReadableReportTest {
         assertTrue(text.contains("Export data copy: 38470.10"))
         assertTrue(text.contains("losslessArchiveError: test-error"))
     }
+    @Test fun parallelExportAndDngWorkersAreReportedWithoutChangingFileClaims() {
+        val text = RawReadableReport.text(JSONObject().put("exportDataCopyNs", 60_000_000)
+            .put("exportDataBytes", 2_551_993_971L).put("exportConcurrency", 3).put("dngSequenceWorkers", 3))
+        assertTrue(text.contains("Export concurrency: 3"))
+        assertTrue(text.contains("DNG sequence workers: 3"))
+        assertTrue(text.contains("2551993971"))
+    }
+
     @Test fun numericFormattingIsStableAcrossDeviceLocales() {
         val previous = Locale.getDefault()
         try {

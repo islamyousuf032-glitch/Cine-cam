@@ -21,3 +21,12 @@ In-app progress `Export n/total: name`; বাংলা readable report-এ per-
 ## Automated পরীক্ষা
 
 ASan/UBSan native suites: normal kernel/forced-buffered exact-byte copy,1MiB-এর বেশি input/tail, injected EINTR→13byte kernel→EINVAL→exact fallback, ENOSPC without unsafe fallback, readonly/invalid/self/nonempty fd rejection, empty source, borrowed fd remains open, source retained। Existing archive reference encoder/restore ও pipeline tests বজায়। Kotlin readable report tests export details এবং no-readback disclaimer cover করে। Android MediaStore/provider behavior ও physical timing আলাদা phone test-এ যাচাই বাকি।
+
+## Parallel export (v102)
+
+- `copyExportFile`-এর এক-ফাইল সীমা ছিল 1 GiB; দীর্ঘ session-এ CCRAW 1 GiB ছাড়ালে export ব্যর্থ হতো। এখন সীমা **8 GiB** (session/archive-এর সঙ্গে সামঞ্জস্যপূর্ণ)।
+- ডেটা ফাইলগুলো এখন **3টি worker**-এ সমান্তরালে copy+fsync হয় (`BoundedParallel`, index-order ফলাফল)। ফাইলের নাম, সংখ্যা, ক্রম বা CRC-নীতি বদলায় না; শুধু এক ফাইলের fsync-এর সময়ে অন্য ফাইল copy হয়।
+- কোনো ফাইল ব্যর্থ হলে বাকি সব worker **আগে বন্ধ** করা হয়, তারপর আংশিক MediaStore row/ফাইল মুছে ফেলা হয় — cleanup কখনো চলমান লেখার সঙ্গে দৌড়ায় না।
+- report-এ `exportConcurrency` লেখা থাকে; per-file `copyNs`/`fsyncNs` আগের মতোই আলাদা।
+- DNG sequence-ও একই ভাবে 3 worker-এ তৈরি হয় (`dngSequenceWorkers`) এবং 1 MiB buffered stream ব্যবহার করে; `sequence.json`-এর ক্রম index অনুযায়ী, completion অনুযায়ী নয়।
+- যন্ত্র-তথ্য (v0.1.105, 40 frame, 2.55 GB): DNG sequence 29.99 s, export copy 133.96 s — এর বড় অংশ 40টি DNG-র আলাদা আলাদা ~1.5 s fsync। समानांतरকরণের লক্ষ্য এই অপেক্ষা overlap করা; কোনো নির্দিষ্ট সময়ের প্রতিশ্রুতি নয়।
