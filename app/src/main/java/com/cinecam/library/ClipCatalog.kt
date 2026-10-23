@@ -29,6 +29,8 @@ internal object ClipCatalog {
     // A long session's report carries per-frame metadata and a file index; still bounded.
     const val MAX_REPORT_BYTES = 262144
     const val MAX_DOCUMENTS = 5000
+    // A long session exports a CCRAW, an optional DNG per frame and sidecars; still bounded.
+    const val MAX_EXPORT_FILES = 1024
     const val MAX_REPORTS = 100
     private val reportPattern = Regex("(CineCam_([0-9]+)_[a-f0-9]{8})_report\\.json")
     fun isReport(name: String) = reportPattern.matches(name)
@@ -109,7 +111,7 @@ internal object ClipCatalog {
         require(report.getString("exportLayout") == "flat-unique-prefix") { "শুধু flat capture layout সমর্থিত" }
         require(report.getString("schema") == "cinecam-raw-test-2") { "Report schema সমর্থিত নয়" }
         val mapping = report.getJSONObject("exportFiles")
-        require(mapping.length() in 1..4096) { "File mapping সীমার বাইরে" }
+        require(mapping.length() in 1..MAX_EXPORT_FILES) { "File mapping সীমার বাইরে" }
         val files = mapping.keys().asSequence().map { original ->
             val exported = mapping.getString(original)
             require(exported == RawExportNames.name(id, original)) { "Unsafe বা অন্য capture-এর file reference" }

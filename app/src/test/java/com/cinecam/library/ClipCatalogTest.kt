@@ -99,8 +99,14 @@ class ClipCatalogTest {
         rejects(value = "x".repeat(ClipCatalog.MAX_REPORT_BYTES + 1))
         // A UTF-8 byte limit, not merely a character limit.
         rejects(value = "আ".repeat(ClipCatalog.MAX_REPORT_BYTES / 2))
+        // A real long session indexes hundreds of files; it must still parse.
+        val longSession = report()
+        for (i in 1..300) longSession.getJSONObject("exportFiles").put(
+            "frame_%06d.dng".format(i), "${id}_frame_%06d.dng".format(i))
+        assertEquals(314, ClipCatalog.parse(name, longSession.toString()).files.size)
         val tooMany = report()
-        for (i in 1..65) tooMany.getJSONObject("exportFiles").put("extra$i", "${id}_extra$i")
+        for (i in 1..ClipCatalog.MAX_EXPORT_FILES + 1)
+            tooMany.getJSONObject("exportFiles").put("extra$i", "${id}_extra$i")
         rejects(value = tooMany.toString())
         val negative = report(); negative.getJSONObject("native").put("framesWritten", -1)
         rejects(value = negative.toString())
