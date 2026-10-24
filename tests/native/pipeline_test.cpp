@@ -422,6 +422,64 @@ int main() {
     }
 
     {
+        // Direct-to-provider: the writer borrows a descriptor and publishes nothing itself.
+        const std::string root = "build/native-tests/direct-fd";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root + "/staged");
+        uint8_t data[16]{};
+        RawFrame frame; frame.data = data; frame.sizeBytes = 16; frame.isValid = true;
+        frame.metadata.width = 4; frame.metadata.height = 2; frame.metadata.stride = 8;
+        frame.metadata.bitDepth = 16; frame.metadata.iso = 100; frame.metadata.exposureTimeNs = 1000;
+
+        CcrawWriter staged;
+        assert(staged.open(root + "/staged", 4, 2, 100, false, 8, 1ULL * 1024 * 1024));
+        for (int i = 0; i < 8; ++i) {
+            frame.metadata.timestampNs = 200 + i * 100LL; frame.metadata.frameNumber = i;
+            assert(staged.append(frame));
+        }
+        assert(staged.finish());
+
+        const std::string directPath = root + "/direct.ccraw";
+        const int fd = ::open(directPath.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0600);
+        assert(fd >= 0);
+        CcrawWriter direct;
+        assert(direct.openFd(fd, 4, 2, 100, false, 8, 1ULL * 1024 * 1024));
+        for (int i = 0; i < 8; ++i) {
+            frame.metadata.timestampNs = 200 + i * 100LL; frame.metadata.frameNumber = i;
+            assert(direct.append(frame));
+        }
+        assert(direct.finish());
+        const auto timings = direct.timings();
+        assert(timings.closeNs == 0 && timings.renameNs == 0); // Borrowed fd: never closed or renamed.
+        assert(timings.fsyncNs > 0 && timings.payloadBytes == 128);
+        assert(::fcntl(fd, F_GETFD) >= 0); // The caller can still read it back for verification.
+        char probe[4]{};
+        assert(::pread(fd, probe, 4, 0) == 4 && std::string(probe, 4) == "CCRA");
+        ::close(fd);
+        auto bytes = [](const std::string& path) {
+            std::ifstream in(path, std::ios::binary);
+            return std::vector<char>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        };
+        // Same frames, same epoch: the direct file must be byte-identical to the staged one.
+        assert(bytes(directPath) == bytes(root + "/staged/capture.ccraw"));
+        assert(bytes(directPath).size() == 64 + 8 * (96 + 16) + 32);
+
+        CcrawWriter rejected;
+        assert(!rejected.openFd(-1, 4, 2, 100));
+        // A non-empty or already-advanced descriptor is refused instead of corrupting the file.
+        const int dirty = ::open((root + "/dirty.ccraw").c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(dirty >= 0 && ::write(dirty, "keep", 4) == 4);
+        CcrawWriter dirtyWriter;
+        assert(!dirtyWriter.openFd(dirty, 4, 2, 100));
+        assert(::lseek(dirty, 0, SEEK_END) == 4); // Nothing was written or truncated.
+        ::close(dirty);
+        const int reopened = ::open((root + "/again.ccraw").c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(reopened >= 0 && !rejected.openFd(reopened, 4, 2, 100, false, 8, 16)); // Below one frame.
+        assert(::fcntl(reopened, F_GETFD) >= 0); // A rejected config must not close the caller's fd.
+        ::close(reopened);
+    }
+
+    {
         const char* source = "build/native-tests/ccraw/capture.ccraw";
         const char* archive = "build/native-tests/roundtrip.ccraw.bp16";
         std::filesystem::remove(archive);

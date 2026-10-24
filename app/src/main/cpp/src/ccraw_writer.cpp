@@ -49,7 +49,7 @@ CcrawWriter::Timings CcrawWriter::timings() const {
             maxAppendNs_.load(), finalizeNs_.load(), payloadBytes_.load(), allocationNs_.load(), reservedBytes_.load(),
             truncateNs_.load(), closeNs_.load(), renameNs_.load(), writeCalls_.load(), maxWriteNs_.load(), allocationError_.load()};
 }
-CcrawWriter::~CcrawWriter() { if (fd_ >= 0) ::close(fd_); }
+CcrawWriter::~CcrawWriter() { if (fd_ >= 0 && ownsFd_) ::close(fd_); }
 bool CcrawWriter::writeAll(const void* data, size_t size) {
     auto p = static_cast<const uint8_t*>(data);
     while (size) {
@@ -69,9 +69,33 @@ bool CcrawWriter::writeAll(const void* data, size_t size) {
 }
 bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t height, int64_t epoch,
                        bool preallocate, uint32_t maxFrames, uint64_t maxBytes) {
+    struct stat st{};
+    const std::string finalPath = directory + "/capture.ccraw";
+    if (::stat(finalPath.c_str(), &st) == 0) { error_ = "CCRAW destination already exists"; return false; }
+    const std::string partialPath = directory + "/capture.ccraw.partial";
+    const int fd = ::open(partialPath.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (fd < 0) { error_ = "Cannot exclusively create CCRAW partial"; return false; }
+    if (!openInternal(fd, directory, true, width, height, epoch, preallocate, maxFrames, maxBytes)) {
+        ::close(fd); return false; // exclusive create: a rejected config must not leave a partial
+    }
+    return true;
+}
+bool CcrawWriter::openFd(int fd, uint32_t width, uint32_t height, int64_t epoch,
+                         bool preallocate, uint32_t maxFrames, uint64_t maxBytes) {
+    if (fd < 0) { error_ = "Invalid CCRAW destination descriptor"; return false; }
+    // A borrowed descriptor must be an empty file at offset 0, or the container would be corrupt.
+    struct stat st{};
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_size != 0 || ::lseek(fd, 0, SEEK_CUR) != 0) {
+        error_ = "CCRAW destination descriptor is not an empty file"; return false;
+    }
+    return openInternal(fd, std::string(), false, width, height, epoch, preallocate, maxFrames, maxBytes);
+}
+bool CcrawWriter::openInternal(int fd, const std::string& directory, bool ownsFd,
+                               uint32_t width, uint32_t height, int64_t epoch,
+                               bool preallocate, uint32_t maxFrames, uint64_t maxBytes) {
     const uint64_t framePayload = uint64_t(width) * height * 2;
     constexpr uint64_t kHeaderBytes = 64, kFrameHeaderBytes = 96, kFooterBytes = 32;
-    if (fd_ >= 0 || width == 0 || height == 0 || width > 16384 || height > 16384 || epoch < 0 ||
+    if (fd_ >= 0 || fd < 0 || width == 0 || height == 0 || width > 16384 || height > 16384 || epoch < 0 ||
         framePayload > 256ULL * 1024 * 1024 || maxFrames == 0 || maxFrames > 100000 ||
         maxBytes < kHeaderBytes + kFooterBytes + kFrameHeaderBytes + framePayload ||
         maxBytes > 64ULL * 1024 * 1024 * 1024) { error_ = "Invalid CCRAW configuration"; return false; }
@@ -79,12 +103,9 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
     const uint64_t overhead = kHeaderBytes + kFooterBytes + uint64_t(maxFrames) * kFrameHeaderBytes;
     if (maxBytes < overhead + framePayload) { error_ = "Invalid CCRAW configuration"; return false; }
     const uint64_t payloadBudget = maxBytes - overhead;
-    partial_ = directory + "/capture.ccraw.partial";
-    final_ = directory + "/capture.ccraw";
-    struct stat st{};
-    if (::stat(final_.c_str(), &st) == 0) { error_ = "CCRAW destination already exists"; return false; }
-    fd_ = ::open(partial_.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
-    if (fd_ < 0) { error_ = "Cannot exclusively create CCRAW partial"; return false; }
+    partial_ = ownsFd ? directory + "/capture.ccraw.partial" : std::string();
+    final_ = ownsFd ? directory + "/capture.ccraw" : std::string();
+    fd_ = fd; ownsFd_ = ownsFd;
     crcNs_.store(0); writeNs_.store(0); fsyncNs_.store(0);
     appendNs_.store(0); maxAppendNs_.store(0); finalizeNs_.store(0); payloadBytes_.store(0);
     allocationNs_.store(0); reservedBytes_.store(0); allocationError_.store(0);
@@ -102,7 +123,7 @@ bool CcrawWriter::open(const std::string& directory, uint32_t width, uint32_t he
         if (result == 0) { preallocated_ = true; reservedBytes_.store(reserve); }
         else if (result != EOPNOTSUPP && result != ENOSYS && result != EINVAL) {
             error_ = "CCRAW preallocation failed (errno=" + std::to_string(result) + ")";
-            ::close(fd_); fd_ = -1;
+            fd_ = -1; // The caller owns closing; open() closes its own exclusive file on failure.
             return false; // ENOSPC/permission/I/O errors are not silently ignored.
         }
     }
@@ -174,15 +195,19 @@ bool CcrawWriter::finish() {
         fsyncNs_.fetch_add(pipelineNowNs() - syncBegin);
         if (result != 0) { error_ = "CCRAW fsync failed"; ok = false; }
     }
-    const auto closeBegin = pipelineNowNs();
-    if (::close(fd_) != 0) { error_ = "CCRAW close failed"; ok = false; }
-    closeNs_.store(pipelineNowNs() - closeBegin);
-    fd_ = -1;
-    if (ok) {
-        const auto renameBegin = pipelineNowNs();
-        const auto result = ::rename(partial_.c_str(), final_.c_str());
-        renameNs_.store(pipelineNowNs() - renameBegin);
-        if (result != 0) { error_ = "CCRAW finalize rename failed"; ok = false; }
+    if (ownsFd_) {
+        const auto closeBegin = pipelineNowNs();
+        if (::close(fd_) != 0) { error_ = "CCRAW close failed"; ok = false; }
+        closeNs_.store(pipelineNowNs() - closeBegin);
+        fd_ = -1;
+        if (ok) {
+            const auto renameBegin = pipelineNowNs();
+            const auto result = ::rename(partial_.c_str(), final_.c_str());
+            renameNs_.store(pipelineNowNs() - renameBegin);
+            if (result != 0) { error_ = "CCRAW finalize rename failed"; ok = false; }
+        }
+    } else {
+        fd_ = -1; // Borrowed descriptor: the caller closes it after publishing the provider row.
     }
     finalizeNs_.store(pipelineNowNs() - finishBegin);
     return ok;

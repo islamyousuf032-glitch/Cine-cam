@@ -9,6 +9,7 @@ import android.media.Image
 import android.media.ImageReader
 import android.os.Handler
 import android.os.HandlerThread
+import android.os.ParcelFileDescriptor
 import android.util.Size
 import android.view.Surface
 import java.util.concurrent.Executors
@@ -52,6 +53,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var clipPaced = true
     private var clipArchive = false
     private var clipVerify = true
+    /** Why a direct-to-Download session fell back to staging ("" = it did not). */
+    private var clipDirectDisabledReason = ""
     private var clipSequence = true
     private val clipAcceptedResults = mutableMapOf<Long, TotalCaptureResult>()
     private var clipSampleOrientation = 1
@@ -70,6 +73,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var clipCapacityWaitNs = 0L
     private var clipSerial = 0L
     private var clipFolder: File? = null
+    private var clipDirect: DirectClipStore? = null
+    private var clipDirectFd: ParcelFileDescriptor? = null
     private var clipLimit = 8
     private var clipMatched = 0
     private var clipAccepted = 0
@@ -291,7 +296,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
     // Depth 1 is the measured default: depth 2 gave 2.1 fps versus 3.94 fps on the F23.
-    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3, pipelineDepth: Int = 1) {
+    fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3, pipelineDepth: Int = 1, directToDownload: Boolean = true) {
         if (released) return
         handler.post {
             val camera = device; val current = session; val raw = reader; val chars = characteristics
@@ -303,6 +308,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             }
             if (!saving.compareAndSet(false, true)) return@post
             onCaptureState(true); onClipState("starting")
+            // A new session decides its own storage mode; never inherit the previous one.
+            clipDirect = null; clipDirectFd = null; clipDirectDisabledReason = ""
             val engine = NativeRawEngine.getInstance()
             try {
                 val displayDegrees = when (displayRotation) {
@@ -313,9 +320,19 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 val orientation = CaptureRules.exifOrientation(chars.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0,
                     displayDegrees, chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_FRONT)
+                // Direct mode needs a provider row; the archive needs real paths, so it keeps staging.
+                val directAllowed = directToDownload && Build.VERSION.SDK_INT >= 29 && !(verifyAndSample && losslessArchive)
+                val directDisabled = when {
+                    !directToDownload -> "off"
+                    Build.VERSION.SDK_INT < 29 -> "api"
+                    verifyAndSample && losslessArchive -> "archive"
+                    else -> ""
+                }
                 val prepared = RawClipStore.prepare(app, chars, raw.width, raw.height, orientation, if (paced) "paced" else "burst",
-                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"), internalStaging, verifyAndSample && allFramesDng, verifyAndSample && losslessArchive)
+                    JSONObject(engine.getStatsJson()).getJSONObject("writerTimings").getString("crcBackend"),
+                    internalStaging, verifyAndSample && allFramesDng, verifyAndSample && losslessArchive, directAllowed)
                 clipPrepared = prepared; clipFolder = prepared.folder
+                clipDirectDisabledReason = directDisabled
                 clipStartNs = SystemClock.elapsedRealtimeNanos()
                 // Optional DNG copies and the archive are written after recording, into the same free space.
                 val copyFactor = 1.0 + (if (verifyAndSample && allFramesDng) 1.0 else 0.0) +
@@ -330,9 +347,22 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     "এই session-এর জন্য ফাঁকা জায়গা নেই: অন্তত ${(plan.frameBytes * copyFactor).toLong() / (1024 * 1024)} MiB " +
                         "প্রয়োজন, ${RecordingPlanner.RESERVE_BYTES / (1024 * 1024)} MiB reserve রাখা হয়"
                 }
-                check(engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate,
-                    wanted, plan.sessionBytes.coerceAtLeast(RecordingPlanner.CcrawFrameHeaderBytes + raw.width.toLong() * raw.height * 2))) {
-                    engine.getLastError()
+                val sessionBytes = plan.sessionBytes.coerceAtLeast(
+                    RecordingPlanner.CcrawFrameHeaderBytes + raw.width.toLong() * raw.height * 2)
+                val started = if (directAllowed) {
+                    // Writes the CCRAW once, into its final Download row: no second full-size copy.
+                    val store = DirectClipStore(app, prepared.folder.name)
+                    val descriptor = store.createCcraw()
+                    clipDirect = store; clipDirectFd = descriptor
+                    engine.nativeStartRawClipFd(raw.width, raw.height, descriptor.fd, clipStartNs, preallocate, wanted, sessionBytes)
+                } else {
+                    engine.nativeStartRawClip(raw.width, raw.height, clipFolder!!.absolutePath, clipStartNs, preallocate,
+                        wanted, sessionBytes)
+                }
+                if (!started) {
+                    clipDirectFd?.close(); clipDirectFd = null
+                    clipDirect?.discard(); clipDirect = null
+                    error(engine.getLastError())
                 }
                 clipLimit = wanted
                 clipSlot = 0; clipSkippedSlots = 0; clipStallSinceNs = 0L; clipStallCount = 0
@@ -446,6 +476,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 if (clipActive) stopClipInternal("Burst error: ${e.message}", true)
                 else {
                     engine.stopRecording(); engine.release()
+                    clipDirectFd?.close(); clipDirectFd = null
+                    clipDirect?.discard(); clipDirect = null
                     clipFolder?.deleteRecursively(); clipFolder = null
                     saving.set(false); onCaptureState(false); onClipState("idle")
                     onStatus("RAW test শুরু হয়নি: ${e.message}")
@@ -579,6 +611,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 put("exportAvailableBytesAtPrepare", it.exportAvailableBytes)
             }
             put("internalStagingRequested", internalStagingRequested)
+            put("storageMode", if (clipDirect != null) "direct-download" else "staging-export")
+            if (clipDirectDisabledReason.isNotEmpty()) put("directDisabledReason", clipDirectDisabledReason)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
             put("pipelineDepth", clipGate?.depth ?: 1)
@@ -614,6 +648,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         } catch (_: Exception) {}
         onClipState("finalizing"); onStatus("RAW writer drain ও Download export হচ্ছে…")
         val archiveRequested = clipArchive
+        val direct = clipDirect
+        val directFd = clipDirectFd
         val verifySample = clipVerify
         val sequenceDng = clipSequence
         val savedResults = clipAcceptedResults.toMap(); clipAcceptedResults.clear()
@@ -634,8 +670,10 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 report.put("nativeStopOk", ok); report.put("native", stats)
                 report.put("nativeError", if (ok) "" else engine.getLastError())
                 report.put("wallUntilDrainNs", SystemClock.elapsedRealtimeNanos() - report.getLong("epochBoottimeNs"))
-                report.put("fileBytes", File(folder, "capture.ccraw").length())
-                report.put("partialFileBytes", File(folder, "capture.ccraw.partial").length())
+                report.put("fileBytes", if (direct != null) direct.rowBytes("capture.ccraw")
+                    else File(folder, "capture.ccraw").length())
+                report.put("partialFileBytes", if (direct != null) 0L
+                    else File(folder, "capture.ccraw.partial").length())
                 val written = stats.optLong("framesWritten")
                 engine.release() // Saved-file work no longer needs the 3 native buffers.
                 report.put("dngExportMode", if (!verifySample) "off" else if (sequenceDng) "all-saved-frames" else "first-frame")
@@ -647,25 +685,31 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     val verifyBegin = SystemClock.elapsedRealtimeNanos()
                     var verified: CcrawVerifier.Verified? = null
                     try {
-                        verified = CcrawVerifier.verify(File(folder, "capture.ccraw"))
+                        // Direct mode verifies through the very descriptor the writer used (pread).
+                        verified = if (direct != null && directFd != null) CcrawVerifier.verify(directFd)
+                            else CcrawVerifier.verify(File(folder, "capture.ccraw"))
                         check(verified.frames.size.toLong() == written) { "Written/readback frame count mismatch" }
                         report.put("readbackOk", true); report.put("readbackFrames", verified.frames.size)
                         report.put("readbackPayloadBytes", verified.payloadBytes)
-                        report.put("readbackBackend", "java.util.zip.CRC32 / 64KiB streaming")
+                        report.put("readbackBackend", if (direct != null) "java.util.zip.CRC32 / 64KiB pread on provider fd"
+                            else "java.util.zip.CRC32 / 64KiB streaming")
                     } catch (e: Exception) {
                         verified = null; report.put("readbackOk", false); report.put("readbackError", e.message)
                     }
                     report.put("readbackNs", SystemClock.elapsedRealtimeNanos() - verifyBegin)
                     if (verified != null && verified.frames.isNotEmpty()) {
                         // Read-only codec feasibility check on the first verified saved payload.
-                        postStorageStatus("Lossless RAW16 codec roundtrip পরীক্ষা হচ্ছে…")
-                        try {
-                            report.put("losslessProbe", JSONObject(engine.nativeProbeRaw16Codec(
-                                File(folder, "capture.ccraw").absolutePath, verified.frames.first().payloadOffset,
-                                verified.width.toLong() * verified.height * 2)))
-                        } catch (e: Exception) {
-                            report.put("losslessProbeError", e.message)
-                        }
+                        // It needs a real path, so a direct session skips it instead of faking it.
+                        if (direct == null) {
+                            postStorageStatus("Lossless RAW16 codec roundtrip পরীক্ষা হচ্ছে…")
+                            try {
+                                report.put("losslessProbe", JSONObject(engine.nativeProbeRaw16Codec(
+                                    File(folder, "capture.ccraw").absolutePath, verified.frames.first().payloadOffset,
+                                    verified.width.toLong() * verified.height * 2)))
+                            } catch (e: Exception) {
+                                report.put("losslessProbeError", e.message)
+                            }
+                        } else report.put("losslessProbeSkipped", "direct-download")
                         if (archiveRequested) {
                             report.remove("losslessArchiveError")
                             postStorageStatus("Lossless archive তৈরি ও পুরো file byte-compare হচ্ছে…")
@@ -684,17 +728,19 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     val result = savedResults[it.frame.timestampNs]
                                     check(result != null && result.frameNumber == it.frame.sourceFrameNumber) { "Saved sequence metadata missing/mismatched" }
                                 }
-                                val completed = java.util.Collections.synchronizedList(mutableListOf<File>())
+                                val completed = java.util.Collections.synchronizedList(mutableListOf<String>())
                                 val dngDone = java.util.concurrent.atomic.AtomicInteger()
+                                // Staging writes files; direct mode writes each DNG once into its Download row.
+                                val dngTarget: ClipDngTarget = direct ?: FolderDngTarget(folder)
                                 try {
                                     val entries = JSONArray()
                                     // Independent files: a bounded pool keeps encode/fsync stages overlapping.
                                     // The manifest order is fixed by index, never by completion order.
                                     BoundedParallel.map(EXPORT_WORKERS, plan.size) { index ->
                                         val entry = plan[index]
-                                        ClipDngSample.writeFrame(folder, verified, entry.frame, sampleChars,
+                                        ClipDngSample.writeFrame(dngTarget, verified, entry.frame, sampleChars,
                                             savedResults.getValue(entry.frame.timestampNs), sampleOrientation, entry.name)
-                                        completed.add(File(folder, entry.name))
+                                        completed.add(entry.name)
                                         postStorageStatus("Saved DNG sequence: ${dngDone.incrementAndGet()}/${plan.size}…")
                                         entry
                                     }.forEach { entry ->
@@ -712,17 +758,20 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     File(folder, "sequence.json").writeText(manifest.toString(2))
                                     report.put("dngSequenceOk", true); report.put("dngSequenceFrames", plan.size)
                                     report.put("dngSequenceWorkers", EXPORT_WORKERS)
-                                    report.put("dngSequenceBytes", completed.sumOf { it.length() })
+                                    report.put("dngSequenceBytes", completed.sumOf { name ->
+                                        if (direct != null) direct.rowBytes(name) else File(folder, name).length() })
                                 } catch (e: Exception) {
-                                    completed.forEach { it.delete() }; File(folder, "sequence.json").delete()
+                                    completed.forEach { dngTarget.delete(it) }; File(folder, "sequence.json").delete()
                                     throw e
                                 }
                             } else {
                                 val sampleResult = savedResults[verified.frames.first().timestampNs]
                                 check(sampleResult != null) { "First-frame calibration metadata missing" }
-                                ClipDngSample.write(folder, verified, sampleChars, sampleResult, sampleOrientation)
+                                val sampleTarget: ClipDngTarget = direct ?: FolderDngTarget(folder)
+                                ClipDngSample.write(sampleTarget, verified, sampleChars, sampleResult, sampleOrientation)
                                 report.put("firstFrameDngOk", true)
-                                report.put("firstFrameDngBytes", File(folder, "first_frame.dng").length())
+                                report.put("firstFrameDngBytes", if (direct != null) direct.rowBytes("first_frame.dng")
+                                    else File(folder, "first_frame.dng").length())
                                 report.put("firstFrameDngTimestampNs", verified.frames.first().timestampNs)
                             }
                         } catch (e: Exception) {
@@ -732,17 +781,34 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         report.put(if (sequenceDng) "dngSequenceNs" else "firstFrameDngNs", SystemClock.elapsedRealtimeNanos() - dngBegin)
                     }
                 }
-                postStorageStatus("Download/CineCam-এ export হচ্ছে…")
-                val target = RawClipStore.export(app, folder, report) { postStorageStatus(it) }
+                directFd?.let { runCatching { it.close() } }
+                if (direct != null) {
+                    // Verified files are final: publish them now so a later report failure cannot
+                    // cost the user the clip. Only the small sidecars still go through export.
+                    postStorageStatus("Download-এ publish হচ্ছে…")
+                    val failed = direct.publish()
+                    report.put("directPublished", true)
+                    report.put("directPublishFailures", JSONArray(failed))
+                    report.put("directInPlace", JSONArray(direct.localNames()))
+                }
+                postStorageStatus("Download/CineCam-এ report export হচ্ছে…")
+                val target = RawClipStore.export(app, folder, report, direct?.exportedMapping() ?: emptyMap()) {
+                    postStorageStatus(it)
+                }
                 message = "RAW test ${if (ok && written > 0 && (!verifySample || report.optBoolean("readbackOk"))) "সংরক্ষিত" else "অসম্পূর্ণ/যাচাই ব্যর্থ"}: $written frames • $target"
                 if (verifySample && written > 0 && report.optBoolean("readbackOk") &&
                     !report.optBoolean(if (sequenceDng) "dngSequenceOk" else "firstFrameDngOk"))
                     message += " • DNG export ব্যর্থ (report দেখুন)"
             } catch (e: Exception) {
+                direct?.discard() // A failed session publishes nothing and leaves no hidden rows.
                 report.put("exportError", e.message)
                 try { File(folder, "report.json").writeText(report.toString(2)) } catch (_: Exception) { }
                 message = "RAW test error: ${e.message}"
-            } finally { engine.release() }
+            } finally {
+                engine.release()
+                runCatching { directFd?.close() }
+                clipDirect = null; clipDirectFd = null
+            }
             val posted = handler.post {
                 saving.set(false)
                 onCaptureState(false); onClipState("idle"); onClipReport(report.toString(2))

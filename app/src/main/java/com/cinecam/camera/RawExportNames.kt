@@ -14,4 +14,9 @@ internal object RawExportNames {
         return dngs.map { name(session, it) }.firstOrNull { it == current }
             ?: error("Sequence DNG export mapping missing")
     }
+    /** MediaStore MIME for a session file; the extension decides, never the provider default. */
+    fun mimeOf(original: String): String = when (original.substringAfterLast('.', "")) {
+        "json" -> "application/json"; "txt" -> "text/plain"; "dng" -> "image/x-adobe-dng"
+        else -> "application/octet-stream"
+    }
 }

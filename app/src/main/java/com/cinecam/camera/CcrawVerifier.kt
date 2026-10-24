@@ -1,6 +1,10 @@
 package com.cinecam.camera
 
+import android.os.ParcelFileDescriptor
+import android.system.Os
+import java.io.Closeable
 import java.io.File
+import java.io.FileDescriptor
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -13,8 +17,47 @@ internal object CcrawVerifier {
     const val MAX_TOTAL_BYTES = 8L * 1024 * 1024 * 1024
     data class Frame(val timestampNs: Long, val sourceFrameNumber: Long, val payloadOffset: Long)
     data class Verified(val width: Int, val height: Int, val frames: List<Frame>, val payloadBytes: Long, val epochNs: Long)
-    fun verify(file: File): Verified = RandomAccessFile(file, "r").use { input ->
-        fun read(size: Int) = ByteArray(size).also { input.readFully(it) }
+
+    /**
+     * Random-access source: a staging file or a MediaStore descriptor written in place.
+     * `pread` keeps the verifier independent of the native writer even in direct mode.
+     */
+    private interface Source : Closeable {
+        val length: Long
+        fun read(buffer: ByteArray, start: Int, count: Int, at: Long): Int
+    }
+    private class FileSource(private val file: RandomAccessFile) : Source {
+        override val length get() = file.length()
+        override fun read(buffer: ByteArray, start: Int, count: Int, at: Long): Int {
+            file.seek(at)
+            return file.read(buffer, start, count)
+        }
+        override fun close() = file.close()
+    }
+    private class DescriptorSource(private val descriptor: FileDescriptor, override val length: Long) : Source {
+        override fun read(buffer: ByteArray, start: Int, count: Int, at: Long): Int =
+            Os.pread(descriptor, buffer, start, count, at)
+        override fun close() = Unit // The caller owns the descriptor and its file descriptor.
+    }
+
+    fun verify(file: File): Verified = FileSource(RandomAccessFile(file, "r")).use { verify(it) }
+
+    /** Verifies a file the app is still writing through a provider descriptor (direct mode). */
+    fun verify(descriptor: ParcelFileDescriptor): Verified =
+        verify(DescriptorSource(descriptor.fileDescriptor, Os.fstat(descriptor.fileDescriptor).st_size))
+
+    private fun verify(source: Source): Verified = source.use { body ->
+        var cursor = 0L
+        fun readInto(buffer: ByteArray, start: Int, count: Int) {
+            var done = 0
+            while (done < count) {
+                val n = body.read(buffer, start + done, count - done, cursor + done)
+                check(n > 0) { "RAW readback ended early" }
+                done += n
+            }
+            cursor += count
+        }
+        fun read(size: Int): ByteArray = ByteArray(size).also { readInto(it, 0, size) }
         fun le(bytes: ByteArray) = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         fun crc(bytes: ByteArray, length: Int): Long = CRC32().apply { update(bytes, 0, length) }.value
         fun uint(buffer: ByteBuffer, at: Int) = buffer.getInt(at).toLong() and 0xffffffffL
@@ -37,7 +80,7 @@ internal object CcrawVerifier {
                 val footer = tag + read(28); val f = le(footer)
                 check(f.getInt(4) == 32 && zero(footer, 28) && crc(footer, 24) == uint(f, 24)) { "Footer CRC/layout invalid" }
                 check(f.getLong(8) == frames.size.toLong() && f.getLong(16) == total) { "Footer counts invalid" }
-                check(input.filePointer == input.length()) { "Trailing bytes after footer" }
+                check(cursor == body.length) { "Trailing bytes after footer" }
                 break
             }
             check(magic(tag, "FRM1") && frames.size < MAX_FRAMES) { "Invalid frame magic/count" }
@@ -49,12 +92,12 @@ internal object CcrawVerifier {
             check(f.getLong(24) == frameBytes && frameBytes <= 256L * 1024 * 1024 &&
                 total + frameBytes <= MAX_TOTAL_BYTES) { "Frame payload size invalid" }
             check(f.getInt(44) >= 0 && f.getInt(48) >= 0) { "Invalid ISO/frame number" }
-            val offset = input.filePointer
+            val offset = cursor
             val payloadCrc = CRC32()
             var remaining = frameBytes
             while (remaining > 0) {
                 val count = minOf(remaining, chunk.size.toLong()).toInt()
-                input.readFully(chunk, 0, count); payloadCrc.update(chunk, 0, count)
+                readInto(chunk, 0, count); payloadCrc.update(chunk, 0, count)
                 remaining -= count
             }
             check(payloadCrc.value == uint(f, 72)) { "RAW payload CRC mismatch" }

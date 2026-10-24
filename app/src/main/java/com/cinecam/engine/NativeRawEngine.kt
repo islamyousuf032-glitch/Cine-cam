@@ -77,6 +77,12 @@ class NativeRawEngine private constructor() {
     external fun nativeRawClipCapacity(): Int
     external fun nativeStartRawClip(width: Int, height: Int, path: String, epochNs: Long, preallocate: Boolean,
                                     maxFrames: Int, maxBytes: Long): Boolean
+    /**
+     * Writes the CCRAW straight into an already-open Download descriptor (MediaStore pending row),
+     * so the session is never copied a second time. The caller owns [outputFd] and publishes the row.
+     */
+    external fun nativeStartRawClipFd(width: Int, height: Int, outputFd: Int, epochNs: Long, preallocate: Boolean,
+                                      maxFrames: Int, maxBytes: Long): Boolean
     external fun nativePushRawPlane(buffer: ByteBuffer, width: Int, height: Int, rowStride: Int, pixelStride: Int,
         timestamp: Long, exposure: Long, iso: Int, number: Int, focus: Float, neutralR: Float, neutralG: Float, neutralB: Float): Boolean
     external fun nativeGetLastError(): String

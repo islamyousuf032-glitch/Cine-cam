@@ -27,8 +27,9 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
-    if (!ringBuffer_ || !memoryPool_ || config.outputPath.empty() || (config.container != "mcraw" && config.container != "ccraw") ||
-        config.enableZstd || config.enableAudio) {
+    const bool directFd = config.outputFd >= 0 && config.container == "ccraw";
+    if (!ringBuffer_ || !memoryPool_ || (!directFd && config.outputPath.empty()) ||
+        (config.container != "mcraw" && config.container != "ccraw") || config.enableZstd || config.enableAudio) {
         lastError_ = "Unsupported or invalid experimental writer configuration";
         return WriterStatus::ENCODING_ERROR;
     }
@@ -38,16 +39,21 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
     config_ = config;
     baseOutputPath_ = config.outputPath;
 
-    if (!ensureOutputDir(baseOutputPath_)) {
+    if (!directFd && !ensureOutputDir(baseOutputPath_)) {
         lastError_ = "Failed to create output dir: " + baseOutputPath_;
         LOGE("%s", lastError_.c_str());
         return WriterStatus::IO_ERROR;
     }
 
-    if (config.container == "ccraw" && !ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs,
-            config.preallocateCcraw, static_cast<uint32_t>(std::max(1, config.maxFrames)),
-            static_cast<uint64_t>(std::max<int64_t>(1, config.maxBytes)))) {
-        lastError_ = ccraw_.error(); return WriterStatus::IO_ERROR;
+    const uint32_t maxFrames = static_cast<uint32_t>(std::max(1, config.maxFrames));
+    const uint64_t maxBytes = static_cast<uint64_t>(std::max<int64_t>(1, config.maxBytes));
+    if (config.container == "ccraw") {
+        const bool opened = directFd
+            ? ccraw_.openFd(config.outputFd, config.width, config.height, config.epochNs,
+                            config.preallocateCcraw, maxFrames, maxBytes)
+            : ccraw_.open(baseOutputPath_, config.width, config.height, config.epochNs,
+                          config.preallocateCcraw, maxFrames, maxBytes);
+        if (!opened) { lastError_ = ccraw_.error(); return WriterStatus::IO_ERROR; }
     }
 
     // Prepare mcraw metadata sidecar

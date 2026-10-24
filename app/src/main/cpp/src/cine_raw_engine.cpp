@@ -112,8 +112,10 @@ bool CineRawEngine::startRecording(const RecordingConfig& config, std::string& o
         setError(outError); return false;
     }
 
-    LOGI("Starting recording: %dx%d %dfps -> %s [%s]",
-         config.width, config.height, config.fps, config.outputPath.c_str(), config.container.c_str());
+    LOGI("Starting recording: %dx%d %dfps -> %s%s [%s]",
+         config.width, config.height, config.fps,
+         config.outputFd >= 0 ? "fd " : config.outputPath.c_str(),
+         config.outputFd >= 0 ? std::to_string(config.outputFd).c_str() : "", config.container.c_str());
 
     WriterStatus ws;
     try {

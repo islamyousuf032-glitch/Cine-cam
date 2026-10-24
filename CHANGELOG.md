@@ -2,6 +2,16 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — সরাসরি Download-এ লেখা (copy ছাড়া)] — 2026-10-24
+- **বড় পরিবর্তন:** RAW session এখন `capture.ccraw` ও প্রতিটি DNG **একবারই** লেখে, সোজা `Download/CineCam`-এ (MediaStore pending row)। আগের staging → পুরো copy ধাপটি আর নেই, তাই জায়গা প্রায় অর্ধেক এবং export-এর কয়েক মিনিট সময় বাঁচে।
+- নতুন native পথ: `CcrawWriter::openFd` + `nativeStartRawClipFd` — descriptor ধার নেয়, `finish()` শুধু fsync করে; row publish করে Kotlin। খালি নয় বা offset সরানো descriptor প্রত্যাখ্যান করা হয় (native test সহ)।
+- যাচাই এখন একই descriptor-এ `pread` দিয়ে (`CcrawVerifier.verify(descriptor)`) — native writer থেকে স্বতন্ত্র CRC/structure চেক অটুট।
+- DNG লেখা `ClipDngTarget` দিয়ে: staging folder বা Directrow, দুটোতেই একই `DngCreator` পথ; ফাইল নাম/ক্রম/sequence.json অপরিবর্তিত।
+- **নিরাপত্তা:** যাচাই শেষে ফাইলগুলো সঙ্গে সঙ্গে publish হয় — পরে report copy ব্যর্থ হলেও clip থাকে। ব্যর্থ session-এর pending row মুছে যায় (অর্ধেক ফাইল gallery-তে ওঠে না)।
+- Archive চালু থাকলে (path দরকার) স্বয়ংক্রিয়ভাবে পুরোনো staging পথে ফিরে যায়; report-এ `directDisabledReason` লেখা থাকে।
+- UI: "সরাসরি Download-এ লেখা (copy ছাড়া)" টগল (Android 10+, ডিফল্ট ON)। ফোনে গতি মাপা বাকি — FUSE পথে ধীর হলে টগল বন্ধ করলেই আগের আচরণ।
+- Tests: native direct-fd byte-identity/ownership/guard test, `RawExportNamesTest` (direct নাম + MIME), `RawReadableReportTest` (storage mode)।
+
 ## [Unreleased — export নির্ভরযোগ্যতা: জায়গা-যাচাই, পরিষ্কার কারণ, বড় ফাইল আগে] — 2026-10-24
 - **বাগ:** ১.২৯ GB `.ccraw` সহ ৫৩ ফাইলের ১২০ s session-এ export মাঝপথে ব্যর্থ হয়ে শুধু "kernel copy failed" দেখিয়েছিল; ব্যবহারকারী কোনো ফাইল পাননি (২০+ DNG আগেই লেখা হয়ে গিয়েছিল)।
 - **আগেই জায়গা-যাচাই:** পুরো export plan (সব ফাইল + ২% margin, সর্বনিম্ন ৮ MiB) destination volume-এর free space-এর সঙ্গে তুলনা করা হয়; কম হলে **একটি ফাইলও লেখার আগেই** পরিষ্কার বাংলা বার্তা — কত MiB দরকার, কত আছে।

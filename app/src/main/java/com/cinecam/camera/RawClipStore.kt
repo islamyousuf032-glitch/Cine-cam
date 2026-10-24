@@ -34,13 +34,15 @@ internal object RawClipStore {
 
     data class PreparedClip(val folder: File, val stagingLocation: String,
                             val captureAvailableBytes: Long, val exportAvailableBytes: Long)
-    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean, archive: Boolean): PreparedClip {
+    fun prepare(context: Context, chars: CameraCharacteristics, width: Int, height: Int, exifOrientation: Int, mode: String, crcBackend: String, internalStaging: Boolean, sequence: Boolean, archive: Boolean, direct: Boolean = false): PreparedClip {
         val external = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: error("Export storage unavailable")
         val useInternal = RawStoragePolicy.useInternal(internalStaging, Build.VERSION.SDK_INT)
         val root = if (useInternal) File(context.filesDir, "raw-clips") else external
         check(root.isDirectory || root.mkdirs()) { "Capture staging folder তৈরি হয়নি" }
-        val captureFree = StatFs(root.absolutePath).availableBytes
         val exportFree = StatFs(external.absolutePath).availableBytes
+        // Direct mode writes the session into Download itself, so that volume is the real budget.
+        val captureFree = if (direct) minOf(StatFs(root.absolutePath).availableBytes, exportFree)
+            else StatFs(root.absolutePath).availableBytes
         RawStoragePolicy.checkFreeSpace(captureFree, exportFree, sequence, archive)
         val location = if (useInternal) "app-private-internal" else "app-specific-external"
         val folder = File(root, "CineCam_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}")
@@ -59,6 +61,7 @@ internal object RawClipStore {
                 put("dngExportMode", if (sequence) "all-saved-frames" else "first-frame-or-off")
                 put("stagingLocation", location)
                 put("captureAvailableBytesAtPrepare", captureFree); put("exportAvailableBytesAtPrepare", exportFree)
+                put("storageMode", if (direct) "direct-download" else "staging-export")
                 put("captureMode", mode); put("poolSlots", 3); put("crcBackend", crcBackend)
                 put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
                 put("androidApi", Build.VERSION.SDK_INT)
@@ -87,7 +90,14 @@ internal object RawClipStore {
     }
 
     // Unique staging directories stay private; user-visible export is a single flat directory.
-    fun export(context: Context, folder: File, report: JSONObject, onProgress: (String) -> Unit = {}): String {
+    /**
+     * Publishes the session's remaining files (reports, metadata, archive) into Download/CineCam.
+     * [alreadyExported] lists files a direct session wrote in place: their names must stay in the
+     * report mapping and in sequence references even though they are not copied again here.
+     */
+    fun export(context: Context, folder: File, report: JSONObject,
+               alreadyExported: Map<String, String> = emptyMap(),
+               onProgress: (String) -> Unit = {}): String {
         val session = folder.name
         val legacyRoot = File(folder.parentFile, "CineCam")
         val destination = if (Build.VERSION.SDK_INT >= 29) "Download/CineCam" else legacyRoot.absolutePath
@@ -96,6 +106,11 @@ internal object RawClipStore {
                 report.optJSONObject("losslessArchive")?.optBoolean("byteExactSourceComparison") == true)) }
             ?: error("Clip files পাওয়া যায়নি")
         val mapping = JSONObject()
+        alreadyExported.forEach { (original, exported) ->
+            // A direct row must use exactly the name this layout would have produced.
+            require(exported == RawExportNames.name(session, original)) { "Direct export name mismatch: $original" }
+            mapping.put(original, exported)
+        }
         (files.map { it.name } + listOf("report.json", "report.txt")).forEach {
             mapping.put(it, RawExportNames.name(session, it))
         }
@@ -109,7 +124,8 @@ internal object RawClipStore {
             for (index in 0 until entries.length()) {
                 val entry = entries.getJSONObject(index)
                 val current = entry.getString("file")
-                entry.put("file", RawExportNames.sequenceReference(session, current, files.map { it.name }.toSet()))
+                entry.put("file", RawExportNames.sequenceReference(session, current,
+                    files.map { it.name }.toSet() + alreadyExported.keys))
             }
             manifest.put("exportSessionId", session)
             sequence.writeText(manifest.toString(2))
@@ -122,6 +138,8 @@ internal object RawClipStore {
         // Check the whole plan up front: a half-exported clip is worse than a clear message.
         val plannedSizes = files.map { it.length() } +
             File(folder, "report.json").length() + File(folder, "report.txt").length()
+        report.put("exportCopiedFiles", JSONArray(files.map { it.name }))
+        report.put("exportInPlaceFiles", JSONArray(alreadyExported.keys.toList()))
         val requiredBytes = ExportPlan.requiredBytes(plannedSizes)
         val exportVolume = if (Build.VERSION.SDK_INT >= 29) Environment.getExternalStorageDirectory() else legacyRoot
         val freeAtStart = try { StatFs(exportVolume.absolutePath).availableBytes } catch (_: Exception) { 0L }

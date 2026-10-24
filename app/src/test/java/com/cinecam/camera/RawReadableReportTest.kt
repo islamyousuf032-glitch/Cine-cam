@@ -66,4 +66,13 @@ class RawReadableReportTest {
         assertTrue(text.contains("post-export byte readback নয়"))
     }
 
+    @Test fun storageModeExplainsWhetherTheClipWasCopied() {
+        val direct = RawReadableReport.text(JSONObject().put("storageMode", "direct-download"))
+        assertTrue(direct.contains("সরাসরি Download/CineCam"))
+        assertTrue(direct.contains("দ্বিতীয় copy নেই"))
+        val staging = RawReadableReport.text(JSONObject().put("storageMode", "staging-export")
+            .put("directDisabledReason", "archive"))
+        assertTrue(staging.contains("staging"))
+        assertTrue(staging.contains("archive চালু তাই"))
+    }
 }

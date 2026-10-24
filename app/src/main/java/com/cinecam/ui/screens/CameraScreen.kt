@@ -68,6 +68,8 @@ fun CameraScreen() {
     var allSavedFramesDng by remember { mutableStateOf(true) }
     var verifyRawSample by remember { mutableStateOf(true) }
     var internalRawStaging by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
+    // Direct mode needs Android 10+ (MediaStore pending rows) and no archive.
+    var directToDownload by remember { mutableStateOf(android.os.Build.VERSION.SDK_INT >= 29) }
     var preallocateRawTest by remember { mutableStateOf(false) }
     var pacedRawTest by remember { mutableStateOf(true) }
     var showRawWarning by remember { mutableStateOf(false) }
@@ -104,14 +106,17 @@ fun CameraScreen() {
     }
     val camera = remember(infos) { CameraCapabilities.pickBestRawCamera(infos) }
     // Planning is arithmetic plus one StatFs call; kept off the composition thread.
-    LaunchedEffect(showRawWarning, sessionSeconds, sessionFps, allSavedFramesDng, losslessArchive, verifyRawSample, internalRawStaging, camera) {
+    LaunchedEffect(showRawWarning, sessionSeconds, sessionFps, allSavedFramesDng, losslessArchive, verifyRawSample,
+        internalRawStaging, directToDownload, camera) {
         if (!showRawWarning) return@LaunchedEffect
         sessionEstimate = "হিসাব হচ্ছে…"
         sessionEstimate = withContext(Dispatchers.IO) {
             val size = camera?.maxRawSize
             if (size == null) "RAW মাপ পাওয়া যায়নি"
             else try {
-                val free = RawClipStore.availableCaptureBytes(context.applicationContext, internalRawStaging)
+                // Direct mode spends the Download volume; staging mode spends the staging root.
+                val free = RawClipStore.availableCaptureBytes(context.applicationContext,
+                    if (directToDownload) false else internalRawStaging)
                 val copies = 1.0 + (if (verifyRawSample && allSavedFramesDng) 1.0 else 0.0) +
                     (if (verifyRawSample && losslessArchive) 0.6 else 0.0)
                 val plan = RecordingPlanner.plan(size.width, size.height, sessionFps,
@@ -291,11 +296,20 @@ fun CameraScreen() {
                         Switch(checked = pacedRawTest, onCheckedChange = { pacedRawTest = it })
                     }
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        Text("Internal staging", Modifier.weight(1f))
-                        Switch(checked = internalRawStaging, onCheckedChange = { internalRawStaging = it },
+                        Text("সরাসরি Download-এ লেখা (copy ছাড়া)", Modifier.weight(1f))
+                        Switch(checked = directToDownload, onCheckedChange = { directToDownload = it },
                             enabled = android.os.Build.VERSION.SDK_INT >= 29)
                     }
-                    Text("ON: app-private internal temporary file। OFF: আগের app-external path। দুটোই শেষে Download/CineCam-এ export হবে (Android 10+)।")
+                    Text(if (directToDownload && android.os.Build.VERSION.SDK_INT >= 29)
+                        "ON: RAW ও DNG একবারই লেখা হয়, সোজা Download/CineCam-এ — দ্বিতীয় copy নেই, তাই জায়গা ও সময় বাঁচে। Archive চালু করলে স্বয়ংক্রিয়ভাবে staging-এ ফিরবে।"
+                        else "OFF: আগের পথ — staging-এ লিখে শেষে Download/CineCam-এ পুরো copy। Android 10-এর নিচে direct সমর্থিত নয়।")
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Text("Internal staging", Modifier.weight(1f))
+                        Switch(checked = internalRawStaging, onCheckedChange = { internalRawStaging = it },
+                            enabled = android.os.Build.VERSION.SDK_INT >= 29 && !directToDownload)
+                    }
+                    Text(if (directToDownload) "Direct mode-এ staging শুধু report/metadata-র জন্য ব্যবহৃত হয় (কয়েক KB)।"
+                        else "ON: app-private internal temporary file। OFF: আগের app-external path। দুটোই শেষে Download/CineCam-এ export হবে (Android 10+)।")
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         Text("আগে file space reserve", Modifier.weight(1f))
                         Switch(checked = preallocateRawTest, onCheckedChange = { preallocateRawTest = it })
@@ -326,7 +340,7 @@ fun CameraScreen() {
                 showRawWarning = false
                 controller.startRawClip(view?.display?.rotation ?: Surface.ROTATION_0, pacedRawTest, preallocateRawTest,
                     internalRawStaging, verifyRawSample, allSavedFramesDng, losslessArchive,
-                    if (pacedRawTest) sessionSeconds else 3, sessionFps, pipelineDepth)
+                    if (pacedRawTest) sessionSeconds else 3, sessionFps, pipelineDepth, directToDownload)
             }, enabled = granted && resumed && !capturing) { Text("টেস্ট শুরু করুন") } },
             dismissButton = { TextButton(onClick = { showRawWarning = false }) { Text("বাতিল") } })
     }

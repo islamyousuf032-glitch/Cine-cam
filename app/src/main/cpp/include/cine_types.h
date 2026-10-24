@@ -108,6 +108,9 @@ struct RecordingConfig {
     int32_t bitDepth = 10;
     RawFormat format = RawFormat::RAW_SENSOR;
     std::string outputPath;           // e.g., /storage/emulated/0/DCIM/CineCam/session_001
+    // >=0 writes the CCRAW straight into this descriptor (MediaStore pending row) instead of
+    // outputPath; the caller owns the fd and publishes the row after the writer finishes.
+    int outputFd = -1;
     std::string container = "mcraw";  // "mcraw" | "cinemadng"
     bool preallocateCcraw = false;
     bool enableZstd = false;

@@ -16,6 +16,12 @@ public:
     bool open(const std::string& directory, uint32_t width, uint32_t height, int64_t epochNs,
               bool preallocate = false, uint32_t maxFrames = 8,
               uint64_t maxBytes = 256ULL * 1024 * 1024);
+    // Writes straight into an already-open destination (a MediaStore pending file), so a long
+    // session is never copied a second time. The caller keeps ownership of the descriptor and
+    // finalizes the row; finish() fsyncs but neither closes nor renames.
+    bool openFd(int fd, uint32_t width, uint32_t height, int64_t epochNs,
+                bool preallocate = false, uint32_t maxFrames = 8,
+                uint64_t maxBytes = 256ULL * 1024 * 1024);
     bool append(const RawFrame& frame);
     bool finish();
     struct Timings {
@@ -32,7 +38,10 @@ private:
     AllocationFn allocator_;
     uint64_t fileOffset_ = 0;
     bool preallocated_ = false;
+    bool openInternal(int fd, const std::string& directory, bool ownsFd, uint32_t width, uint32_t height,
+                      int64_t epoch, bool preallocate, uint32_t maxFrames, uint64_t maxBytes);
     int fd_ = -1;
+    bool ownsFd_ = true;
     std::string partial_, final_, error_;
     uint32_t width_ = 0, height_ = 0;
     uint64_t count_ = 0, payload_ = 0;

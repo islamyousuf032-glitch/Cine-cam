@@ -20,6 +20,15 @@ internal object RawReadableReport {
         appendLine("লেখা frame: ${report.optJSONObject("native")?.optLong("framesWritten") ?: 0}")
         appendLine("Native drop: ${report.optJSONObject("native")?.optLong("framesDropped") ?: 0}")
         appendLine("Saved RAW যাচাই: ${if (!report.optBoolean("readbackRequested")) "করা হয়নি" else if (report.optBoolean("readbackOk")) "সফল" else "ব্যর্থ/অসম্পূর্ণ"}")
+        val directNote = when (report.optString("directDisabledReason")) {
+            "archive" -> " (archive চালু তাই)"; "api" -> " (Android 10-এর নিচে)"
+            "off" -> " (আপনি বন্ধ রেখেছেন)"; else -> ""
+        }
+        appendLine("সংরক্ষণ: " + when (report.optString("storageMode")) {
+            "direct-download" -> "সরাসরি Download/CineCam-এ লেখা — RAW/DNG-র দ্বিতীয় copy নেই"
+            "staging-export" -> "app staging → Download/CineCam copy$directNote"
+            else -> report.optString("storageMode", "অজানা")
+        })
         appendLine("DNG mode: ${report.optString("dngExportMode")}")
         if (report.has("dngSequenceOk")) appendLine("DNG sequence: ${if (report.optBoolean("dngSequenceOk")) "সফল" else "ব্যর্থ"}; ${report.optInt("dngSequenceFrames")} frame")
         if (report.has("firstFrameDngOk")) appendLine("প্রথম frame DNG: ${if (report.optBoolean("firstFrameDngOk")) "সফল" else "ব্যর্থ"}")
@@ -53,6 +62,9 @@ internal object RawReadableReport {
         if (report.has("pacedCapacityWaitNs")) appendLine("Paced buffer অপেক্ষা: ${ms(report.optLong("pacedCapacityWaitNs"))}; এটি capture window-এর অংশ, drop নয়।")
         if (report.has("dngSequenceNs")) appendLine("DNG sequence তৈরি: ${ms(report.optLong("dngSequenceNs"))}")
         if (report.has("exportDataCopyNs")) appendLine("Export data copy: ${ms(report.optLong("exportDataCopyNs"))}; ${report.optLong("exportDataBytes")} bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)")
+        if (report.has("directInPlace")) appendLine("সরাসরি লেখা ফাইল: ${report.optJSONArray("directInPlace")?.length() ?: 0}টি; আলাদা copy হয়েছে ${report.optJSONArray("exportCopiedFiles")?.length() ?: 0}টি (report/metadata)")
+        if (report.has("directPublishFailures") && (report.optJSONArray("directPublishFailures")?.length() ?: 0) > 0)
+            appendLine("Publish ব্যর্থ: ${report.optJSONArray("directPublishFailures")}")
         if (report.has("exportConcurrency")) appendLine("Export concurrency: ${report.optInt("exportConcurrency")} (স্বাধীন ফাইল একসঙ্গে লেখা/fsync; ফাইল বা ক্রম বদলায় না)")
         if (report.has("dngSequenceWorkers")) appendLine("DNG sequence workers: ${report.optInt("dngSequenceWorkers")} (ফাইলের নাম ও ক্রম অপরিবর্তিত)")
         if (report.has("exportCopyBackend")) appendLine("Export পথ: ${report.optString("exportCopyBackend")}; destination fsync চালু, post-export byte readback নয়।")

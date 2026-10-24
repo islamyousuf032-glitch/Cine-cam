@@ -24,6 +24,21 @@ class RawExportNamesTest {
             catch (_: IllegalStateException) { }
         }
     }
+    @Test fun directRowsUseTheSameNamesAndSafeMimeTypes() {
+        // A direct session publishes exactly the names a staging export would have produced.
+        val session = "CineCam_1792835277528_503c24f6"
+        assertEquals("${session}_capture.ccraw", RawExportNames.name(session, "capture.ccraw"))
+        assertEquals("${session}_frame_000001.dng", RawExportNames.name(session, "frame_000001.dng"))
+        assertEquals("application/octet-stream", RawExportNames.mimeOf("capture.ccraw"))
+        assertEquals("application/octet-stream", RawExportNames.mimeOf("capture.ccraw.bp16"))
+        assertEquals("image/x-adobe-dng", RawExportNames.mimeOf("frame_000001.dng"))
+        assertEquals("application/json", RawExportNames.mimeOf("sequence.json"))
+        assertEquals("application/json", RawExportNames.mimeOf("metadata.json"))
+        assertEquals("text/plain", RawExportNames.mimeOf("report.txt"))
+        assertEquals("application/octet-stream", RawExportNames.mimeOf("noextension"))
+        assertEquals("application/octet-stream", RawExportNames.mimeOf("weird.DNG"))
+    }
+
     @Test fun unsafeCaptureIdsAndNamesReject() {
         for (bad in listOf("../capture.ccraw", "a/b", "a\\b", ".", "..", "x".repeat(201))) {
             try { RawExportNames.name(first, bad); fail("invalid basename") }

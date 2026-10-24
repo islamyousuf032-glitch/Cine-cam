@@ -246,26 +246,47 @@ JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
     return JNI_VERSION_1_6;
 }
 
+namespace {
+// Shared setup for both destinations: staging directory or an already-open provider descriptor.
+bool startRawClipCommon(int width, int height, const std::string& directory, int outputFd, int64_t epochNs,
+                        bool preallocate, int32_t maxFrames, int64_t maxBytes) {
+    auto* engine = GetGlobalEngine();
+    if (epochNs < 0) return false;
+    if (!engine->initialize(width, height, 16, 3, true)) return false;
+    RecordingConfig config;
+    config.width = width; config.height = height; config.bitDepth = 16;
+    config.preallocateCcraw = preallocate;
+    // Session budget is decided by the Kotlin planner; never exceed the container limits here.
+    config.maxFrames = maxFrames > 0 ? std::min<int32_t>(maxFrames, 100000) : 8;
+    config.maxBytes = maxBytes > 0 ? std::min<int64_t>(maxBytes, 64LL * 1024 * 1024 * 1024)
+                                   : 256LL * 1024 * 1024;
+    config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
+    config.outputPath = directory; config.outputFd = outputFd;
+    config.enableAudio = false; config.enableZstd = false;
+    std::string error;
+    return engine->startRecording(config, error);
+}
+}
+
 // Bounded diagnostic burst: RAW_SENSOR storage is 16-bit, sensor precision is separate metadata.
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
         JNIEnv* env, jobject, jint width, jint height, jstring path, jlong epochNs, jboolean preallocate,
         jint maxFrames, jlong maxBytes) {
-    auto* engine = GetGlobalEngine();
     const auto directory = jstringToStd(env, path);
-    if (env->ExceptionCheck() || epochNs < 0) return JNI_FALSE;
-    if (!engine->initialize(width, height, 16, 3, true)) return JNI_FALSE;
-    RecordingConfig config;
-    config.width = width; config.height = height; config.bitDepth = 16;
-    config.preallocateCcraw = preallocate == JNI_TRUE;
-    // Session budget is decided by the Kotlin planner; never exceed the container limits here.
-    config.maxFrames = maxFrames > 0 ? static_cast<int32_t>(std::min<int32_t>(maxFrames, 100000)) : 8;
-    config.maxBytes = maxBytes > 0 ? static_cast<int64_t>(std::min<int64_t>(maxBytes, 64LL * 1024 * 1024 * 1024))
-                                   : 256LL * 1024 * 1024;
-    config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
-    config.outputPath = directory; config.enableAudio = false; config.enableZstd = false;
-    std::string error;
-    return engine->startRecording(config, error) ? JNI_TRUE : JNI_FALSE;
+    if (env->ExceptionCheck()) return JNI_FALSE;
+    return startRawClipCommon(width, height, directory, -1, epochNs, preallocate == JNI_TRUE, maxFrames, maxBytes)
+        ? JNI_TRUE : JNI_FALSE;
+}
+
+// Direct-to-Download session: the CCRAW never lands in app staging, so no second copy is needed.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClipFd(
+        JNIEnv*, jobject, jint width, jint height, jint outputFd, jlong epochNs, jboolean preallocate,
+        jint maxFrames, jlong maxBytes) {
+    if (outputFd < 0) return JNI_FALSE;
+    return startRawClipCommon(width, height, std::string(), outputFd, epochNs, preallocate == JNI_TRUE,
+                              maxFrames, maxBytes) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
