@@ -405,3 +405,13 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.11
 Device check: একই ১২০ s session আবার চালান — জায়গা কম থাকলে এখন **শুরুতেই** বাংলা বার্তা আসবে
 ("দরকার X MiB, আছে Y MiB"), কোনো অর্ধেক-লেখা ফাইল থাকবে না। জায়গা থাকলে `.ccraw` আগে একা copy হবে,
 তারপর DNG।
+
+### v105 delivery — direct-to-Download sessions (plan "ক")
+CI `40097547195`/113 সফল (native ARM/x86 sanitizer, Android unit/lint/debug/release, publication)।
+Source `7d99f13`। Release `v0.1.113-alpha-7d99f13`, APK 15,183,103 bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.113-alpha-7d99f13/CineCam-debug.apk
+
+Device check: একই 120 s session (DNG sequence ON, archive OFF, depth 1) চালান। report-এ "সংরক্ষণ: সরাসরি
+Download/CineCam-এ লেখা" থাকবে, এবং export copy 0 বাইট হবে (শুধু report/metadata copy)। ফোনে গতি
+মাপা বাকি — "সরাসরি Download-এ লেখা" টগল বন্ধ করলে পুরোনো staging পথেই চলবে।
