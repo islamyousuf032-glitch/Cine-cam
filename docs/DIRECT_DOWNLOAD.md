@@ -35,8 +35,11 @@ final MediaStore row, and published when the session finishes.
   so existing library code, sequence references and report mappings keep working.
 - The CCRAW container format is byte-for-byte the same as the staging path (a native test compares
   both writers frame by frame).
-- A failed session deletes its pending rows (`DirectClipStore.discard`); a half-written clip can never
-  appear in Download.
+- Only a **drained and verified** session is published; an incomplete session or failed readback discards
+  its pending rows (`DirectClipStore.discard`) and reports `directDiscarded`, so the gallery never shows a
+  truncated RAW.
+- DNG frames read the pending CCRAW through a descriptor stream, so skipping to a frame's payload offset
+  is an `lseek`, not a re-read of everything before it.
 - Nothing is ever overwritten: the row is new, the name is unique per session, and the writer refuses
   a non-empty or already-advanced descriptor.
 

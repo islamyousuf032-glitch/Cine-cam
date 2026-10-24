@@ -784,13 +784,21 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 directFd?.let { runCatching { it.close() } }
                 if (direct != null) {
-                    // Verified files are final: publish them now so a later report failure cannot
-                    // cost the user the clip. Only the small sidecars still go through export.
-                    postStorageStatus("Download-এ publish হচ্ছে…")
-                    val failed = direct.publish()
-                    report.put("directPublished", true)
-                    report.put("directPublishFailures", JSONArray(failed))
-                    report.put("directInPlace", JSONArray(direct.localNames()))
+                    // Only a drained and verified session is published; a partial clip stays hidden
+                    // and is deleted, so the gallery never shows a truncated RAW.
+                    val publishable = ok && (!verifySample || report.optBoolean("readbackOk"))
+                    if (publishable) {
+                        // Verified files are final: publish now so a later report failure cannot
+                        // cost the user the clip. Only the small sidecars still go through export.
+                        postStorageStatus("Download-এ publish হচ্ছে…")
+                        val failed = direct.publish()
+                        report.put("directPublished", true)
+                        report.put("directPublishFailures", JSONArray(failed))
+                        report.put("directInPlace", JSONArray(direct.localNames()))
+                    } else {
+                        direct.discard()
+                        report.put("directDiscarded", "session incomplete বা যাচাই ব্যর্থ — কোনো ফাইল publish হয়নি")
+                    }
                 }
                 postStorageStatus("Download/CineCam-এ report export হচ্ছে…")
                 val target = RawClipStore.export(app, folder, report, direct?.exportedMapping() ?: emptyMap()) {

@@ -61,7 +61,10 @@ internal class DirectClipStore(private val context: Context, private val session
     override fun openSource(): InputStream {
         val local = sourceName ?: error("RAW source নেই")
         val row = rows[local] ?: error("RAW source row নেই")
-        return context.contentResolver.openInputStream(row.uri) ?: error("RAW source খোলা যায়নি")
+        // A descriptor stream keeps `skip(payloadOffset)` an lseek instead of a full re-read.
+        val descriptor = context.contentResolver.openFileDescriptor(row.uri, "r")
+            ?: error("RAW source খোলা যায়নি")
+        return ParcelFileDescriptor.AutoCloseInputStream(descriptor)
     }
 
     override fun openOutput(name: String): OutputStream {
