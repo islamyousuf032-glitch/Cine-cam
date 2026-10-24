@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <atomic>
+#include <memory>
+#include <vector>
 
 namespace cinecam {
 // Versioned experimental container; NOT MotionCam MCRAW or DNG.
@@ -33,6 +35,8 @@ public:
     };
     Timings timings() const;
     const std::string& error() const { return error_; }
+    uint64_t frameCount() const { return count_; }
+    uint64_t payloadBytes() const { return payload_; }
 private:
     bool writeAll(const void* bytes, size_t size);
     AllocationFn allocator_;
@@ -55,6 +59,44 @@ private:
     std::atomic<uint64_t> crcNs_{0}, writeNs_{0}, fsyncNs_{0};
     std::atomic<uint64_t> appendNs_{0}, maxAppendNs_{0}, finalizeNs_{0}, payloadBytes_{0};
 };
+/**
+ * One continuous session across several descriptors (parts). Rotation happens only between whole
+ * frames, so every part is a complete, self-validating CCRAW; timestamps stay strictly increasing
+ * per part and the session keeps a single epoch.
+ */
+class CcrawSegmentWriter {
+public:
+    CcrawSegmentWriter() = default;
+    CcrawSegmentWriter(const CcrawSegmentWriter&) = delete;
+    CcrawSegmentWriter& operator=(const CcrawSegmentWriter&) = delete;
+    // fds are borrowed: each is fsynced and finished but never closed here.
+    bool open(std::vector<int> fds, uint32_t width, uint32_t height, int64_t epochNs,
+              bool preallocate, uint32_t maxFrames, uint64_t maxBytes, uint64_t maxPartBytes);
+    bool append(const RawFrame& frame);
+    bool finish();
+    struct Segment { uint64_t frames = 0, fileBytes = 0; };
+    struct Stats {
+        std::vector<Segment> segments;
+        uint64_t frames = 0, payloadBytes = 0, parts = 0;
+        uint64_t fsyncNs = 0, appendNs = 0, maxAppendNs = 0, writeSyscallNs = 0, maxWriteNs = 0, crcNs = 0;
+    };
+    const Stats& stats() const { return stats_; }
+    const std::string& error() const { return error_; }
+private:
+    bool openPart();
+    bool closePart();
+    std::vector<int> fds_;
+    uint32_t partIndex_ = 0;
+    std::unique_ptr<CcrawWriter> part_;
+    uint32_t width_ = 0, height_ = 0;
+    int64_t epoch_ = 0;
+    bool preallocate_ = false;
+    uint32_t maxFrames_ = 0;
+    uint64_t maxBytes_ = 0, maxPartBytes_ = 0, payloadBudget_ = 0;
+    Stats stats_;
+    std::string error_;
+};
+
 uint32_t ccrawCrc32(const uint8_t* bytes, size_t size);
 // Portable oracle/fallback, also used to self-test runtime-selected acceleration.
 uint32_t ccrawCrc32Portable(const uint8_t* bytes, size_t size);

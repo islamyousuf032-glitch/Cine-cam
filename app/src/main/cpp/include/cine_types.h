@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <array>
 #include <string>
+#include <vector>
 #include <utility>
 
 namespace cinecam {
@@ -111,6 +112,8 @@ struct RecordingConfig {
     // >=0 writes the CCRAW straight into this descriptor (MediaStore pending row) instead of
     // outputPath; the caller owns the fd and publishes the row after the writer finishes.
     int outputFd = -1;
+    // Continuous session split into complete CCRAW parts; empty means a single container.
+    std::vector<int> segmentFds;
     std::string container = "mcraw";  // "mcraw" | "cinemadng"
     bool preallocateCcraw = false;
     bool enableZstd = false;
@@ -121,6 +124,7 @@ struct RecordingConfig {
     // 8-frame / 256 MiB burst; a planned long session raises both together.
     int32_t maxFrames = 8;
     int64_t maxBytes = 256LL * 1024 * 1024;
+    int64_t maxPartBytes = 2LL * 1024 * 1024 * 1024;
 };
 
 // ---------------------------------------------------------------------------

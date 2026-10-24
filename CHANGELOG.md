@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — একটানা দীর্ঘ রেকর্ডিং: একাধিক CCRAW সেগমেন্ট] — 2026-10-24
+- **নতুন:** একটি session এখন একাধিক **সম্পূর্ণ CCRAW অংশে** লেখা যায় (`capture.ccraw`, `capture_002.ccraw`, …)। ঘোরানো হয় শুধু frame-এর মাঝখানে নয় — প্রতিটি অংশ নিজে থেকেই সম্পূর্ণ ও স্বতন্ত্রভাবে যাচাইযোগ্য, epoch একই থাকে (সময়ের ধারাবাহিকতা অটুট)।
+- **সীমা খুলল:** direct mode-এ (copy নেই) session বাজেট **৮ GiB → ২৪ GiB**, frame cap ৩২০ → ২৪০০। ৪৫৯৪ MB/১৮৪ frame-এর মাপা rate-এ ২৪ GiB মানে ~১৬ মিনিট পূর্ণ-রেজ RAW (storage থাকলে, report-এ আসল সংখ্যা)।
+- **প্রতি অংশ আলাদা যাচাই:** প্রতিটি part-এর header/frame/footer CRC ও frame count যাচাই হয়, তারপর যোগফল writer-এর সংখ্যার সঙ্গে মেলানো হয়। part 1-ই preview/DNG-র জন্য ব্যবহৃত হয়।
+- **নিরাপত্তা:** part সংখ্যা প্ল্যানার আগেই ঠিক করে (≤১২), সব pending row আগে তৈরি হয়; কোনো part শেষ করতে ব্যর্থ হলে session ওই কারণেই থামে এবং publish হয় না।
+- **DNG সীমা স্পষ্ট:** multi-part session-এ DNG sequence শুধু part 1 থেকে তৈরি — report ও সহজ রিপোর্টে সংখ্যাসহ লেখা থাকে, চুপচাপ আধা sequence হয় না।
+- Tests: native `CcrawSegmentWriter` (১২ বাইট মাপে ৩ part, whole-frame rotation, byte হিসাব, ভুল budget প্রত্যাখ্যান), `SegmentPlanTest`, part-name test। ফোনে যাচাই বাকি।
+
 ## [Unreleased — সরাসরি Download-এ লেখা (copy ছাড়া)] — 2026-10-24
 - **বড় পরিবর্তন:** RAW session এখন `capture.ccraw` ও প্রতিটি DNG **একবারই** লেখে, সোজা `Download/CineCam`-এ (MediaStore pending row)। আগের staging → পুরো copy ধাপটি আর নেই, তাই জায়গা প্রায় অর্ধেক এবং export-এর কয়েক মিনিট সময় বাঁচে।
 - নতুন native পথ: `CcrawWriter::openFd` + `nativeStartRawClipFd` — descriptor ধার নেয়, `finish()` শুধু fsync করে; row publish করে Kotlin। খালি নয় বা offset সরানো descriptor প্রত্যাখ্যান করা হয় (native test সহ)।

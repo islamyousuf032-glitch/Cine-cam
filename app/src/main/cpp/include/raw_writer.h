@@ -15,6 +15,7 @@
 #include <string>
 #include <fstream>
 #include <mutex>
+#include <memory>
 
 namespace cinecam {
 
@@ -43,6 +44,7 @@ public:
         double writeSpeedMBps = 0.0;
         int64_t currentFileSize = 0;
         CcrawWriter::Timings timings;
+        std::vector<uint64_t> segmentBytes;
     };
     WriterStats getStats() const;
 
@@ -64,6 +66,8 @@ private:
     MemoryPool* memoryPool_ = nullptr;
     RecordingConfig config_;
     CcrawWriter ccraw_;
+    // Multi-part sessions: every part is a complete CCRAW and the session keeps one epoch.
+    std::unique_ptr<CcrawSegmentWriter> segments_;
 
     std::thread writerThread_;
     std::atomic<WriterStatus> status_{WriterStatus::OK};

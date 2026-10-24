@@ -119,8 +119,12 @@ fun CameraScreen() {
                     if (directToDownload) false else internalRawStaging)
                 val copies = 1.0 + (if (verifyRawSample && allSavedFramesDng) 1.0 else 0.0) +
                     (if (verifyRawSample && losslessArchive) 0.6 else 0.0)
+                // Direct sessions have no export copy, so they use the larger session budget.
+                val direct = directToDownload && !(verifyRawSample && losslessArchive)
                 val plan = RecordingPlanner.plan(size.width, size.height, sessionFps,
-                    sessionSeconds, free, copies)
+                    sessionSeconds, free, copies,
+                    maxSessionBytes = if (direct) RecordingPlanner.MAX_DIRECT_SESSION_BYTES else RecordingPlanner.MAX_SESSION_BYTES,
+                    maxFramesCap = if (direct) RecordingPlanner.MAX_DIRECT_FRAMES else RecordingPlanner.MAX_FRAMES)
                 buildString {
                     append("${plan.seconds}s × ${plan.fps} fps = ${plan.slotFrames} frame চাওয়া হচ্ছে • ")
                     if (plan.maxFrames == 0) append("জায়গা নেই: অন্তত ${(plan.frameBytes * copies / (1024 * 1024)).toLong()} MiB লাগবে")
@@ -129,6 +133,8 @@ fun CameraScreen() {
                         if (copies > 1.0) append(" + DNG/archive copy")
                         append(")")
                         if (plan.storageLimited) append(" • জায়গা অনুযায়ী কমেছে")
+                        val parts = RecordingPlanner.partCount(plan.sessionBytes)
+                        if (parts > 1) append(" • ${parts}টি CCRAW অংশে (প্রতিটি আলাদা যাচাই)")
                     }
                 }
             } catch (e: Exception) {

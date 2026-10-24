@@ -112,10 +112,10 @@ bool CineRawEngine::startRecording(const RecordingConfig& config, std::string& o
         setError(outError); return false;
     }
 
-    LOGI("Starting recording: %dx%d %dfps -> %s%s [%s]",
+    LOGI("Starting recording: %dx%d %dfps -> %s [%s] parts=%zu",
          config.width, config.height, config.fps,
-         config.outputFd >= 0 ? "fd " : config.outputPath.c_str(),
-         config.outputFd >= 0 ? std::to_string(config.outputFd).c_str() : "", config.container.c_str());
+         config.outputFd >= 0 ? "provider fd" : (config.segmentFds.empty() ? config.outputPath.c_str() : "provider fds"),
+         config.container.c_str(), config.segmentFds.size());
 
     WriterStatus ws;
     try {

@@ -64,3 +64,23 @@ JVM: `RecordingPlanTest`, `PacedRequestGateTest` (দীর্ঘ budgetেও �
 Native: `tests/native/pipeline_test.cpp` — ৪০-frame long session file size, byte-budget rejection,
 invalid limits।
 Android encoder/camera যাচাই ফোনে করতে হবে (`docs/RAW_BURST_TEST_PLAN.md`-এর ধাপ অনুযায়ী)।
+
+## Segmented (multi-part) sessions
+
+A direct-to-Download session has no second copy, so its byte budget is 24 GiB instead of the 8 GiB
+export/archive limit. Above 2 GiB the session is split into complete CCRAW parts:
+
+| part | name |
+|---|---|
+| 1 | `capture.ccraw` (canonical name; preview and DNG read this) |
+| 2…12 | `capture_002.ccraw` … `capture_012.ccraw` |
+
+- Rotation happens **between whole frames only** (`CcrawSegmentWriter`), so each part is a valid
+  container with its own header, footer, CRCs and strictly increasing timestamps.
+- All parts share the session epoch; the report lists `ccrawParts` and `ccrawPartFrames`.
+- Every part is verified independently (`CcrawVerifier` over its own descriptor) and the total frame
+  count must equal what the writer reported, or the session is not published.
+- Part count is decided before capture (`RecordingPlanner.partCount`, ≤ 12) and every pending row is
+  created up front, because the native writer needs all descriptors at start.
+- DNG sequence frames come from part 1 only; a long multi-part session reports
+  `dngSequenceSourceParts: 1` rather than silently producing a partial sequence.

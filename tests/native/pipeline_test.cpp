@@ -480,6 +480,67 @@ int main() {
     }
 
     {
+        // Segmented session: the same frames split across parts, never in the middle of a frame.
+        const std::string root = "build/native-tests/segments";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
+        uint8_t data[16]{};
+        RawFrame frame; frame.data = data; frame.sizeBytes = 16; frame.isValid = true;
+        frame.metadata.width = 4; frame.metadata.height = 2; frame.metadata.stride = 8;
+        frame.metadata.bitDepth = 16; frame.metadata.iso = 100; frame.metadata.exposureTimeNs = 1000;
+        std::vector<int> fds;
+        for (int i = 0; i < 3; ++i) {
+            const std::string path = root + "/part" + std::to_string(i + 1) + ".ccraw";
+            const int fd = ::open(path.c_str(), O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0600);
+            assert(fd >= 0); fds.push_back(fd);
+        }
+        // Each part holds 64 + n*(96+16) + 32; a 432-byte cap fits exactly 3 frames.
+        CcrawSegmentWriter segments;
+        assert(segments.open(fds, 4, 2, 100, false, 9, 1ULL * 1024 * 1024, 432));
+        for (int i = 0; i < 9; ++i) {
+            frame.metadata.timestampNs = 200 + i * 100LL; frame.metadata.frameNumber = i;
+            assert(segments.append(frame));
+        }
+        assert(segments.finish());
+        const auto& stats = segments.stats();
+        assert(stats.frames == 9 && stats.parts == 3 && stats.segments.size() == 3);
+        uint64_t sizes = 0;
+        for (const auto& segment : stats.segments) {
+            assert(segment.frames == 3);
+            assert(segment.fileBytes == 64 + 3 * (96 + 16) + 32);
+            sizes += segment.fileBytes;
+        }
+        for (int i = 0; i < 3; ++i) {
+            assert(std::filesystem::file_size(root + "/part" + std::to_string(i + 1) + ".ccraw") == 432);
+            ::close(fds[i]);
+        }
+        assert(sizes == 3 * 432);
+
+        // Frame count and budget stay bounded: a 4th part is not silently truncated into part 3.
+        std::vector<int> two;
+        for (int i = 0; i < 2; ++i) {
+            const int fd = ::open((root + "/bounded" + std::to_string(i) + ".ccraw").c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+            assert(fd >= 0); two.push_back(fd);
+        }
+        CcrawSegmentWriter bounded;
+        assert(bounded.open(two, 4, 2, 100, false, 6, 1ULL * 1024 * 1024, 432));
+        for (int i = 0; i < 6; ++i) {
+            frame.metadata.timestampNs = 200 + i * 100LL; frame.metadata.frameNumber = i;
+            assert(bounded.append(frame));
+        }
+        assert(bounded.finish() && bounded.stats().parts == 2 && bounded.stats().frames == 6);
+        for (int fd : two) ::close(fd);
+
+        CcrawSegmentWriter tooSmall;
+        std::vector<int> one;
+        const int small = ::open((root + "/small.ccraw").c_str(), O_CREAT | O_TRUNC | O_RDWR, 0600);
+        assert(small >= 0); one.push_back(small);
+        assert(!tooSmall.open(one, 4, 2, 100, false, 4, 1ULL * 1024 * 1024, 100)); // Below one frame.
+        assert(!tooSmall.open({}, 4, 2, 100, false, 4, 1ULL * 1024 * 1024, 400));
+        ::close(small);
+    }
+
+    {
         const char* source = "build/native-tests/ccraw/capture.ccraw";
         const char* archive = "build/native-tests/roundtrip.ccraw.bp16";
         std::filesystem::remove(archive);

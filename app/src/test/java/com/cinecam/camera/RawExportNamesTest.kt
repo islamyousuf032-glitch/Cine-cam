@@ -39,6 +39,14 @@ class RawExportNamesTest {
         assertEquals("application/octet-stream", RawExportNames.mimeOf("weird.DNG"))
     }
 
+    @Test fun segmentPartNamesStayInTheSameFlatDirectory() {
+        val session = "CineCam_1792850025825_78decdd2"
+        // Part 1 keeps the canonical name; later parts are sequential and unique.
+        assertEquals("${session}_capture.ccraw", RawExportNames.name(session, "capture.ccraw"))
+        assertEquals("${session}_capture_002.ccraw", RawExportNames.name(session, "capture_002.ccraw"))
+        assertEquals("${session}_capture_012.ccraw", RawExportNames.name(session, "capture_012.ccraw"))
+    }
+
     @Test fun unsafeCaptureIdsAndNamesReject() {
         for (bad in listOf("../capture.ccraw", "a/b", "a\\b", ".", "..", "x".repeat(201))) {
             try { RawExportNames.name(first, bad); fail("invalid basename") }

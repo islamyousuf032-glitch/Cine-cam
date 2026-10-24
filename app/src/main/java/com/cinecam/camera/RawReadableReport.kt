@@ -30,6 +30,8 @@ internal object RawReadableReport {
             else -> report.optString("storageMode", "অজানা")
         })
         appendLine("DNG mode: ${report.optString("dngExportMode")}")
+        if (report.optInt("dngSequenceSourceParts", 0) == 1 && report.optInt("ccrawParts", 1) > 1)
+            appendLine("DNG sequence শুধু প্রথম CCRAW অংশ থেকে তৈরি — বাকি অংশের frame-এ DNG নেই (report-এ সংখ্যা আছে)।")
         if (report.has("dngSequenceOk")) appendLine("DNG sequence: ${if (report.optBoolean("dngSequenceOk")) "সফল" else "ব্যর্থ"}; ${report.optInt("dngSequenceFrames")} frame")
         if (report.has("firstFrameDngOk")) appendLine("প্রথম frame DNG: ${if (report.optBoolean("firstFrameDngOk")) "সফল" else "ব্যর্থ"}")
         report.optJSONObject("losslessProbe")?.let { probe ->
@@ -62,6 +64,9 @@ internal object RawReadableReport {
         if (report.has("pacedCapacityWaitNs")) appendLine("Paced buffer অপেক্ষা: ${ms(report.optLong("pacedCapacityWaitNs"))}; এটি capture window-এর অংশ, drop নয়।")
         if (report.has("dngSequenceNs")) appendLine("DNG sequence তৈরি: ${ms(report.optLong("dngSequenceNs"))}")
         if (report.has("exportDataCopyNs")) appendLine("Export data copy: ${ms(report.optLong("exportDataCopyNs"))}; ${report.optLong("exportDataBytes")} bytes (report লেখা/publish সময় অন্তর্ভুক্ত নয়)")
+        if (report.optInt("ccrawParts", 1) > 1)
+            appendLine("CCRAW অংশ: ${report.optInt("ccrawParts")}টি (প্রতিটি সম্পূর্ণ, আলাদা যাচাই করা; " +
+                "প্রথম অংশের নাম capture.ccraw) • প্রতি অংশের frame: ${report.optJSONArray("ccrawPartFrames")}")
         if (report.has("directInPlace")) appendLine("সরাসরি লেখা ফাইল: ${report.optJSONArray("directInPlace")?.length() ?: 0}টি; আলাদা copy হয়েছে ${report.optJSONArray("exportCopiedFiles")?.length() ?: 0}টি (report/metadata)")
         if (report.has("directPublishFailures") && (report.optJSONArray("directPublishFailures")?.length() ?: 0) > 0)
             appendLine("Publish ব্যর্থ: ${report.optJSONArray("directPublishFailures")}")

@@ -20,15 +20,34 @@ internal class DirectClipStore(private val context: Context, private val session
     private data class Row(val localName: String, val displayName: String, val uri: Uri)
 
     private val rows = LinkedHashMap<String, Row>()
-    private var sourceName: String? = null
+    private val ccrawParts = mutableListOf<String>()
     private var published = false
 
     val ccrawName: String = RawExportNames.name(session, "capture.ccraw")
 
+    /** Part 1 keeps the canonical `capture.ccraw` name; later parts are `capture_002.ccraw`, … */
+    fun partName(index: Int): String {
+        require(index in 1..RecordingPlanner.MAX_PARTS) { "part index" }
+        return if (index == 1) "capture.ccraw" else "capture_%03d.ccraw".format(index)
+    }
+
     /** Creates the pending CCRAW row and returns its writable descriptor; the writer owns the bytes. */
-    fun createCcraw(): ParcelFileDescriptor {
-        sourceName = "capture.ccraw"
-        return openDescriptor("capture.ccraw", RawExportNames.mimeOf("capture.ccraw"), "rw")
+    fun createCcraw(): ParcelFileDescriptor = createCcrawParts(1).single()
+
+    /** Creates (and names) every part up front: the native writer needs all descriptors at start. */
+    fun createCcrawParts(count: Int): List<ParcelFileDescriptor> {
+        require(count in 1..RecordingPlanner.MAX_PARTS) { "part count" }
+        return (1..count).map { index ->
+            val local = partName(index)
+            ccrawParts.add(local)
+            openDescriptor(local, RawExportNames.mimeOf(local), "rw")
+        }
+    }
+
+    /** Read-only descriptors of every part, in order, for independent verification. */
+    fun openCcrawParts(): List<ParcelFileDescriptor> = ccrawParts.map { local ->
+        context.contentResolver.openFileDescriptor(rows.getValue(local).uri, "r")
+            ?: error("RAW part খোলা যায়নি: ${rows.getValue(local).displayName}")
     }
 
     private fun openDescriptor(localName: String, mime: String, mode: String): ParcelFileDescriptor {
@@ -59,7 +78,8 @@ internal class DirectClipStore(private val context: Context, private val session
 
     // ClipDngTarget: DNG frames read the pending CCRAW and write their own pending rows.
     override fun openSource(): InputStream {
-        val local = sourceName ?: error("RAW source নেই")
+        // DNG/preview read part 1; later parts hold only additional frames.
+        val local = ccrawParts.firstOrNull() ?: error("RAW source নেই")
         val row = rows[local] ?: error("RAW source row নেই")
         // A descriptor stream keeps `skip(payloadOffset)` an lseek instead of a full re-read.
         val descriptor = context.contentResolver.openFileDescriptor(row.uri, "r")
@@ -74,11 +94,6 @@ internal class DirectClipStore(private val context: Context, private val session
 
     override fun delete(name: String) {
         rows.remove(name)?.let { runCatching { context.contentResolver.delete(it.uri, null, null) } }
-    }
-
-    fun openReportOutput(localName: String): OutputStream {
-        val descriptor = openDescriptor(localName, RawExportNames.mimeOf(localName), "w")
-        return ParcelFileDescriptor.AutoCloseOutputStream(descriptor)
     }
 
     fun rowBytes(localName: String): Long = context.contentResolver.openFileDescriptor(rows.getValue(localName).uri, "r")?.use {

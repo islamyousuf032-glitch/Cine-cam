@@ -76,6 +76,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     private var clipFolder: File? = null
     private var clipDirect: DirectClipStore? = null
     private var clipDirectFd: ParcelFileDescriptor? = null
+    private var clipDirectFds: List<ParcelFileDescriptor> = emptyList()
+    private var clipPartCount = 1
     private var clipLimit = 8
     private var clipMatched = 0
     private var clipAccepted = 0
@@ -310,7 +312,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             if (!saving.compareAndSet(false, true)) return@post
             onCaptureState(true); onClipState("starting")
             // A new session decides its own storage mode; never inherit the previous one.
-            clipDirect = null; clipDirectFd = null; clipDirectDisabledReason = ""
+            clipDirect = null; clipDirectFd = null; clipDirectFds = emptyList(); clipPartCount = 1
+            clipDirectDisabledReason = ""
             val engine = NativeRawEngine.getInstance()
             try {
                 val displayDegrees = when (displayRotation) {
@@ -338,10 +341,14 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 // Optional DNG copies and the archive are written after recording, into the same free space.
                 val copyFactor = 1.0 + (if (verifyAndSample && allFramesDng) 1.0 else 0.0) +
                     (if (verifyAndSample && losslessArchive) 0.6 else 0.0)
+                // A direct session has no export copy, so it may exceed the 8 GiB export cap.
+                val directCap = directAllowed && !(verifyAndSample && losslessArchive)
                 val plan = RecordingPlanner.plan(raw.width, raw.height,
                     (if (paced) targetFps else minOf(targetFps, 8)).coerceIn(RecordingPlanner.MIN_FPS, RecordingPlanner.MAX_FPS),
                     sessionSeconds.coerceIn(RecordingPlanner.MIN_SECONDS, RecordingPlanner.MAX_SECONDS),
-                    prepared.captureAvailableBytes, copyFactor)
+                    prepared.captureAvailableBytes, copyFactor,
+                    maxSessionBytes = if (directCap) RecordingPlanner.MAX_DIRECT_SESSION_BYTES else RecordingPlanner.MAX_SESSION_BYTES,
+                    maxFramesCap = if (directCap) RecordingPlanner.MAX_DIRECT_FRAMES else RecordingPlanner.MAX_FRAMES)
                 clipPlan = plan
                 val wanted = if (paced) plan.maxFrames else minOf(8, plan.maxFrames)
                 check(wanted > 0) {
@@ -350,7 +357,15 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 val sessionBytes = plan.sessionBytes.coerceAtLeast(
                     RecordingPlanner.CcrawFrameHeaderBytes + raw.width.toLong() * raw.height * 2)
-                val started = if (directAllowed) {
+                val parts = if (directAllowed) RecordingPlanner.partCount(sessionBytes) else 1
+                val started = if (directAllowed && parts > 1) {
+                    // Long session: complete CCRAW parts, each written once into its own Download row.
+                    val store = DirectClipStore(app, prepared.folder.name)
+                    val descriptors = store.createCcrawParts(parts)
+                    clipDirect = store; clipDirectFds = descriptors
+                    engine.nativeStartRawClipFds(raw.width, raw.height, descriptors.map { it.fd }.toIntArray(),
+                        clipStartNs, preallocate, wanted, sessionBytes, RecordingPlanner.PART_BYTES)
+                } else if (directAllowed) {
                     // Writes the CCRAW once, into its final Download row: no second full-size copy.
                     val store = DirectClipStore(app, prepared.folder.name)
                     val descriptor = store.createCcraw()
@@ -362,9 +377,11 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 }
                 if (!started) {
                     clipDirectFd?.close(); clipDirectFd = null
+                    clipDirectFds.forEach { runCatching { it.close() } }; clipDirectFds = emptyList()
                     clipDirect?.discard(); clipDirect = null
                     error(engine.getLastError())
                 }
+                clipPartCount = if (directAllowed) parts else 1
                 clipLimit = wanted
                 clipSlot = 0; clipSkippedSlots = 0; clipStallSinceNs = 0L; clipStallCount = 0
                 internalStagingRequested = internalStaging
@@ -478,6 +495,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 else {
                     engine.stopRecording(); engine.release()
                     clipDirectFd?.close(); clipDirectFd = null
+                    clipDirectFds.forEach { runCatching { it.close() } }; clipDirectFds = emptyList()
                     clipDirect?.discard(); clipDirect = null
                     clipFolder?.deleteRecursively(); clipFolder = null
                     saving.set(false); onCaptureState(false); onClipState("idle")
@@ -613,6 +631,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             }
             put("internalStagingRequested", internalStagingRequested)
             put("storageMode", if (clipDirect != null) "direct-download" else "staging-export")
+            put("ccrawParts", partCount)
             if (clipDirectDisabledReason.isNotEmpty()) put("directDisabledReason", clipDirectDisabledReason)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
@@ -651,6 +670,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
         val archiveRequested = clipArchive
         val direct = clipDirect
         val directFd = clipDirectFd
+        val directFds = clipDirectFds
+        val partCount = clipPartCount
         val verifySample = clipVerify
         val sequenceDng = clipSequence
         val savedResults = clipAcceptedResults.toMap(); clipAcceptedResults.clear()
@@ -671,7 +692,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                 report.put("nativeStopOk", ok); report.put("native", stats)
                 report.put("nativeError", if (ok) "" else engine.getLastError())
                 report.put("wallUntilDrainNs", SystemClock.elapsedRealtimeNanos() - report.getLong("epochBoottimeNs"))
-                report.put("fileBytes", if (direct != null) direct.rowBytes("capture.ccraw")
+                report.put("fileBytes", if (direct != null) (1..partCount).sumOf { direct.rowBytes(direct.partName(it)) }
                     else File(folder, "capture.ccraw").length())
                 report.put("partialFileBytes", if (direct != null) 0L
                     else File(folder, "capture.ccraw.partial").length())
@@ -686,10 +707,24 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     val verifyBegin = SystemClock.elapsedRealtimeNanos()
                     var verified: CcrawVerifier.Verified? = null
                     try {
-                        // Direct mode verifies through the very descriptor the writer used (pread).
-                        verified = if (direct != null && directFd != null) CcrawVerifier.verify(directFd)
-                            else CcrawVerifier.verify(File(folder, "capture.ccraw"))
-                        check(verified.frames.size.toLong() == written) { "Written/readback frame count mismatch" }
+                        // Direct mode verifies through the very descriptors the writer used (pread).
+                        // Every part is a complete container; part 1 also feeds DNG/preview.
+                        val partFrames = JSONArray()
+                        if (direct != null) {
+                            var total = 0L
+                            direct.openCcrawParts().forEachIndexed { index, descriptor ->
+                                val part = descriptor.use { CcrawVerifier.verify(it) }
+                                partFrames.put(part.frames.size)
+                                total += part.frames.size
+                                if (index == 0) verified = part
+                            }
+                            report.put("ccrawPartFrames", partFrames)
+                            check(total == written) { "Written/readback frame count mismatch (${total + 0} vs $written)" }
+                        } else {
+                            verified = CcrawVerifier.verify(File(folder, "capture.ccraw"))
+                            check(verified!!.frames.size.toLong() == written) { "Written/readback frame count mismatch" }
+                        }
+                        check(verified != null) { "কোনো RAW part যাচাই হয়নি" }
                         report.put("readbackOk", true); report.put("readbackFrames", verified.frames.size)
                         report.put("readbackPayloadBytes", verified.payloadBytes)
                         report.put("readbackBackend", if (direct != null) "java.util.zip.CRC32 / 64KiB pread on provider fd"
@@ -759,6 +794,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     File(folder, "sequence.json").writeText(manifest.toString(2))
                                     report.put("dngSequenceOk", true); report.put("dngSequenceFrames", plan.size)
                                     report.put("dngSequenceWorkers", EXPORT_WORKERS)
+                                    if (partCount > 1) report.put("dngSequenceSourceParts", 1)
                                     report.put("dngSequenceBytes", completed.sumOf { name ->
                                         if (direct != null) direct.rowBytes(name) else File(folder, name).length() })
                                 } catch (e: Exception) {
@@ -783,6 +819,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     }
                 }
                 directFd?.let { runCatching { it.close() } }
+                directFds.forEach { runCatching { it.close() } }
                 if (direct != null) {
                     // Only a drained and verified session is published; a partial clip stays hidden
                     // and is deleted, so the gallery never shows a truncated RAW.
@@ -816,7 +853,8 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             } finally {
                 engine.release()
                 runCatching { directFd?.close() }
-                clipDirect = null; clipDirectFd = null
+                directFds.forEach { runCatching { it.close() } }
+                clipDirect = null; clipDirectFd = null; clipDirectFds = emptyList(); clipPartCount = 1
             }
             val posted = handler.post {
                 saving.set(false)

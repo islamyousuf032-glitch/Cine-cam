@@ -47,7 +47,13 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
 
     const uint32_t maxFrames = static_cast<uint32_t>(std::max(1, config.maxFrames));
     const uint64_t maxBytes = static_cast<uint64_t>(std::max<int64_t>(1, config.maxBytes));
-    if (config.container == "ccraw") {
+    if (config.container == "ccraw" && !config.segmentFds.empty()) {
+        segments_ = std::make_unique<CcrawSegmentWriter>();
+        if (!segments_->open(config.segmentFds, config.width, config.height, config.epochNs,
+                             config.preallocateCcraw, maxFrames, maxBytes, config.maxPartBytes)) {
+            lastError_ = segments_->error(); segments_.reset(); return WriterStatus::IO_ERROR;
+        }
+    } else if (config.container == "ccraw") {
         const bool opened = directFd
             ? ccraw_.openFd(config.outputFd, config.width, config.height, config.epochNs,
                             config.preallocateCcraw, maxFrames, maxBytes)
@@ -121,7 +127,9 @@ WriterStatus RawWriter::stop() {
         writerThread_.join();
     }
 
-    if (config_.container == "ccraw" && !ccraw_.finish()) {
+    if (segments_) {
+        if (!segments_->finish()) { lastError_ = segments_->error(); status_.store(WriterStatus::IO_ERROR); }
+    } else if (config_.container == "ccraw" && !ccraw_.finish()) {
         lastError_ = ccraw_.error(); status_.store(WriterStatus::IO_ERROR);
     }
     if (outputFile_.is_open()) {
@@ -153,10 +161,11 @@ void RawWriter::consume(RawFrame& frame) {
         try {
             WriterStatus result;
             if (config_.container == "ccraw") {
-                if (ccraw_.append(frame)) {
+                const bool appended = segments_ ? segments_->append(frame) : ccraw_.append(frame);
+                if (appended) {
                     updateStats(frame.sizeBytes + 96); framesWritten_.fetch_add(1);
                     result = WriterStatus::OK;
-                } else { lastError_ = ccraw_.error(); result = WriterStatus::IO_ERROR; }
+                } else { lastError_ = segments_ ? segments_->error() : ccraw_.error(); result = WriterStatus::IO_ERROR; }
             } else result = writeMcrawFrame(frame);
             if (result != WriterStatus::OK) status_.store(result);
         } catch (...) {
@@ -323,6 +332,14 @@ void RawWriter::updateStats(size_t bytesWritten) {
 RawWriter::WriterStats RawWriter::getStats() const {
     WriterStats s{};
     s.timings = ccraw_.timings();
+    if (segments_) {
+        const auto& seg = segments_->stats();
+        s.timings.fsyncNs = seg.fsyncNs; s.timings.appendNs = seg.appendNs;
+        s.timings.maxAppendNs = seg.maxAppendNs; s.timings.payloadBytes = seg.payloadBytes;
+        s.timings.writeSyscallNs = seg.writeSyscallNs; s.timings.maxWriteNs = seg.maxWriteNs;
+        s.timings.crcNs = seg.crcNs;
+        for (const auto& part : seg.segments) s.segmentBytes.push_back(part.fileBytes);
+    }
     s.framesWritten = framesWritten_.load();
     s.bytesWritten = bytesWritten_.load();
     s.framesDropped = framesDropped_.load();

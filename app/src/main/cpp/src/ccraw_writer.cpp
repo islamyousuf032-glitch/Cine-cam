@@ -212,4 +212,83 @@ bool CcrawWriter::finish() {
     finalizeNs_.store(pipelineNowNs() - finishBegin);
     return ok;
 }
+
+// ---------------------------------------------------------------------------
+// Segmented sessions
+// ---------------------------------------------------------------------------
+namespace {
+constexpr uint64_t kSegHeaderBytes = 64, kSegFrameHeaderBytes = 96, kSegFooterBytes = 32;
+}
+bool CcrawSegmentWriter::open(std::vector<int> fds, uint32_t width, uint32_t height, int64_t epoch,
+                              bool preallocate, uint32_t maxFrames, uint64_t maxBytes, uint64_t maxPartBytes) {
+    if (fds.empty() || width == 0 || height == 0 || epoch < 0 || maxFrames == 0) {
+        error_ = "Invalid CCRAW segment configuration"; return false;
+    }
+    const uint64_t frameBytes = uint64_t(width) * height * 2;
+    if (frameBytes > 256ULL * 1024 * 1024) { error_ = "Invalid CCRAW segment frame size"; return false; }
+    // A part must hold header + one frame + footer, or rotation would loop forever on one frame.
+    if (maxPartBytes < kSegHeaderBytes + kSegFrameHeaderBytes + kSegFooterBytes + frameBytes) {
+        error_ = "CCRAW part size too small"; return false;
+    }
+    const uint64_t minimum = kSegHeaderBytes + kSegFooterBytes +
+        uint64_t(fds.size()) * (kSegFrameHeaderBytes + frameBytes);
+    if (maxBytes < minimum) { error_ = "Invalid CCRAW segment budget"; return false; }
+    fds_ = std::move(fds); width_ = width; height_ = height; epoch_ = epoch;
+    preallocate_ = preallocate; maxFrames_ = maxFrames; maxBytes_ = maxBytes; maxPartBytes_ = maxPartBytes;
+    payloadBudget_ = maxBytes - kSegHeaderBytes - kSegFooterBytes - uint64_t(fds_.size()) * kSegFrameHeaderBytes;
+    partIndex_ = 0; stats_ = Stats{}; error_.clear();
+    return openPart();
+}
+bool CcrawSegmentWriter::openPart() {
+    if (partIndex_ >= fds_.size()) { error_ = "CCRAW segments exhausted"; return false; }
+    const uint64_t frameBytes = uint64_t(width_) * height_ * 2;
+    const uint64_t remainingParts = fds_.size() - partIndex_;
+    const uint64_t perPartPayload = payloadBudget_ / remainingParts;
+    // Frames must fit both the part's byte cap and its share of the session payload budget.
+    uint64_t frames = (maxPartBytes_ - kSegHeaderBytes - kSegFooterBytes) / (kSegFrameHeaderBytes + frameBytes);
+    frames = std::min(frames, maxFrames_ - stats_.frames);
+    frames = std::min(frames, perPartPayload / frameBytes);
+    if (frames == 0) { error_ = "CCRAW segment frame budget exhausted"; return false; }
+    part_ = std::make_unique<CcrawWriter>();
+    const uint64_t partBytes = kSegHeaderBytes + kSegFooterBytes + frames * (kSegFrameHeaderBytes + frameBytes);
+    if (!part_->openFd(fds_[partIndex_], width_, height_, epoch_, preallocate_, frames, partBytes)) {
+        error_ = part_->error(); part_.reset(); return false;
+    }
+    return true;
+}
+bool CcrawSegmentWriter::closePart() {
+    if (!part_) return true;
+    if (!part_->finish()) { error_ = part_->error(); part_.reset(); return false; }
+    const auto timings = part_->timings();
+    stats_.segments.push_back({part_->frameCount(),
+        kSegHeaderBytes + part_->frameCount() * kSegFrameHeaderBytes + part_->payloadBytes() + kSegFooterBytes});
+    stats_.payloadBytes += part_->payloadBytes();
+    stats_.fsyncNs += timings.fsyncNs; stats_.appendNs += timings.appendNs;
+    stats_.maxAppendNs = std::max(stats_.maxAppendNs, timings.maxAppendNs);
+    stats_.writeSyscallNs += timings.writeSyscallNs;
+    stats_.maxWriteNs = std::max(stats_.maxWriteNs, timings.maxWriteNs);
+    stats_.crcNs += timings.crcNs;
+    part_.reset();
+    return true;
+}
+bool CcrawSegmentWriter::append(const RawFrame& frame) {
+    if (!part_) { error_ = "CCRAW segment writer closed"; return false; }
+    const uint64_t frameBytes = uint64_t(width_) * height_ * 2;
+    // Rotate only when the next whole frame cannot fit in the current part, so no frame is split.
+    const uint64_t used = kSegHeaderBytes + part_->frameCount() * kSegFrameHeaderBytes + part_->payloadBytes();
+    const bool full = used + kSegFrameHeaderBytes + frameBytes + kSegFooterBytes > maxPartBytes_;
+    if (full && partIndex_ + 1 < fds_.size()) {
+        if (!closePart()) return false;
+        ++partIndex_;
+        if (!openPart()) return false;
+    }
+    if (!part_->append(frame)) { error_ = part_->error(); return false; }
+    ++stats_.frames; stats_.parts = partIndex_ + 1;
+    return true;
+}
+bool CcrawSegmentWriter::finish() {
+    if (!closePart()) return false;
+    stats_.parts = static_cast<uint64_t>(stats_.segments.size());
+    return true;
+}
 }

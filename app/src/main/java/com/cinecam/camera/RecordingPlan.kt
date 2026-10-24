@@ -48,6 +48,19 @@ internal object RecordingPlanner {
     // 480 frames x 25 MB would exceed the 8 GiB container cap, so bytes usually bind first.
     const val MAX_FRAMES = 480
     const val MAX_SESSION_BYTES = 8L * 1024 * 1024 * 1024
+    /** Direct-to-Download sessions never pass through a copy, so they may exceed the export cap. */
+    const val MAX_DIRECT_SESSION_BYTES = 24L * 1024 * 1024 * 1024
+    const val MAX_DIRECT_FRAMES = 2400
+    /** Each CCRAW part stays a complete, independently verifiable container. */
+    const val PART_BYTES = 2L * 1024 * 1024 * 1024
+    const val MAX_PARTS = 12
+
+    /** Parts needed for [sessionBytes]; always at least one so the writer gets a descriptor. */
+    fun partCount(sessionBytes: Long, partBytes: Long = PART_BYTES, maxParts: Int = MAX_PARTS): Int {
+        if (sessionBytes <= partBytes) return 1
+        val needed = (sessionBytes + partBytes - 1) / partBytes
+        return needed.coerceIn(1L, maxParts.toLong()).toInt()
+    }
     const val GRACE_MS = 6000L
     const val CcrawHeaderBytes = 64L
     const val CcrawFrameHeaderBytes = 96L
@@ -65,16 +78,19 @@ internal object RecordingPlanner {
      * 1.0 = CCRAW only, 2.0 = CCRAW + one DNG per frame, +0.6 for the optional lossless archive.
      */
     fun plan(width: Int, height: Int, fps: Int, seconds: Int, availableBytes: Long,
-             copyFactor: Double = 1.0): RecordingPlan {
+             copyFactor: Double = 1.0, maxSessionBytes: Long = MAX_SESSION_BYTES,
+             maxFramesCap: Int = MAX_FRAMES): RecordingPlan {
         require(width >= 2 && height >= 2) { "RAW মাপ সঠিক নয়" }
         require(fps in MIN_FPS..MAX_FPS) { "fps সীমার বাইরে" }
         require(seconds in MIN_SECONDS..MAX_SECONDS) { "duration সীমার বাইরে" }
         require(copyFactor >= 1.0) { "copy factor সঠিক নয়" }
         val frameBytes = frameBytes(width, height)
-        val usable = (availableBytes - RESERVE_BYTES).coerceAtLeast(0L).coerceAtMost(MAX_SESSION_BYTES)
+        require(maxSessionBytes in MAX_SESSION_BYTES..MAX_DIRECT_SESSION_BYTES) { "session byte cap" }
+        require(maxFramesCap in MAX_FRAMES..MAX_DIRECT_FRAMES) { "session frame cap" }
+        val usable = (availableBytes - RESERVE_BYTES).coerceAtLeast(0L).coerceAtMost(maxSessionBytes)
         val perFrame = (frameBytes * copyFactor).toLong().coerceAtLeast(1L)
-        var byStorage = (usable / perFrame).coerceAtMost(MAX_FRAMES.toLong()).toInt()
-        val slots = (seconds.toLong() * fps).coerceAtMost(MAX_FRAMES.toLong()).toInt()
+        var byStorage = (usable / perFrame).coerceAtMost(maxFramesCap.toLong()).toInt()
+        val slots = (seconds.toLong() * fps).coerceAtMost(maxFramesCap.toLong()).toInt()
         var frames = minOf(slots, byStorage)
         // Keep the container itself inside the cap: headers count too, so a full 8 GiB
         // session must not spill past it (export/archive limits are 8 GiB as well).

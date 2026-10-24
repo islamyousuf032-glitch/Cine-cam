@@ -83,6 +83,12 @@ class NativeRawEngine private constructor() {
      */
     external fun nativeStartRawClipFd(width: Int, height: Int, outputFd: Int, epochNs: Long, preallocate: Boolean,
                                       maxFrames: Int, maxBytes: Long): Boolean
+    /**
+     * Continuous session split into complete CCRAW parts (one descriptor per part). Rotation only
+     * happens between whole frames, so every part stays independently verifiable.
+     */
+    external fun nativeStartRawClipFds(width: Int, height: Int, outputFds: IntArray, epochNs: Long,
+                                       preallocate: Boolean, maxFrames: Int, maxBytes: Long, maxPartBytes: Long): Boolean
     external fun nativePushRawPlane(buffer: ByteBuffer, width: Int, height: Int, rowStride: Int, pixelStride: Int,
         timestamp: Long, exposure: Long, iso: Int, number: Int, focus: Float, neutralR: Float, neutralG: Float, neutralB: Float): Boolean
     external fun nativeGetLastError(): String

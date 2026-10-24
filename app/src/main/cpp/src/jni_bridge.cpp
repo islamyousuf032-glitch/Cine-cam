@@ -185,6 +185,12 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
 
     auto* engine = GetGlobalEngine();
     auto stats = engine->getStats();
+    // Part sizes stay small; the list is bounded by the session planner (<= 16 parts).
+    std::string segmentList;
+    for (size_t i = 0; i < stats.segmentBytes.size(); ++i) {
+        if (i) segmentList += ",";
+        segmentList += std::to_string(static_cast<unsigned long long>(stats.segmentBytes[i]));
+    }
 
     char json[4096];
     snprintf(json, sizeof(json),
@@ -197,7 +203,8 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         "\"writerTimings\":{\"crcBackend\":\"%s\",\"hardwareCrcStatus\":\"%s\",\"payloadBytes\":%llu,\"crcNs\":%llu,"
         "\"writeSyscallNs\":%llu,\"fsyncNs\":%llu,\"appendNs\":%llu,\"maxAppendNs\":%llu,\"finalizeNs\":%llu,"
         "\"allocationNs\":%llu,\"reservedBytes\":%llu,\"allocationError\":%d,\"truncateNs\":%llu,"
-        "\"closeNs\":%llu,\"renameNs\":%llu,\"writeCalls\":%llu,\"maxWriteNs\":%llu}}",
+        "\"closeNs\":%llu,\"renameNs\":%llu,\"writeCalls\":%llu,\"maxWriteNs\":%llu,"
+        "\"segments\":[%s],\"segmentCount\":%u}}",
         stats.poolAvailable, stats.poolTotal, stats.poolPeakUsed, (unsigned long long)stats.poolPreTouchNs, stats.ringSize, stats.ringCapacity, stats.ringFillRatio,
         (unsigned long long)stats.framesPushed, (unsigned long long)stats.framesDropped, (unsigned long long)stats.framesWritten,
         static_cast<int>(stats.writerStatus), engine->isRecording() ? "true" : "false",
@@ -213,7 +220,8 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetStatsJson(
         (unsigned long long)stats.writerTimings.allocationNs, (unsigned long long)stats.writerTimings.reservedBytes,
         stats.writerTimings.allocationError, (unsigned long long)stats.writerTimings.truncateNs,
         (unsigned long long)stats.writerTimings.closeNs, (unsigned long long)stats.writerTimings.renameNs,
-        (unsigned long long)stats.writerTimings.writeCalls, (unsigned long long)stats.writerTimings.maxWriteNs);
+        (unsigned long long)stats.writerTimings.writeCalls, (unsigned long long)stats.writerTimings.maxWriteNs,
+        segmentList.c_str(), static_cast<unsigned>(stats.segmentBytes.size()));
 
     return env->NewStringUTF(json);
 }
@@ -277,6 +285,33 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
     if (env->ExceptionCheck()) return JNI_FALSE;
     return startRawClipCommon(width, height, directory, -1, epochNs, preallocate == JNI_TRUE, maxFrames, maxBytes)
         ? JNI_TRUE : JNI_FALSE;
+}
+
+// Continuous session split into complete parts, one provider row (descriptor) per part.
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClipFds(
+        JNIEnv* env, jobject, jint width, jint height, jintArray outputFds, jint epochNs, jboolean preallocate,
+        jint maxFrames, jlong maxBytes, jlong maxPartBytes) {
+    if (!outputFds) return JNI_FALSE;
+    const jsize count = env->GetArrayLength(outputFds);
+    if (count <= 0 || count > 16) return JNI_FALSE;
+    std::vector<int> fds(static_cast<size_t>(count));
+    env->GetIntArrayRegion(outputFds, 0, count, fds.data());
+    if (env->ExceptionCheck()) return JNI_FALSE;
+    auto* engine = GetGlobalEngine();
+    if (epochNs < 0 || !engine->initialize(width, height, 16, 3, true)) return JNI_FALSE;
+    RecordingConfig config;
+    config.width = width; config.height = height; config.bitDepth = 16;
+    config.preallocateCcraw = preallocate == JNI_TRUE;
+    config.maxFrames = maxFrames > 0 ? std::min<int32_t>(maxFrames, 100000) : 8;
+    config.maxBytes = maxBytes > 0 ? std::min<int64_t>(maxBytes, 64LL * 1024 * 1024 * 1024) : 256LL * 1024 * 1024;
+    config.maxPartBytes = maxPartBytes > 0 ? std::min<int64_t>(maxPartBytes, 8LL * 1024 * 1024 * 1024)
+                                           : 2LL * 1024 * 1024 * 1024;
+    config.fps = 30; config.epochNs = epochNs; config.container = "ccraw";
+    config.segmentFds = std::move(fds);
+    config.enableAudio = false; config.enableZstd = false;
+    std::string error;
+    return engine->startRecording(config, error) ? JNI_TRUE : JNI_FALSE;
 }
 
 // Direct-to-Download session: the CCRAW never lands in app staging, so no second copy is needed.
