@@ -415,3 +415,13 @@ APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.11
 Device check: একই 120 s session (DNG sequence ON, archive OFF, depth 1) চালান। report-এ "সংরক্ষণ: সরাসরি
 Download/CineCam-এ লেখা" থাকবে, এবং export copy 0 বাইট হবে (শুধু report/metadata copy)। ফোনে গতি
 মাপা বাকি — "সরাসরি Download-এ লেখা" টগল বন্ধ করলে পুরোনো staging পথেই চলবে।
+
+### v106 delivery — segmented continuous RAW sessions
+CI `40101598184`/116 সম্পূর্ণ সফল। Source `dd4b923`। Release `v0.1.116-alpha-dd4b923`, APK 15,199,487 bytes।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.116-alpha-dd4b923/CineCam-debug.apk
+
+Device check: 180 s × 5 fps, DNG OFF, archive OFF, direct ON → session 24 GiB budget-এ চলবে এবং
+প্রতি 2 GiB-তে নতুন part (`capture.ccraw`, `capture_002.ccraw`, …) তৈরি হবে; report-এ `CCRAW অংশ`
+ও `ccrawPartFrames` থাকবে। direct session-এর মাপা rate (3.05 fps) ও write (16.5 s / 4.59 GB) থেকে
+ধারণক্ষমতা ~7 মিনিট (24 GiB); আসল সংখ্যা ফোনেই মাপতে হবে।
