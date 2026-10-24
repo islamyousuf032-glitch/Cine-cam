@@ -395,3 +395,13 @@ verify ok) exported 24+ DNG files and then failed on the clip itself with a gene
 the user was left with no usable clip. The volume had almost certainly run out of space (52 DNG ≈ 1.3 GB
 plus a 1.29 GB clip). v104 adds an up-front space check for the whole plan, errno-level causes in the
 report and UI, and largest-file-first single-worker copying. Diagnostics only; capture path untouched.
+
+### v104 delivery — export space check and real failure causes
+CI `40084317100`/110 সফল। Source `6a44ca0`। Release `v0.1.110-alpha-6a44ca0`, APK 15,150,335 bytes
+(sha256 `503759b6…`, v109-এর চেয়ে আলাদা) + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.110-alpha-6a44ca0/CineCam-debug.apk
+
+Device check: একই ১২০ s session আবার চালান — জায়গা কম থাকলে এখন **শুরুতেই** বাংলা বার্তা আসবে
+("দরকার X MiB, আছে Y MiB"), কোনো অর্ধেক-লেখা ফাইল থাকবে না। জায়গা থাকলে `.ccraw` আগে একা copy হবে,
+তারপর DNG।
