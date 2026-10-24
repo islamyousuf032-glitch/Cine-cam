@@ -18,8 +18,10 @@ class RecordingPlanTest {
     }
 
     @Test fun storageCapsFramesAndKeepsTheReserve() {
-        // 1 GiB reserve + room for exactly 4 frames.
-        val plan = RecordingPlanner.plan(4080, 3060, fps = 5, seconds = 20, availableBytes = gib + 4 * frame + 12)
+        // 1 GiB reserve + room for exactly 4 frames including their headers.
+        val plan = RecordingPlanner.plan(4080, 3060, fps = 5, seconds = 20,
+            availableBytes = gib + 4 * frame + RecordingPlanner.CcrawHeaderBytes +
+                RecordingPlanner.CcrawFooterBytes + 4 * RecordingPlanner.CcrawFrameHeaderBytes)
         assertEquals(4, plan.maxFrames)
         assertEquals(100, plan.slotFrames)
         assertTrue(plan.storageLimited)
@@ -49,8 +51,10 @@ class RecordingPlanTest {
 
     @Test fun frameCountIsAlwaysFiniteAndBounded() {
         val plan = RecordingPlanner.plan(4080, 3060, 30, 30, 1024 * gib)
-        assertEquals(RecordingPlanner.MAX_FRAMES, plan.maxFrames)
-        assertFalse(plan.storageLimited)
+        // 900 slots are requested, but the 8 GiB container cap binds before the 480-frame cap.
+        assertTrue(plan.maxFrames in 1..RecordingPlanner.MAX_FRAMES)
+        assertTrue(plan.sessionBytes <= RecordingPlanner.MAX_SESSION_BYTES)
+        assertTrue(plan.storageLimited)
         try { RecordingPlanner.plan(4080, 3060, 0, 5, gib); fail("0 fps") } catch (_: IllegalArgumentException) { }
         try { RecordingPlanner.plan(4080, 3060, 3, 0, gib); fail("0 seconds") } catch (_: IllegalArgumentException) { }
         try { RecordingPlanner.plan(4080, 3060, 3, RecordingPlanner.MAX_SECONDS + 1, gib); fail("too long") }
@@ -62,7 +66,7 @@ class RecordingPlanTest {
         // 8 GiB cap with ~24.97 MB frames: bytes bind well before the 480-frame cap.
         val long = RecordingPlanner.plan(4080, 3060, fps = 2, seconds = 180, availableBytes = 512L * gib)
         assertTrue(long.storageLimited)
-        assertEquals(RecordingPlanner.MAX_FRAMES, long.slotFrames.coerceAtMost(RecordingPlanner.MAX_FRAMES))
+        assertEquals(360, long.slotFrames) // 180 s x 2 fps fits under the 480-frame cap.
         assertTrue(long.maxFrames in 1..RecordingPlanner.MAX_FRAMES)
         assertTrue(long.sessionBytes <= RecordingPlanner.MAX_SESSION_BYTES)
         assertEquals(180_000L + RecordingPlanner.GRACE_MS, long.safetyTimeoutMs)
