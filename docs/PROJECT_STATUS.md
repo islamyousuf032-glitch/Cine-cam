@@ -371,3 +371,12 @@ CI `39956492226`/107 সম্পূর্ণ সফল (ARM/x86 native sanitize
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.107-alpha-452630d/CineCam-debug.apk
 
 Device check (পুরোনো capture-ই যথেষ্ট, নতুন capture ছাড়াও চলে): Camera → RAW session → **Pipeline depth 2** বেছে ১০s × ৫ fps → report-এ `আসল rate` আগের 3.94 fps থেকে বাড়ে কি না দেখুন। আর Manage clips-এ কোনো render করা MP4 → আবার MP4 → progress-এ elapsed/আনুমানিক সময় দেখা যাবে। Export সময় কমেছে কি না দেখতে একই ৪০-frame capture আবার তৈরি করতে হবে (নতুন capture লাগবে)।
+
+## v103 — depth-2 verdict, 3-minute sessions, render window — 2026-10-23
+
+Depth-2 device test (CineCam_1792829988271_d47fd9a0) was slower than depth 1: 21/50 frames, 2.1 fps,
+write time 5.58 s with a 1.03 s worst write, 30 skipped slots. Conclusion: one request in flight stays
+the default; depth 2 remains only as an explicitly labelled experiment with the measured numbers in
+the UI. Sessions can now be 3 minutes (480-frame cap, container still bounded to 8 GiB including
+headers), reports up to 512 KiB for 400+ frames, and long clips can render a 24-frame first/last window
+with their real sensor timing. Device verification pending for the new lengths and the render window.

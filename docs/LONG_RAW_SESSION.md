@@ -1,7 +1,7 @@
 # দীর্ঘ (bounded) RAW session — v99
 
 আগের সংস্করণে এক capture-এ সর্বোচ্চ **৮ frame** এবং ~২০০ MB লেখা হতো। এখন ব্যবহারকারী
-দৈর্ঘ্য (৩/৫/১০/২০/৩০ সেকেন্ড) ও target fps (২/৩/৫) বেছে নিতে পারেন। session **সবসময় সীমিত**:
+দৈর্ঘ্য (৩/৫/১০/৩০/৬০/১২০/১৮০ সেকেন্ড) ও target fps (২/৩/৫) বেছে নিতে পারেন। session **সবসময় সীমিত**:
 কত frame লেখা হবে তা আগেই হিসাব করা হয়, এবং প্রতিটি request একবারে একটি।
 
 ## পরিকল্পনা (pure Kotlin, `RecordingPlanner`)
@@ -10,8 +10,8 @@
 frameBytes = width × height × 2
 usable     = min(মুক্ত জায়গা − 1 GiB reserve, 8 GiB)
 byStorage  = usable / (frameBytes × copyFactor)
-slots      = seconds × fps                      (সর্বোচ্চ 180)
-maxFrames  = min(slots, byStorage)
+slots      = seconds × fps                      (সর্বোচ্চ 480)
+maxFrames  = min(slots, byStorage)              (container + header ≤ 8 GiB নিশ্চিত করা হয়)
 ```
 
 - `copyFactor` = ১.০ (শুধু CCRAW) + ১.০ যদি প্রতিটি frame-এর DNG চাওয়া হয় + ০.৬ archive-এর জন্য।
@@ -27,9 +27,10 @@ maxFrames  = min(slots, byStorage)
   frame-এ কাজ শুরু করে। 3-buffer pool-এ সবসময় একটি slot খালি থাকে; এর বেশি (3+) কখনো নয়।
 - দেরি হলে ওই slot বাদ পড়ে এবং `skippedSlots` হিসেবে report-এ লেখা হয়; কোনো frame জোর করে
   ঠেলে দেওয়া হয় না।
-- On-device measurement (F23, depth 1, 5 fps target): achieved 3.94 fps, 10/50 slot বাদ। Camera-ই
-  সীমা ছিল — native write পুরো সেশনে ১.২ সেকেন্ড, কোনো drop নেই। Depth 2 দিয়ে বেশি fps-এর চেষ্টা
-  করা যায়, কিন্তু ফল ডিভাইসে মাপতে হবে; কোনো FPS প্রতিশ্রুতি নেই।
+- On-device measurement (F23): **depth 1 → 3.94 fps** (10/50 slot বাদ, native write ১.২ s, ০ drop)।
+  **depth 2 → 2.1 fps** (30/50 বাদ, write ৫.৬ s, সর্বোচ্চ এক write ১.০ s) — অর্থাৎ depth 2 এই
+  ফোনে **ধীর**, কারণ দুটি Image একসঙ্গে ধরে রাখলে storage চাপ ও camera stall বাড়ে। তাই depth 1-ই
+  ডিফল্ট; depth 2 শুধু পরীক্ষার জন্য রাখা হয়েছে এবং UI-তে মাপা ফল লেখা আছে। কোনো FPS প্রতিশ্রুতি নেই।
 - session থামে: frame budget শেষ, duration শেষ, ব্যবহারকারীর Stop, অথবা writer **৩ সেকেন্ড**
   ধরে কোনো buffer না দিলে ("storage frame নিচ্ছে না")। প্রতিটি কারণ report-এর `reason`-এ থাকে।
 - safety timeout = চাওয়া দৈর্ঘ্য + ৬ সেকেন্ড (কখনোই অসীম নয়)।

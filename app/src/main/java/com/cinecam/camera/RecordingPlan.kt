@@ -40,10 +40,13 @@ internal object RecordingPlanner {
     /** Never fill the phone: the session must leave this much free. */
     const val RESERVE_BYTES = 1024L * 1024 * 1024
     const val MIN_SECONDS = 3
-    const val MAX_SECONDS = 30
+    const val MAX_SECONDS = 180
+    /** Offered session lengths; the planner still trims them to what the disk can hold. */
+    val SECONDS_CHOICES = listOf(3, 5, 10, 30, 60, 120, 180)
     const val MIN_FPS = 1
     const val MAX_FPS = 30
-    const val MAX_FRAMES = 180
+    // 480 frames x 25 MB would exceed the 8 GiB container cap, so bytes usually bind first.
+    const val MAX_FRAMES = 480
     const val MAX_SESSION_BYTES = 8L * 1024 * 1024 * 1024
     const val GRACE_MS = 6000L
     const val CcrawHeaderBytes = 64L
@@ -70,9 +73,14 @@ internal object RecordingPlanner {
         val frameBytes = frameBytes(width, height)
         val usable = (availableBytes - RESERVE_BYTES).coerceAtLeast(0L).coerceAtMost(MAX_SESSION_BYTES)
         val perFrame = (frameBytes * copyFactor).toLong().coerceAtLeast(1L)
-        val byStorage = (usable / perFrame).coerceAtMost(MAX_FRAMES.toLong()).toInt()
+        var byStorage = (usable / perFrame).coerceAtMost(MAX_FRAMES.toLong()).toInt()
         val slots = (seconds.toLong() * fps).coerceAtMost(MAX_FRAMES.toLong()).toInt()
-        val frames = minOf(slots, byStorage)
+        var frames = minOf(slots, byStorage)
+        // Keep the container itself inside the cap: headers count too, so a full 8 GiB
+        // session must not spill past it (export/archive limits are 8 GiB as well).
+        while (frames > 0 && frames * frameBytes + CcrawHeaderBytes + CcrawFooterBytes +
+            frames * CcrawFrameHeaderBytes > usable) frames--
+        if (frames < byStorage) byStorage = frames
         val overhead = CcrawHeaderBytes + CcrawFooterBytes + frames * CcrawFrameHeaderBytes
         return RecordingPlan(
             width = width, height = height, fps = fps, seconds = seconds,

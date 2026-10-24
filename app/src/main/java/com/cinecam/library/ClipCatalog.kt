@@ -27,7 +27,8 @@ internal data class SavedClip(
 )
 internal object ClipCatalog {
     // A long session's report carries per-frame metadata and a file index; still bounded.
-    const val MAX_REPORT_BYTES = 262144
+    // 480 frames x ~0.7 KB of per-frame JSON plus the file index needs more than 256 KiB.
+    const val MAX_REPORT_BYTES = 524288
     const val MAX_DOCUMENTS = 5000
     // A long session exports a CCRAW, an optional DNG per frame and sidecars; still bounded.
     const val MAX_EXPORT_FILES = 1024

@@ -49,3 +49,12 @@ Before encoding, the **MP4** button now opens **ভিডিও সেটিং�
 - PTS নিয়ম অপরিবর্তিত: প্রথম frame 0, ন্যূনতম 33.333 ms ব্যবধান, duplicate PTS নয়; সমান-১০fps মোডেও এই minima প্রযোজ্য।
 - bitrate clamp বদলেছে: আগে সর্বোচ্চ 12 Mbps, এখন quality-নির্ভর সর্বোচ্চ 20 Mbps; ন্যূনতম 2 Mbps আগের মতোই।
 - `RenderOptionsTest` ও বর্ধিত `VideoRenderPlanTest` presets, scaling, bitrate, pacing যাচাই করে (JVM; Android encoder এখনো ফোনে যাচাই বাকি)।
+
+## v103 — frame window for long clips
+
+A long session can hold hundreds of frames; rendering every frame takes minutes. When a clip has more
+than 24 frames the render dialog adds **সব / প্রথম / শেষ** chips:
+
+- window = `0..24` (প্রথম), `size-24..24` (শেষ), অথবা সব; ছোট clip-এ সবসময় পুরোটা।
+- নির্বাচিত window-এর প্রতিটি frame-এর **আসল sensor timestamp** অটুট থাকে (render offset অনুযায়ী timestamp slice), তাই clip-এর মাঝের/শেষের অংশ render করলেও গতি বদলায় না।
+- `RenderRangeTest` window সীমা, ছোট clip, custom chunk ও সেভ করা নাম যাচাই করে।

@@ -57,6 +57,25 @@ class RecordingPlanTest {
         catch (_: IllegalArgumentException) { }
     }
 
+    @Test fun longSessionsAreOfferedAndStillBoundedByBytes() {
+        assertTrue(RecordingPlanner.SECONDS_CHOICES.contains(180))
+        // 8 GiB cap with ~24.97 MB frames: bytes bind well before the 480-frame cap.
+        val long = RecordingPlanner.plan(4080, 3060, fps = 2, seconds = 180, availableBytes = 512L * gib)
+        assertTrue(long.storageLimited)
+        assertEquals(RecordingPlanner.MAX_FRAMES, long.slotFrames.coerceAtMost(RecordingPlanner.MAX_FRAMES))
+        assertTrue(long.maxFrames in 1..RecordingPlanner.MAX_FRAMES)
+        assertTrue(long.sessionBytes <= RecordingPlanner.MAX_SESSION_BYTES)
+        assertEquals(180_000L + RecordingPlanner.GRACE_MS, long.safetyTimeoutMs)
+    }
+
+    @Test fun containerNeverSpillsPastTheSessionCap() {
+        // 2 TB free: the planner must still keep the CCRAW itself within 8 GiB.
+        val huge = RecordingPlanner.plan(4080, 3060, fps = 5, seconds = 180, availableBytes = 2_000L * gib)
+        assertTrue(huge.sessionBytes <= RecordingPlanner.MAX_SESSION_BYTES)
+        assertTrue(huge.maxFrames in 1..RecordingPlanner.MAX_FRAMES)
+        assertTrue(huge.sessionBytes > 7L * gib)
+    }
+
     @Test fun pacingUsesAbsoluteSlotTimes() {
         val start = 5_000_000_000L
         assertEquals(start, RecordingPlanner.slotDueNs(start, 0, 3))

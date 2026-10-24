@@ -290,6 +290,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
     }
 
     /** Finite 8-request RAW burst, not a sustained FPS/recording claim. */
+    // Depth 1 is the measured default: depth 2 gave 2.1 fps versus 3.94 fps on the F23.
     fun startRawClip(displayRotation: Int, paced: Boolean = true, preallocate: Boolean = false, internalStaging: Boolean = true, verifyAndSample: Boolean = true, allFramesDng: Boolean = true, losslessArchive: Boolean = false, sessionSeconds: Int = 5, targetFps: Int = 3, pipelineDepth: Int = 1) {
         if (released) return
         handler.post {

@@ -43,6 +43,7 @@ import com.cinecam.render.Mp4Renderer
 import com.cinecam.render.RenderOptions
 import com.cinecam.render.RenderOutput
 import com.cinecam.render.RenderPacing
+import com.cinecam.render.RenderRange
 import com.cinecam.render.RenderQuality
 import com.cinecam.render.RenderResolution
 import com.cinecam.ui.theme.CineCamTheme
@@ -127,6 +128,11 @@ class ClipLibraryActivity : ComponentActivity() {
         var renderPacing by rememberSaveable {
             mutableStateOf(prefs.getString("render_pacing", null) ?: RenderPacing.REAL.name)
         }
+        var renderRange by rememberSaveable {
+            mutableStateOf(prefs.getString("render_range", null) ?: RenderRange.ALL.name)
+        }
+        var renderOffset by remember { mutableIntStateOf(0) }
+        var renderLength by remember { mutableIntStateOf(0) }
         var headerFrames by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         var extraMetadata by remember { mutableStateOf<Map<String, ClipMetadata>>(emptyMap()) }
         val scope = rememberCoroutineScope()
@@ -263,16 +269,19 @@ class ClipLibraryActivity : ComponentActivity() {
             }
         }
         fun renderVideo(clipId: String, targets: List<Pair<String, PreviewTarget>>,
-                        options: RenderOptions = RenderOptions()) {
+                        options: RenderOptions = RenderOptions(), firstIndex: Int = 0) {
             if (rendering || targets.isEmpty()) return
             rendering = true
             renderedVideo = null
-            renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে • $clipId • লম্বা দিক ≤ ${options.maxDimension} px"
+            renderStatus = "ভিডিও রেন্ডার শুরু হচ্ছে • $clipId • ${targets.size} frame" +
+                (if (firstIndex > 0) " (frame ${firstIndex + 1} থেকে)" else "") +
+                " • লম্বা দিক ≤ ${options.maxDimension} px"
             scope.launch {
                 try {
                     val startedAt = SystemClock.elapsedRealtime()
                     val output = Mp4Renderer.render(context.applicationContext, clipId,
-                        targets.map { it.second }, timestampsFor(clipById[clipId], targets.size), options) { done, total ->
+                        targets.map { it.second }, timestampsFor(clipById[clipId], targets.size, firstIndex),
+                        options) { done, total ->
                         val elapsed = SystemClock.elapsedRealtime() - startedAt
                         // A measured estimate, not a promise: per-frame decode dominates.
                         val remaining = if (done > 0) (elapsed.toDouble() / done * (total - done)).toLong() else 0L
@@ -369,6 +378,21 @@ class ClipLibraryActivity : ComponentActivity() {
                                     onClick = { renderQuality = option.name }, label = { Text(option.label) })
                             }
                         }
+                        if (targets.size > RenderRange.CHUNK) {
+                            Text("কোন frame গুলো (${targets.size}টির মধ্যে)", style = MaterialTheme.typography.labelLarge)
+                            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                RenderRange.values().forEach { option ->
+                                    FilterChip(selected = renderRange == option.name, onClick = {
+                                        renderRange = option.name
+                                        val (offset, length) = RenderRange.window(option, targets.size)
+                                        renderOffset = offset; renderLength = length
+                                    }, label = { Text(option.label) })
+                                }
+                            }
+                            Text("${renderOffset + 1}–${renderOffset + renderLength} frame • লম্বা clip-এ সব render করতে অনেক সময় লাগে; " +
+                                "নির্বাচিত অংশের প্রকৃত sensor timing অটুট থাকে।",
+                                style = MaterialTheme.typography.bodySmall)
+                        }
                         Text("frame-এর সময়", style = MaterialTheme.typography.labelLarge)
                         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             RenderPacing.values().forEach { option ->
@@ -388,8 +412,12 @@ class ClipLibraryActivity : ComponentActivity() {
                             .putString("render_pacing", renderPacing).apply()
                         val options = RenderOptions.of(RenderResolution.of(renderResolution),
                             RenderQuality.of(renderQuality), RenderPacing.of(renderPacing))
+                        prefs.edit().putString("render_range", renderRange).apply()
+                        val offset = renderOffset.coerceIn(0, targets.lastIndex)
+                        val length = renderLength.coerceIn(1, targets.size - offset)
+                        val slice = targets.subList(offset, offset + length)
                         pendingRender = null
-                        renderVideo(clipId, targets, options)
+                        renderVideo(clipId, slice, options, offset)
                     }) { Text("তৈরি করুন") }
                 },
                 dismissButton = {
@@ -500,7 +528,9 @@ class ClipLibraryActivity : ComponentActivity() {
                                         entry.frameIndex, clipById[entry.clipId]?.frameTimestamps ?: emptyList())
                                 }) { Text("বড় করে দেখুন (${entry.frameIndex + 1}/${selectedPhotos.size})") }
                                 TextButton(enabled = !rendering, onClick = {
-                                    pendingRender = entry.clipId to selectedPhotos.map { it.file to it.target }
+                                    val all = selectedPhotos.map { it.file to it.target }
+                                    pendingRender = entry.clipId to all
+                                    renderOffset = 0; renderLength = all.size
                                 }) { Text(if (rendering) "রেন্ডার…" else "MP4 তৈরি করুন (${selectedPhotos.size})") }
                             }
                         }
@@ -536,7 +566,9 @@ class ClipLibraryActivity : ComponentActivity() {
                                             clip?.frameTimestamps ?: emptyList())
                                     }) { Text("frame preview") }
                                     TextButton(enabled = count > 0 && !rendering, onClick = {
-                                        pendingRender = doc.clipId to targetsFor(doc, count)
+                                        val all = targetsFor(doc, count)
+                                        pendingRender = doc.clipId to all
+                                        renderOffset = 0; renderLength = all.size
                                     }) { Text(if (rendering) "রেন্ডার…" else "MP4") }
                                     TextButton(onClick = { openExternal("application/octet-stream", true, doc.document) }) { Text("শেয়ার") }
                                     TextButton(enabled = clip != null, onClick = {
@@ -692,14 +724,19 @@ class ClipLibraryActivity : ComponentActivity() {
             meta?.cfa ?: 0, neutral, white, black, meta?.colorMatrix, meta?.matrixMode ?: 0)
     }
 
-    /** Real burst spacing; only extrapolates when a report lacks per-frame timestamps. */
-    private fun timestampsFor(clip: SavedClip?, count: Int): List<Long> {
+    /**
+     * Real burst spacing for the rendered window; only extrapolates when a report lacks
+     * per-frame timestamps. [offset] keeps a trimmed window on its own sensor timing.
+     */
+    private fun timestampsFor(clip: SavedClip?, count: Int, offset: Int = 0): List<Long> {
+        if (count <= 0) return emptyList()
         val known = clip?.frameTimestamps ?: emptyList()
-        if (known.size >= count) return known.take(count)
-        val out = known.toMutableList()
+        if (known.size >= offset + count) return known.subList(offset, offset + count).toList()
         val step = if (known.size >= 2) ((known.last() - known.first()) / (known.size - 1)).coerceAtLeast(33_333_333L)
         else 333_333_333L
-        var last = out.lastOrNull() ?: 1_000_000_000L
+        val out = if (offset < known.size) known.drop(offset).toMutableList() else mutableListOf()
+        var last = out.lastOrNull()
+            ?: (known.lastOrNull() ?: 1_000_000_000L) + step * (offset - known.size + 1).coerceAtLeast(0).toLong()
         while (out.size < count) { last += step; out.add(last) }
         return out
     }

@@ -2,6 +2,13 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — দীর্ঘ session (৩ মিনিট) ও দীর্ঘ clip-এর frame window] — 2026-10-23
+- **Pipeline depth 2 পরীক্ষায় ধীর প্রমাণিত:** একই ফোনে depth 1 = 3.94 fps, depth 2 = 2.1 fps (30/50 slot বাদ, সর্বোচ্চ এক write 35.7 ms → 1.03 s)। তাই ডিফল্ট এখন **depth 1**; UI-তে depth 2-এর মাপা ফল লেখা আছে ("পরীক্ষামূলক")। কোনো FPS প্রতিশ্রুতি নেই।
+- **দীর্ঘ session:** দৈর্ঘ্য এখন ৩/৫/১০/৩০/৬০/১২০/১৮০ সেকেন্ড (আগে সর্বোচ্চ ৩০ s), frame cap ৪৮০। CCRAW container সবসময় ৮ GiB-এর মধ্যে থাকে (header হিসাবসহ), তাই export/archive limit-এর সঙ্গে মেলে; জায়গা কম হলে প্ল্যানার আগেই frame কমিয়ে দেয়।
+- **বড় report:** ৪০০+ frame-এর report আর তালিকা থেকে বাদ পড়বে না — সীমা ২৫৬ KiB → ৫১২ KiB (buffered, সীমিত পড়া)।
+- **MP4 frame window:** ২৪-এর বেশি frame থাকলে render ডায়ালগে **সব / প্রথম / শেষ** — লম্বা clip-এর পুরোটা render না করেও দ্রুত ভিডিও। নির্বাচিত অংশের আসল sensor timing অটুট।
+- Tests: `RenderRangeTest`, দীর্ঘ session ও container-cap tests। ফোনে যাচাই বাকি।
+
 ## [Unreleased — দ্রুত finalize/export ও pipeline depth] — 2026-10-23
 - **বাগ ঠিক:** export-এর এক-ফাইল সীমা ছিল 1 GiB — দীর্ঘ session-এ CCRAW 1 GiB ছাড়ালে export ব্যর্থ হতো। এখন 8 GiB।
 - **সমান্তরাল export:** ডেটা ফাইল 3টি worker-এ copy+fsync হয় (এক ফাইলের fsync-এর সময় অন্য ফাইল এগোয়)। ব্যর্থ হলে বাকি worker বন্ধ হওয়ার পরেই cleanup; নাম/সংখ্যা/ক্রম/CRC নীতি অপরিবর্তিত; report-এ `exportConcurrency`।
