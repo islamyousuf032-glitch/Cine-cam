@@ -631,7 +631,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
             }
             put("internalStagingRequested", internalStagingRequested)
             put("storageMode", if (clipDirect != null) "direct-download" else "staging-export")
-            put("ccrawParts", partCount)
+            put("ccrawParts", clipPartCount)
             if (clipDirectDisabledReason.isNotEmpty()) put("directDisabledReason", clipDirectDisabledReason)
             put("preallocationRequested", clipPreallocate)
             put("captureMode", if (clipPaced) "paced" else "burst")
@@ -724,24 +724,26 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                             verified = CcrawVerifier.verify(File(folder, "capture.ccraw"))
                             check(verified!!.frames.size.toLong() == written) { "Written/readback frame count mismatch" }
                         }
-                        check(verified != null) { "কোনো RAW part যাচাই হয়নি" }
-                        report.put("readbackOk", true); report.put("readbackFrames", verified.frames.size)
-                        report.put("readbackPayloadBytes", verified.payloadBytes)
+                        val primary = verified ?: error("কোনো RAW part যাচাই হয়নি")
+                        report.put("readbackOk", true); report.put("readbackFrames", primary.frames.size)
+                        report.put("readbackPayloadBytes", primary.payloadBytes)
                         report.put("readbackBackend", if (direct != null) "java.util.zip.CRC32 / 64KiB pread on provider fd"
                             else "java.util.zip.CRC32 / 64KiB streaming")
                     } catch (e: Exception) {
                         verified = null; report.put("readbackOk", false); report.put("readbackError", e.message)
                     }
                     report.put("readbackNs", SystemClock.elapsedRealtimeNanos() - verifyBegin)
-                    if (verified != null && verified.frames.isNotEmpty()) {
+                    // A captured value: the lambda above prevents a smart cast on the mutable local.
+                    val settled: CcrawVerifier.Verified? = verified
+                    if (settled != null && settled.frames.isNotEmpty()) {
                         // Read-only codec feasibility check on the first verified saved payload.
                         // It needs a real path, so a direct session skips it instead of faking it.
                         if (direct == null) {
                             postStorageStatus("Lossless RAW16 codec roundtrip পরীক্ষা হচ্ছে…")
                             try {
                                 report.put("losslessProbe", JSONObject(engine.nativeProbeRaw16Codec(
-                                    File(folder, "capture.ccraw").absolutePath, verified.frames.first().payloadOffset,
-                                    verified.width.toLong() * verified.height * 2)))
+                                    File(folder, "capture.ccraw").absolutePath, settled.frames.first().payloadOffset,
+                                    settled.width.toLong() * settled.height * 2)))
                             } catch (e: Exception) {
                                 report.put("losslessProbeError", e.message)
                             }
@@ -758,7 +760,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                         try {
                             check(sampleChars != null) { "Capture calibration metadata missing" }
                             if (sequenceDng) {
-                                val plan = DngSequencePlan.entries(verified)
+                                val plan = DngSequencePlan.entries(settled)
                                 // Validate ALL calibration mappings before creating sequence files.
                                 plan.forEach {
                                     val result = savedResults[it.frame.timestampNs]
@@ -774,7 +776,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     // The manifest order is fixed by index, never by completion order.
                                     BoundedParallel.map(EXPORT_WORKERS, plan.size) { index ->
                                         val entry = plan[index]
-                                        ClipDngSample.writeFrame(dngTarget, verified, entry.frame, sampleChars,
+                                        ClipDngSample.writeFrame(dngTarget, settled, entry.frame, sampleChars,
                                             savedResults.getValue(entry.frame.timestampNs), sampleOrientation, entry.name)
                                         completed.add(entry.name)
                                         postStorageStatus("Saved DNG sequence: ${dngDone.incrementAndGet()}/${plan.size}…")
@@ -787,7 +789,7 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     }
                                     val manifest = JSONObject().apply {
                                         put("schema", "cinecam-dng-sequence-1"); put("frames", entries)
-                                        put("clock", "BOOTTIME"); put("epochNs", verified.epochNs)
+                                        put("clock", "BOOTTIME"); put("epochNs", settled.epochNs)
                                         put("fixedFps", JSONObject.NULL); put("audio", false)
                                         put("warning", "Numbered DNG still sequence; no certified CinemaDNG/NLE timing conformance, no synthetic missing frames")
                                     }
@@ -802,14 +804,14 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                                     throw e
                                 }
                             } else {
-                                val sampleResult = savedResults[verified.frames.first().timestampNs]
+                                val sampleResult = savedResults[settled.frames.first().timestampNs]
                                 check(sampleResult != null) { "First-frame calibration metadata missing" }
                                 val sampleTarget: ClipDngTarget = direct ?: FolderDngTarget(folder)
-                                ClipDngSample.write(sampleTarget, verified, sampleChars, sampleResult, sampleOrientation)
+                                ClipDngSample.write(sampleTarget, settled, sampleChars, sampleResult, sampleOrientation)
                                 report.put("firstFrameDngOk", true)
                                 report.put("firstFrameDngBytes", if (direct != null) direct.rowBytes("first_frame.dng")
                                     else File(folder, "first_frame.dng").length())
-                                report.put("firstFrameDngTimestampNs", verified.frames.first().timestampNs)
+                                report.put("firstFrameDngTimestampNs", settled.frames.first().timestampNs)
                             }
                         } catch (e: Exception) {
                             report.put(if (sequenceDng) "dngSequenceOk" else "firstFrameDngOk", false)
