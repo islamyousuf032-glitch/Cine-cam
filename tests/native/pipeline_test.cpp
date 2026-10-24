@@ -543,6 +543,8 @@ int main() {
         const auto noSpace = +[](int, int, off_t*, size_t) -> ssize_t { errno = ENOSPC; return -1; };
         const auto failure = copyExportFile(source, failed, true, noSpace);
         assert(!failure.ok && failure.bytes == 0 && failure.bufferedBytes == 0);
+        // Reports must say why: a full disk is a user-fixable condition, not a generic failure.
+        assert(failure.errorCode == ENOSPC && std::string(failure.error).size() > 0);
         ::close(failed);
         const int readOnly = ::open("build/native-tests/export-failed.bin", O_RDONLY);
         assert(readOnly >= 0 && !copyExportFile(source, readOnly, false).ok); ::close(readOnly);

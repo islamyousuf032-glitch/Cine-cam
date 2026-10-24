@@ -30,3 +30,16 @@ ASan/UBSan native suites: normal kernel/forced-buffered exact-byte copy,1MiB-এ
 - report-এ `exportConcurrency` লেখা থাকে; per-file `copyNs`/`fsyncNs` আগের মতোই আলাদা।
 - DNG sequence-ও একই ভাবে 3 worker-এ তৈরি হয় (`dngSequenceWorkers`) এবং 1 MiB buffered stream ব্যবহার করে; `sequence.json`-এর ক্রম index অনুযায়ী, completion অনুযায়ী নয়।
 - যন্ত্র-তথ্য (v0.1.105, 40 frame, 2.55 GB): DNG sequence 29.99 s, export copy 133.96 s — এর বড় অংশ 40টি DNG-র আলাদা আলাদা ~1.5 s fsync। समानांतरকরণের লক্ষ্য এই অপেক্ষা overlap করা; কোনো নির্দিষ্ট সময়ের প্রতিশ্রুতি নয়।
+
+## Pre-flight and failure diagnosis (v104)
+
+- **Space first.** `ExportPlan.requiredBytes` sums every file plus a 2% (min 8 MiB) margin and is
+  compared with `StatFs(destination volume)` *before* the first MediaStore row exists. A short volume
+  aborts the run with a Bangla message naming both numbers; nothing is written and nothing is deleted.
+- **Largest file first, alone.** Files ≥ 256 MiB are copied by a single worker; the remaining files use
+  the 3-worker pool afterwards. A 1.29 GB clip therefore cannot be starved by 52 concurrent DNG writes,
+  and a space failure surfaces immediately instead of after a full directory of DNGs.
+- **errno in the report.** `copyExportFile` returns `errorCode` (errno at the failing syscall; 0 when
+  the source ended early) and JNI exposes it as `errorCode` next to `error`. `ExportPlan.describeFailure`
+  turns ENOSPC/EDQUOT/EFBIG/EOVERFLOW/EIO/EBADF into a readable cause, so the next device report says
+  exactly why, instead of the generic "kernel copy failed or source truncated".

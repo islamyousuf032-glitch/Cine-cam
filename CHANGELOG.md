@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — export নির্ভরযোগ্যতা: জায়গা-যাচাই, পরিষ্কার কারণ, বড় ফাইল আগে] — 2026-10-24
+- **বাগ:** ১.২৯ GB `.ccraw` সহ ৫৩ ফাইলের ১২০ s session-এ export মাঝপথে ব্যর্থ হয়ে শুধু "kernel copy failed" দেখিয়েছিল; ব্যবহারকারী কোনো ফাইল পাননি (২০+ DNG আগেই লেখা হয়ে গিয়েছিল)।
+- **আগেই জায়গা-যাচাই:** পুরো export plan (সব ফাইল + ২% margin, সর্বনিম্ন ৮ MiB) destination volume-এর free space-এর সঙ্গে তুলনা করা হয়; কম হলে **একটি ফাইলও লেখার আগেই** পরিষ্কার বাংলা বার্তা — কত MiB দরকার, কত আছে।
+- **কারণ আলাদা করা যায়:** native copy এখন `errorCode` (errno) রিপোর্ট করে; report ও UI-তে "ডিস্কে জায়গা নেই (ENOSPC)" / "ডিভাইস I/O সমস্যা (EIO)" ইত্যাদি স্পষ্ট কারণ, শুধু "failed" নয়।
+- **বড় ফাইল সবার আগে, একা:** ≥২৫৬ MiB ফাইল (সাধারণত `.ccraw`) প্রথমে একক copy হয়, বাকি ছোট ফাইল ৩-worker pool-এ — জায়গার অভাব থাকলে শুরুতেই ধরা পড়ে, আর বিশাল write ছোট write-এর সঙ্গে লড়ে না।
+- report-এ নতুন: `exportRequiredBytes`, `exportAvailableBytesAtStart`, `exportLargestFileBytes`, `exportLargeFileFirst`, `errorCode`।
+- Tests: `ExportPlanTest` (margin, boundary, order, message), native `errorCode == ENOSPC` assert। ফোনে যাচাই বাকি।
+
 ## [Unreleased — দীর্ঘ session (৩ মিনিট) ও দীর্ঘ clip-এর frame window] — 2026-10-23
 - **Pipeline depth 2 পরীক্ষায় ধীর প্রমাণিত:** একই ফোনে depth 1 = 3.94 fps, depth 2 = 2.1 fps (30/50 slot বাদ, সর্বোচ্চ এক write 35.7 ms → 1.03 s)। তাই ডিফল্ট এখন **depth 1**; UI-তে depth 2-এর মাপা ফল লেখা আছে ("পরীক্ষামূলক")। কোনো FPS প্রতিশ্রুতি নেই।
 - **দীর্ঘ session:** দৈর্ঘ্য এখন ৩/৫/১০/৩০/৬০/১২০/১৮০ সেকেন্ড (আগে সর্বোচ্চ ৩০ s), frame cap ৪৮০। CCRAW container সবসময় ৮ GiB-এর মধ্যে থাকে (header হিসাবসহ), তাই export/archive limit-এর সঙ্গে মেলে; জায়গা কম হলে প্ল্যানার আগেই frame কমিয়ে দেয়।

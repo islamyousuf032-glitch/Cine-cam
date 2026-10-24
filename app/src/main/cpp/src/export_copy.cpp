@@ -25,14 +25,15 @@ ExportCopyResult copyExportFile(const char* source, int output, bool preferKerne
         r.error = "Export needs bounded source and empty regular destination"; return r;
     }
     const auto begin = pipelineNowNs();
-    auto fail = [&](const char* error) { r.copyNs = pipelineNowNs() - begin; r.error = error; return r; };
+    auto fail = [&](const char* error, int code = 0) {
+        r.copyNs = pipelineNowNs() - begin; r.error = error; r.errorCode = code; return r; };
     off_t offset = 0;
     while (preferKernel && offset < src.st_size) {
         const auto count = static_cast<size_t>(std::min<off_t>(src.st_size - offset, 1024 * 1024));
         const auto n = (kernelCopy ? kernelCopy : ::sendfile)(output, input, &offset, count);
         if (n < 0 && errno == EINTR) continue;
         if (n < 0 && (errno == EINVAL || errno == ENOSYS || errno == EOPNOTSUPP || errno == EXDEV)) break;
-        if (n <= 0) return fail("Export kernel copy failed or source truncated");
+        if (n <= 0) return fail("Export kernel copy failed or source truncated", errno);
         r.kernelBytes += static_cast<uint64_t>(n); r.bytes += static_cast<uint64_t>(n);
     }
     // Continue at the exact successful kernel offset, never duplicate a partial copy.
@@ -41,12 +42,12 @@ ExportCopyResult copyExportFile(const char* source, int output, bool preferKerne
         const auto count = static_cast<size_t>(std::min<off_t>(src.st_size - offset, buffer.size()));
         const auto n = ::pread(input, buffer.data(), count, offset);
         if (n < 0 && errno == EINTR) continue;
-        if (n <= 0) return fail("Export fallback read failed or source truncated");
+        if (n <= 0) return fail("Export fallback read failed or source truncated", errno);
         size_t done = 0;
         while (done < static_cast<size_t>(n)) {
             const auto wrote = ::write(output, buffer.data() + done, static_cast<size_t>(n) - done);
             if (wrote < 0 && errno == EINTR) continue;
-            if (wrote <= 0) return fail("Export fallback write failed");
+            if (wrote <= 0) return fail("Export fallback write failed", errno);
             done += static_cast<size_t>(wrote); r.bytes += wrote; r.bufferedBytes += wrote;
         }
         offset += n;
@@ -58,7 +59,7 @@ ExportCopyResult copyExportFile(const char* source, int output, bool preferKerne
     int status;
     do { status = ::fsync(output); } while (status < 0 && errno == EINTR);
     r.fsyncNs = pipelineNowNs() - syncBegin;
-    if (status < 0) { r.error = "Export destination fsync failed"; return r; }
+    if (status < 0) { r.error = "Export destination fsync failed"; r.errorCode = errno; return r; }
     r.ok = true;
     return r;
 }

@@ -387,3 +387,11 @@ CI `40078412913`/109 সম্পূর্ণ সফল (ARM/x86 native sanitize
 APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.109-alpha-d2b9c3b/CineCam-debug.apk
 
 Device check: Camera → RAW session → **৬০s/১২০s/১৮০s** বেছে নিন (জায়গা দেখে হিসাব আসবে) এবং Pipeline depth **1**-ই রাখুন। তারপর Manage clips → Clips → ওই clip-এ **MP4** → **প্রথম/শেষ** window বেছে দেখুন।
+
+## v104 — export reliability after the 120 s session failure — 2026-10-24
+
+Device run `CineCam_1792835277528_503c24f6` (120 s request, 52 frames, 1,298,424,288 B, DNG on,
+verify ok) exported 24+ DNG files and then failed on the clip itself with a generic kernel-copy error;
+the user was left with no usable clip. The volume had almost certainly run out of space (52 DNG ≈ 1.3 GB
+plus a 1.29 GB clip). v104 adds an up-front space check for the whole plan, errno-level causes in the
+report and UI, and largest-file-first single-worker copying. Diagnostics only; capture path untouched.

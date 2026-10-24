@@ -119,6 +119,19 @@ internal object RawClipStore {
             File(folder, "report.txt").writeText(RawReadableReport.text(report))
         }
         writeReports() // Retain a readable diagnostic even if export subsequently fails.
+        // Check the whole plan up front: a half-exported clip is worse than a clear message.
+        val plannedSizes = files.map { it.length() } +
+            File(folder, "report.json").length() + File(folder, "report.txt").length()
+        val requiredBytes = ExportPlan.requiredBytes(plannedSizes)
+        val exportVolume = if (Build.VERSION.SDK_INT >= 29) Environment.getExternalStorageDirectory() else legacyRoot
+        val freeAtStart = try { StatFs(exportVolume.absolutePath).availableBytes } catch (_: Exception) { 0L }
+        report.put("exportRequiredBytes", requiredBytes)
+        report.put("exportAvailableBytesAtStart", freeAtStart)
+        report.put("exportLargestFileBytes", plannedSizes.maxOrNull() ?: 0L)
+        check(ExportPlan.fits(plannedSizes, freeAtStart)) {
+            "Download-এ জায়গা যথেষ্ট নয়: দরকার ${requiredBytes / 1048576} MiB, আছে ${freeAtStart / 1048576} MiB " +
+                "— পুরোনো clip/Files মুছে বা ছোট session নিয়ে আবার চেষ্টা করুন। কিছু লেখা হয়নি।"
+        }
         // Workers run in parallel, so every shared collection/lock here must stay thread-safe.
         val inserted = Collections.synchronizedList(mutableListOf<android.net.Uri>())
         val legacyCreated = Collections.synchronizedList(mutableListOf<File>())
@@ -140,7 +153,8 @@ internal object RawClipStore {
                 }
             }
             check(detail.optBoolean("ok") && detail.optLong("bytes") == file.length()) {
-                "Export copy ব্যর্থ: ${file.name}: ${detail.optString("error")}" }
+                ExportPlan.describeFailure(mapping.optString(file.name, file.name),
+                    detail.optInt("errorCode"), detail.optString("error")) }
         }
         try {
             if (Build.VERSION.SDK_INT < 29) check(legacyRoot.isDirectory || legacyRoot.mkdirs()) { "Export folder তৈরি হয়নি" }
@@ -173,13 +187,20 @@ internal object RawClipStore {
             }
             val copyBegin = SystemClock.elapsedRealtimeNanos()
             val done = AtomicInteger()
-            // Files are independent: a bounded pool overlaps copy/fsync instead of serializing them.
-            val copiedBytes = BoundedParallel.map(EXPORT_WORKERS, files.size) { index ->
+            val order = ExportPlan.copyOrder(files.map { it.length() })
+            // The clip itself is huge: copying it alone avoids competing with 3 DNG writers.
+            val alone = order.firstOrNull()?.takeIf { ExportPlan.isLarge(files[it].length()) }
+            val rest = if (alone == null) order else order.drop(1)
+            report.put("exportLargeFileFirst", files.getOrNull(alone ?: -1)?.name ?: "")
+            fun copyOne(index: Int): Long {
                 val file = files[index]
                 copyPending(file)
                 onProgress("Export ${done.incrementAndGet()}/${files.size}: ${file.name}…")
-                file.length()
-            }.sum()
+                return file.length()
+            }
+            var copiedBytes = alone?.let { copyOne(it) } ?: 0L
+            // Files are independent: a bounded pool overlaps copy/fsync instead of serializing them.
+            copiedBytes += BoundedParallel.map(EXPORT_WORKERS, rest.size) { index -> copyOne(rest[index]) }.sum()
             report.put("exportDataCopyNs", SystemClock.elapsedRealtimeNanos() - copyBegin)
             report.put("exportDataBytes", copiedBytes)
             report.put("exportCopyDetailsElided", copyDetailsElided)

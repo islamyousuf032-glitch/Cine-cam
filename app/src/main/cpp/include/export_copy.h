@@ -7,6 +7,7 @@ struct ExportCopyResult {
     bool ok = false;
     uint64_t bytes = 0, kernelBytes = 0, bufferedBytes = 0, copyNs = 0, fsyncNs = 0;
     const char* error = "";
+    int errorCode = 0; // errno of the failing syscall; 0 when the check failed before any write
 };
 // Borrowed empty regular output FD, owned/closed by caller. Source is read-only.
 using KernelCopy = ssize_t (*)(int, int, off_t*, size_t);

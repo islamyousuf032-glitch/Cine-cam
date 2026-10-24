@@ -418,8 +418,9 @@ Java_com_cinecam_engine_NativeRawEngine_nativeCopyExport(JNIEnv* env, jobject, j
     const auto r = copyExportFile(path.c_str(), outputFd);
     char json[768];
     snprintf(json, sizeof(json), "{\"ok\":%s,\"bytes\":%llu,\"kernelBytes\":%llu,\"bufferedBytes\":%llu,"
-        "\"copyNs\":%llu,\"fsyncNs\":%llu,\"error\":\"%s\"}",
+        "\"copyNs\":%llu,\"fsyncNs\":%llu,\"errorCode\":%d,\"error\":\"%s\"}",
         r.ok ? "true" : "false", (unsigned long long)r.bytes, (unsigned long long)r.kernelBytes,
-        (unsigned long long)r.bufferedBytes, (unsigned long long)r.copyNs, (unsigned long long)r.fsyncNs, r.error);
+        (unsigned long long)r.bufferedBytes, (unsigned long long)r.copyNs, (unsigned long long)r.fsyncNs,
+        r.errorCode, r.error);
     return env->NewStringUTF(json);
 }
