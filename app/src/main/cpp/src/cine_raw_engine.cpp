@@ -158,6 +158,7 @@ bool CineRawEngine::stopRecording() {
         lastFramesWritten_ = rawWriter_->getStats().framesWritten;
         lastWriterStatus_ = ws;
         lastWriterTimings_ = rawWriter_->getStats().timings;
+        lastSegmentBytes_ = rawWriter_->getStats().segmentBytes;
         if (!success) setError(rawWriter_->getLastError());
         if (ws != WriterStatus::OK) {
             LOGW("Writer stop returned %d: %s", static_cast<int>(ws), rawWriter_->getLastError().c_str());
@@ -274,6 +275,7 @@ CineRawEngine::EngineStats CineRawEngine::getStats() const {
     s.framesWritten = lastFramesWritten_;
     s.writerStatus = lastWriterStatus_;
     s.writerTimings = lastWriterTimings_;
+    s.segmentBytes = lastSegmentBytes_;
     s.poolExhausted = poolExhausted_.load(); s.controlBusy = controlBusy_.load();
     s.invalidLayout = invalidLayout_.load(); s.timestampRejected = timestampRejected_.load();
     s.queueRejected = queueRejected_.load(); s.notRecording = notRecording_.load(); s.writerUnavailable = writerUnavailable_.load();

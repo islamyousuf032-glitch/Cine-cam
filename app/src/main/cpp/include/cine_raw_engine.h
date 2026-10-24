@@ -20,6 +20,7 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <vector>
 
 namespace cinecam {
 
@@ -69,6 +70,8 @@ public:
         int32_t poolPeakUsed = 0;
         uint64_t poolPreTouchNs = 0;
         CcrawWriter::Timings writerTimings;
+        // Per-part file sizes of a segmented session (empty for a single container).
+        std::vector<uint64_t> segmentBytes;
     };
     EngineStats getStats() const;
     int32_t ingestionCapacity() const; // -1 unavailable/error, 0 busy/full, >0 free slots
@@ -93,6 +96,7 @@ private:
     uint64_t lastFramesWritten_ = 0;
     WriterStatus lastWriterStatus_ = WriterStatus::OK;
     CcrawWriter::Timings lastWriterTimings_;
+    std::vector<uint64_t> lastSegmentBytes_;
 
     // For stats
     std::atomic<uint64_t> framesPushed_{0};
