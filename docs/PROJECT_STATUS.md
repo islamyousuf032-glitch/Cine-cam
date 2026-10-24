@@ -380,3 +380,10 @@ the default; depth 2 remains only as an explicitly labelled experiment with the 
 the UI. Sessions can now be 3 minutes (480-frame cap, container still bounded to 8 GiB including
 headers), reports up to 512 KiB for 400+ frames, and long clips can render a 24-frame first/last window
 with their real sensor timing. Device verification pending for the new lengths and the render window.
+
+### v103 delivery — depth-2 verdict, 3-minute sessions, render window
+CI `40078412913`/109 সম্পূর্ণ সফল (ARM/x86 native sanitizer, Android unit/lint/debug/release, publication)। Source `d2b9c3b`। Release `v0.1.109-alpha-d2b9c3b`, APK 15,150,335 bytes + SHA256SUMS.txt।
+
+APK: https://github.com/islamyousuf032-glitch/Cine-cam/releases/download/v0.1.109-alpha-d2b9c3b/CineCam-debug.apk
+
+Device check: Camera → RAW session → **৬০s/১২০s/১৮০s** বেছে নিন (জায়গা দেখে হিসাব আসবে) এবং Pipeline depth **1**-ই রাখুন। তারপর Manage clips → Clips → ওই clip-এ **MP4** → **প্রথম/শেষ** window বেছে দেখুন।
