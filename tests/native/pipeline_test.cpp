@@ -541,6 +541,52 @@ int main() {
     }
 
     {
+        // Engine-level regression: a segmented (descriptor-only) session must be a valid config.
+        // Before this test, RawWriter rejected it with "Unsupported or invalid writer configuration".
+        const std::string root = "build/native-tests/engine-segments";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
+        std::vector<int> fds;
+        for (int i = 0; i < 2; ++i) {
+            const int fd = ::open((root + "/part" + std::to_string(i + 1) + ".ccraw").c_str(),
+                                  O_CREAT | O_TRUNC | O_RDWR | O_CLOEXEC, 0600);
+            assert(fd >= 0); fds.push_back(fd);
+        }
+        CineRawEngine engine;
+        assert(engine.initialize(4, 2, 16, 3));
+        RecordingConfig config;
+        config.width = 4; config.height = 2; config.bitDepth = 16;
+        config.container = "ccraw"; config.epochNs = 100;
+        config.outputPath.clear();              // provider-only session: no staging folder
+        config.segmentFds = fds;
+        config.maxFrames = 6; config.maxBytes = 1ULL * 1024 * 1024; config.maxPartBytes = 432;
+        std::string error;
+        assert(engine.startRecording(config, error));
+        uint8_t plane[16]{};
+        FrameMetadata metadata;
+        metadata.width = 4; metadata.height = 2; metadata.stride = 8; metadata.bitDepth = 16;
+        metadata.exposureTimeNs = 1000; metadata.iso = 100;
+        for (int n = 0; n < 6; ++n) {
+            metadata.timestampNs = 200 + n * 100LL; metadata.frameNumber = n;
+            // The 3-slot pool/ring applies backpressure; the capture path retries, so the test does too.
+            bool accepted = false;
+            for (int attempt = 0; attempt < 200000 && !accepted; ++attempt) {
+                accepted = engine.onRaw16PlaneAvailable(plane, sizeof(plane), metadata);
+                if (!accepted) std::this_thread::yield();
+            }
+            assert(accepted);
+        }
+        assert(engine.stopRecording());
+        const auto stats = engine.getStats();
+        assert(stats.framesWritten == 6);
+        assert(stats.segmentBytes.size() == 2 && stats.segmentBytes[0] == 432 && stats.segmentBytes[1] == 432);
+        for (int fd : fds) ::close(fd);
+        for (int i = 0; i < 2; ++i)
+            assert(std::filesystem::file_size(root + "/part" + std::to_string(i + 1) + ".ccraw") == 432);
+        engine.release();
+    }
+
+    {
         const char* source = "build/native-tests/ccraw/capture.ccraw";
         const char* archive = "build/native-tests/roundtrip.ccraw.bp16";
         std::filesystem::remove(archive);

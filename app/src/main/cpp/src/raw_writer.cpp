@@ -27,8 +27,11 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
         return WriterStatus::IO_ERROR;
     }
 
+    // Descriptor destinations need no folder: one part per provider row, or a single row.
+    const bool segmented = config.container == "ccraw" && !config.segmentFds.empty();
     const bool directFd = config.outputFd >= 0 && config.container == "ccraw";
-    if (!ringBuffer_ || !memoryPool_ || (!directFd && config.outputPath.empty()) ||
+    const bool providerOnly = segmented || directFd;
+    if (!ringBuffer_ || !memoryPool_ || (!providerOnly && config.outputPath.empty()) ||
         (config.container != "mcraw" && config.container != "ccraw") || config.enableZstd || config.enableAudio) {
         lastError_ = "Unsupported or invalid experimental writer configuration";
         return WriterStatus::ENCODING_ERROR;
@@ -39,7 +42,7 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
     config_ = config;
     baseOutputPath_ = config.outputPath;
 
-    if (!directFd && !ensureOutputDir(baseOutputPath_)) {
+    if (!providerOnly && !ensureOutputDir(baseOutputPath_)) {
         lastError_ = "Failed to create output dir: " + baseOutputPath_;
         LOGE("%s", lastError_.c_str());
         return WriterStatus::IO_ERROR;
@@ -47,7 +50,7 @@ WriterStatus RawWriter::start(const RecordingConfig& config) {
 
     const uint32_t maxFrames = static_cast<uint32_t>(std::max(1, config.maxFrames));
     const uint64_t maxBytes = static_cast<uint64_t>(std::max<int64_t>(1, config.maxBytes));
-    if (config.container == "ccraw" && !config.segmentFds.empty()) {
+    if (segmented) {
         segments_ = std::make_unique<CcrawSegmentWriter>();
         if (!segments_->open(config.segmentFds, config.width, config.height, config.epochNs,
                              config.preallocateCcraw, maxFrames, maxBytes, config.maxPartBytes)) {

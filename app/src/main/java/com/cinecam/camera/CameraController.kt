@@ -379,7 +379,10 @@ class CameraController(context: Context, private val onStatus: (String) -> Unit,
                     clipDirectFd?.close(); clipDirectFd = null
                     clipDirectFds.forEach { runCatching { it.close() } }; clipDirectFds = emptyList()
                     clipDirect?.discard(); clipDirect = null
-                    error(engine.getLastError())
+                    val native = engine.getLastError()
+                    error("Writer start failed" + (if (native.isBlank()) "" else ": $native") +
+                        " • mode=${if (directAllowed) "direct" else "staging"}" +
+                        (if (directAllowed && parts > 1) " • $parts part" else ""))
                 }
                 clipPartCount = if (directAllowed) parts else 1
                 clipLimit = wanted
