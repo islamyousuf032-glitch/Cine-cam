@@ -2,6 +2,12 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — v0.1.117: multi-part session start fix] — 2026-10-25
+- **জরুরি বাগ:** ১৮০ s session শুরুই হচ্ছিল না — "Writer start failed: Unsupported or invalid experimental writer configuration"। কারণ: multi-part (descriptor-only) session-এ `outputPath` খালি, অথচ `RawWriter` তখনো staging folder বাধ্যতামূলক ধরে নিত।
+- **ঠিক:** `segmentFds` থাকলে descriptor-only session বৈধ; folder তৈরি/prerequisite বাদ যায়। একক descriptor path অপরিবর্তিত।
+- **রিগ্রেশন টেস্ট (native):** `CineRawEngine` + ২টি part descriptor দিয়ে পুরো পথ (start → ৬ frame → stop) চালানো হয় এবং দুই part-ই ঠিক ৪৩২ বাইট হয় কি না যাচাই হয়। এই টেস্ট থাকলে বাগটি CI-তেই ধরা পড়ত।
+- শুরু ব্যর্থ হলে বার্তায় এখন mode ও part সংখ্যা লেখা থাকে, শুধু "writer configuration" নয়।
+
 ## [Unreleased — একটানা দীর্ঘ রেকর্ডিং: একাধিক CCRAW সেগমেন্ট] — 2026-10-24
 - **নতুন:** একটি session এখন একাধিক **সম্পূর্ণ CCRAW অংশে** লেখা যায় (`capture.ccraw`, `capture_002.ccraw`, …)। ঘোরানো হয় শুধু frame-এর মাঝখানে নয় — প্রতিটি অংশ নিজে থেকেই সম্পূর্ণ ও স্বতন্ত্রভাবে যাচাইযোগ্য, epoch একই থাকে (সময়ের ধারাবাহিকতা অটুট)।
 - **সীমা খুলল:** direct mode-এ (copy নেই) session বাজেট **৮ GiB → ২৪ GiB**, frame cap ৩২০ → ২৪০০। ৪৫৯৪ MB/১৮৪ frame-এর মাপা rate-এ ২৪ GiB মানে ~১৬ মিনিট পূর্ণ-রেজ RAW (storage থাকলে, report-এ আসল সংখ্যা)।

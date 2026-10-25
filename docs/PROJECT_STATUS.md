@@ -425,3 +425,10 @@ Device check: 180 s × 5 fps, DNG OFF, archive OFF, direct ON → session 24 GiB
 প্রতি 2 GiB-তে নতুন part (`capture.ccraw`, `capture_002.ccraw`, …) তৈরি হবে; report-এ `CCRAW অংশ`
 ও `ccrawPartFrames` থাকবে। direct session-এর মাপা rate (3.05 fps) ও write (16.5 s / 4.59 GB) থেকে
 ধারণক্ষমতা ~7 মিনিট (24 GiB); আসল সংখ্যা ফোনেই মাপতে হবে।
+
+### v0.1.117 — segmented session start fix (2026-10-25)
+Device build 116 refused to start a 180 s session: `RawWriter::start` still required a staging
+`outputPath`, but a multi-part direct session only has provider descriptors. Fixed with
+`providerOnly = segmented || directFd`; a native engine-level test now covers start → 6 frames → stop
+with two part descriptors (both exactly 432 bytes). CI `40200244304` green, release
+`v0.1.117-alpha-418e8a6`, APK 15,199,487 bytes. Device verification pending.
