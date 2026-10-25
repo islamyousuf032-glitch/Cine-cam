@@ -432,3 +432,12 @@ Device build 116 refused to start a 180 s session: `RawWriter::start` still requ
 `providerOnly = segmented || directFd`; a native engine-level test now covers start → 6 frames → stop
 with two part descriptors (both exactly 432 bytes). CI `40200244304` green, release
 `v0.1.117-alpha-418e8a6`, APK 15,199,487 bytes. Device verification pending.
+
+### v0.1.119 — 64-bit epoch JNI fix (2026-10-25)
+Device build 117 still refused to start (`Writer start failed • mode=direct • 6 part`, no reason).
+Root cause: `nativeStartRawClipFds` declared `epochNs` as `jint` while Kotlin passes a 64-bit `Long`,
+so the boot timestamp arrived truncated (negative) and the native start rejected it silently.
+Fixed to `jlong`; every JNI early return now records a reason, and `scripts/check-jni.sh`
+(signature comparison for all 22 externals + host syntax check of `jni_bridge.cpp`) runs inside
+`test-native.sh`, so a width mismatch cannot reach a device again. CI `40202621767` green; release
+`v0.1.119-alpha-ebfead5`, APK 15,199,483 bytes. Device verification pending.

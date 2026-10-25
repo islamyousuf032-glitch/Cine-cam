@@ -2,6 +2,14 @@
 
 সব পরিবর্তন বাংলায় নথিভুক্ত করা হবে।
 
+## [Unreleased — v0.1.119: 64-bit epoch JNI fix + storage warning] — 2026-10-25
+- **আসল বাগ পেলাম:** `nativeStartRawClipFds`-এ `epochNs` ভুলভাবে `jint` (৩২-বিট) ঘোষণা করা ছিল, অথচ Kotlin `Long` পাঠায়। ৬৪-বিট boot timestamp কেটে গিয়ে ঋণাত্মক হয়ে যেত → native চুপচাপ শুরু করতে অস্বীকার করত, তাই বার্তায় কোনো কারণ ছিল না।
+- **ঠিক:** `jlong`। এখন descriptor-only (multi-part) session সত্যিই শুরু হবে।
+- **পুনরাবৃত্তি ঠেকাতে দুটি স্বয়ংক্রিয় গার্ড:** `scripts/check-jni-signatures.py` প্রতিটি Kotlin `external fun`-এর টাইপ JNI ঘোষণার সঙ্গে মেলায় (এখনই ২২টি মেথড), আর `scripts/check-jni.sh` হোস্টে `jni_bridge.cpp` syntax-check করে — দুটোই CI-র native job-এ চলে।
+- **নতুন বার্তা:** start ব্যর্থ হলে native কারণ (থাকলে) দেখানো হয়; JNI-র প্রতিটি early-return এখন কারণ লেখে।
+- **জায়গার সতর্কতা:** session হিসাবে দেখাবে "বাস্তবে ~N s হবে" এবং ফোন প্রায় ভরে যাওয়ার সতর্কতা (৮০%-এর বেশি হলে)।
+- Test: `SegmentPlanTest.aNearlyFullPhoneShrinksTheSessionBeforeItStarts` (১২.৮ GB ফাঁকা → ৬ অংশ, ~৯৩ s)।
+
 ## [Unreleased — v0.1.117: multi-part session start fix] — 2026-10-25
 - **জরুরি বাগ:** ১৮০ s session শুরুই হচ্ছিল না — "Writer start failed: Unsupported or invalid experimental writer configuration"। কারণ: multi-part (descriptor-only) session-এ `outputPath` খালি, অথচ `RawWriter` তখনো staging folder বাধ্যতামূলক ধরে নিত।
 - **ঠিক:** `segmentFds` থাকলে descriptor-only session বৈধ; folder তৈরি/prerequisite বাদ যায়। একক descriptor path অপরিবর্তিত।
