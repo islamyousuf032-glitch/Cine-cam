@@ -16,6 +16,7 @@ build/native-tests/dng_preview_test
   app/src/main/cpp/src/{ccraw_preview,ccraw_writer,crc32_dispatch,dng_preview}.cpp -o build/native-tests/ccraw_preview_test
 build/native-tests/ccraw_preview_test
 printf 'Native core tests passed.\n'
+./scripts/check-jni.sh
 crc_flags=()
 crc_objects=()
 if [[ "$(uname -m)" == "aarch64" ]]; then

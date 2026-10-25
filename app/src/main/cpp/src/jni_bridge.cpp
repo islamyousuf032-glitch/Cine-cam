@@ -13,6 +13,7 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <mutex>
 
 #define LOG_TAG "CineJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -23,6 +24,24 @@ using namespace cinecam;
 // ---------------------------------------------------------------------------
 // JNI Helpers
 // ---------------------------------------------------------------------------
+
+namespace {
+std::mutex g_startErrorMutex;
+std::string g_startError;
+
+void setStartError(const std::string& message) {
+    std::lock_guard<std::mutex> lock(g_startErrorMutex);
+    g_startError = message;
+}
+
+// Read-and-clear: the Kotlin side asks for the reason once, right after a failed start.
+std::string takeStartError() {
+    std::lock_guard<std::mutex> lock(g_startErrorMutex);
+    std::string message = g_startError;
+    g_startError.clear();
+    return message;
+}
+}
 
 static std::string jstringToStd(JNIEnv* env, jstring jstr) {
     if (!jstr) return "";
@@ -231,6 +250,9 @@ Java_com_cinecam_engine_NativeRawEngine_nativeGetLastError(
         JNIEnv* env, jobject /*thiz*/) {
     auto* engine = GetGlobalEngine();
     std::string err = engine->getLastError();
+    // A start rejected before the engine ran has no engine error; the start path stores its own.
+    const auto startError = takeStartError();
+    if (!startError.empty()) err = startError;
     return env->NewStringUTF(err.c_str());
 }
 
@@ -259,8 +281,12 @@ namespace {
 bool startRawClipCommon(int width, int height, const std::string& directory, int outputFd, int64_t epochNs,
                         bool preallocate, int32_t maxFrames, int64_t maxBytes) {
     auto* engine = GetGlobalEngine();
-    if (epochNs < 0) return false;
-    if (!engine->initialize(width, height, 16, 3, true)) return false;
+    if (epochNs < 0) { setStartError("Native start received a negative epoch"); return false; }
+    if (!engine->initialize(width, height, 16, 3, true)) {
+        const auto reason = engine->getLastError();
+        setStartError(reason.empty() ? "Native engine initialize failed" : reason);
+        return false;
+    }
     RecordingConfig config;
     config.width = width; config.height = height; config.bitDepth = 16;
     config.preallocateCcraw = preallocate;
@@ -272,7 +298,12 @@ bool startRawClipCommon(int width, int height, const std::string& directory, int
     config.outputPath = directory; config.outputFd = outputFd;
     config.enableAudio = false; config.enableZstd = false;
     std::string error;
-    return engine->startRecording(config, error);
+    if (!engine->startRecording(config, error)) {
+        setStartError(error.empty() ? "Writer start failed without a reason" : error);
+        return false;
+    }
+    setStartError("");
+    return true;
 }
 }
 
@@ -290,16 +321,24 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClip(
 // Continuous session split into complete parts, one provider row (descriptor) per part.
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClipFds(
-        JNIEnv* env, jobject, jint width, jint height, jintArray outputFds, jint epochNs, jboolean preallocate,
+        JNIEnv* env, jobject, jint width, jint height, jintArray outputFds, jlong epochNs, jboolean preallocate,
         jint maxFrames, jlong maxBytes, jlong maxPartBytes) {
-    if (!outputFds) return JNI_FALSE;
+    if (!outputFds) { setStartError("No part descriptors were supplied"); return JNI_FALSE; }
     const jsize count = env->GetArrayLength(outputFds);
-    if (count <= 0 || count > 16) return JNI_FALSE;
+    if (count <= 0 || count > 16) {
+        setStartError("Part descriptor count out of range: " + std::to_string(count));
+        return JNI_FALSE;
+    }
     std::vector<int> fds(static_cast<size_t>(count));
     env->GetIntArrayRegion(outputFds, 0, count, fds.data());
     if (env->ExceptionCheck()) return JNI_FALSE;
     auto* engine = GetGlobalEngine();
-    if (epochNs < 0 || !engine->initialize(width, height, 16, 3, true)) return JNI_FALSE;
+    if (epochNs < 0) { setStartError("Native start received a negative epoch"); return JNI_FALSE; }
+    if (!engine->initialize(width, height, 16, 3, true)) {
+        const auto reason = engine->getLastError();
+        setStartError(reason.empty() ? "Native engine initialize failed" : reason);
+        return JNI_FALSE;
+    }
     RecordingConfig config;
     config.width = width; config.height = height; config.bitDepth = 16;
     config.preallocateCcraw = preallocate == JNI_TRUE;
@@ -311,7 +350,12 @@ Java_com_cinecam_engine_NativeRawEngine_nativeStartRawClipFds(
     config.segmentFds = std::move(fds);
     config.enableAudio = false; config.enableZstd = false;
     std::string error;
-    return engine->startRecording(config, error) ? JNI_TRUE : JNI_FALSE;
+    if (!engine->startRecording(config, error)) {
+        setStartError(error.empty() ? "Segmented writer start failed without a reason" : error);
+        return JNI_FALSE;
+    }
+    setStartError("");
+    return JNI_TRUE;
 }
 
 // Direct-to-Download session: the CCRAW never lands in app staging, so no second copy is needed.

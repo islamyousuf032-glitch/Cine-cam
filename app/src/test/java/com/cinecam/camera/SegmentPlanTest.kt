@@ -47,4 +47,19 @@ class SegmentPlanTest {
             catch (_: IllegalArgumentException) { }
         }
     }
+
+    @Test fun aNearlyFullPhoneShrinksTheSessionBeforeItStarts() {
+        // The real device: 128 GB phone with 115 GB used leaves ~12.8 GB, not the ~22 GiB a
+        // 180 s full-resolution session needs. The UI must warn instead of failing mid-capture.
+        val free = 12_800_000_000L
+        val plan = RecordingPlanner.plan(4080, 3060, fps = 5, seconds = 180, availableBytes = free,
+            maxSessionBytes = RecordingPlanner.MAX_DIRECT_SESSION_BYTES,
+            maxFramesCap = RecordingPlanner.MAX_DIRECT_FRAMES)
+        assertTrue(plan.storageLimited)
+        assertEquals(6, RecordingPlanner.partCount(plan.sessionBytes))
+        assertTrue(plan.sessionBytes + RecordingPlanner.RESERVE_BYTES <= free)
+        val coveredSeconds = plan.maxFrames / plan.fps
+        assertTrue(coveredSeconds < plan.seconds)
+        assertTrue(coveredSeconds in 80..100) // ~93 s of the requested 180 s
+    }
 }

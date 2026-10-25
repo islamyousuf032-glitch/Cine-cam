@@ -133,8 +133,13 @@ fun CameraScreen() {
                         if (copies > 1.0) append(" + DNG/archive copy")
                         append(")")
                         if (plan.storageLimited) append(" • জায়গা অনুযায়ী কমেছে")
+                        // A 180 s request that storage trims to 50 s must say so before capture starts.
+                        val covered = if (plan.fps > 0) plan.maxFrames / plan.fps else 0
+                        if (covered < plan.seconds) append(" • বাস্তবে ~${covered}s হবে (আরও জায়গা খালি করলে বাড়বে)")
                         val parts = RecordingPlanner.partCount(plan.sessionBytes)
                         if (parts > 1) append(" • ${parts}টি CCRAW অংশে (প্রতিটি আলাদা যাচাই)")
+                        if (free > 0 && plan.sessionBytes > free * 8 / 10)
+                            append(" • ⚠️ ফোন প্রায় ভরে যাবে (খালি ${free / (1024 * 1024)} MiB-র মধ্যে ${plan.sessionBytes / (1024 * 1024)} MiB ব্যবহার)")
                     }
                 }
             } catch (e: Exception) {
